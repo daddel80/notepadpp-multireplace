@@ -542,7 +542,7 @@ nav.pagenav .nav-group.collapsible {
   <section id="EngineOverview">
     <h2>Engine Overview</h2>
     <p>When <strong>Formula Support</strong> is enabled, replacements run through a formula engine. MultiReplace ships with two: <strong>Lua</strong> and <strong>ExprTk</strong>. Switch via the <code>(L)</code> / <code>(E)</code> indicator next to the <strong>Formula Support</strong> checkbox. The choice is per tab and persists across sessions.</p>
-    <p><strong>Quick guidance:</strong> pick <strong>Lua</strong> for anything involving text manipulation, conditional logic, lookup tables, or external scripts. Pick <strong>ExprTk</strong> when the task is mostly arithmetic on captured numbers and you want concise inline expressions.</p>
+    <p><strong>Quick guidance:</strong> for most everyday jobs &mdash; doing math on a captured number, numbering matches, formatting a date or duration, a quick conditional &mdash; <strong>ExprTk</strong> is the easiest start: a single short formula, with captures available as numbers (<code>num(N)</code>) or text (<code>txt(N)</code>) without any conversion step. Choose <strong>Lua</strong> when the task grows into real programming: loops, multi-step logic, lookup tables, or loading external files. Both read and write UTF-8 and both handle everyday string work, so for simple tasks either one is fine &mdash; but if you're unsure, start with ExprTk and switch to Lua only when you actually need its extra power.</p>
     <table class="optionsTable">
       <tr>
         <th>&nbsp;</th>
@@ -551,43 +551,53 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td><strong>Best for</strong></td>
-        <td>Text and string work, conditional logic, lookups, external file loading</td>
-        <td>High-speed numeric work, running totals, concise inline math, plus string slicing/splitting and date/duration formatting</td>
+        <td>Logic-heavy text work: branching, lookups, loops, external files</td>
+        <td>Number crunching and tidy one-line formulas; dates and durations</td>
+      </tr>
+      <tr>
+        <td><strong>Style</strong></td>
+        <td>A small script &mdash; multiple statements, variables, control flow</td>
+        <td>One expression per replacement, kept short</td>
       </tr>
       <tr>
         <td><strong>Captures</strong></td>
-        <td><code>CAP1</code>, <code>CAP2</code>, ... (always strings, use <code>tonum()</code> for math)</td>
-        <td><code>num(N)</code> numeric, <code>txt(N)</code> string</td>
+        <td><code>CAP1</code>, <code>CAP2</code>, &hellip; (text; <code>tonum()</code> for math)</td>
+        <td><code>txt(N)</code> for text, <code>num(N)</code> for math &mdash; no conversion step</td>
       </tr>
       <tr>
         <td><strong>Strings</strong></td>
-        <td>Full string library (substitute, slice, format, upper/lower, etc.)</td>
-        <td>Real string toolkit: <code>slice</code>/<code>split</code>/<code>trim</code>/<code>find</code>/<code>len</code>/<code>replace</code>/<code>reptxt</code>, concatenation, slicing <code>[a:b]</code>, <code>totxt</code>/<code>num2chr</code>/<code>chr2num</code> &mdash; ASCII-only in literals (document text and captures are full UTF-8)</td>
+        <td>Full standard string library</td>
+        <td>Everyday toolkit: <code>slice</code>, <code>split</code>, <code>trim</code>, <code>find</code>, <code>replace</code>, join with <code>+</code></td>
       </tr>
       <tr>
         <td><strong>Math</strong></td>
-        <td><code>math</code> library covers the basics (<code>sin</code>, <code>cos</code>, <code>log</code>, <code>sqrt</code>, <code>abs</code>, <code>floor</code>, <code>ceil</code>, ...); richer math built up in Lua code</td>
-        <td>Rich built-in math: full trigonometry, hyperbolic, log/exp variants, <code>clamp</code>, <code>sgn</code>, <code>roundn</code>, <code>erf</code>, <code>ncdf</code>, variadic <code>avg</code>/<code>sum</code>/<code>min</code>/<code>max</code></td>
+        <td>The basics, build up the rest in code</td>
+        <td>Large built-in set out of the box (trig, stats, rounding, min/max/avg over many values)</td>
       </tr>
       <tr>
-        <td><strong>Loops &amp; flow</strong></td>
-        <td>Full control structures (<code>if/elseif/else</code>, <code>while</code>, <code>for</code>, <code>repeat</code>)</td>
-        <td>Conditionals within expressions (no general loops)</td>
+        <td><strong>Dates</strong></td>
+        <td><code>os.date</code> / <code>os.time</code>, full locale handling</td>
+        <td><code>d:</code> output format + <code>todate()</code> for reading dates back in</td>
       </tr>
       <tr>
-        <td><strong>UTF-8</strong></td>
-        <td>Full UTF-8 in the script</td>
-        <td>UTF-8 only in document text and captures, NOT in string literals inside the expression</td>
+        <td><strong>Formatting</strong></td>
+        <td><code>string.format</code> (printf-style)</td>
+        <td>Inline <code>~</code> spec: width, padding, sign, hex/binary, durations, date layout</td>
       </tr>
       <tr>
-        <td><strong>Performance</strong></td>
-        <td>Bytecode VM with per-match globals and string allocations</td>
-        <td>Pre-compiled expression tree, direct double arithmetic; tends to be faster for pure numeric work</td>
+        <td><strong>Logic &amp; loops</strong></td>
+        <td>Everything: <code>if/else</code>, <code>while</code>, <code>for</code>, <code>repeat</code></td>
+        <td><code>if</code>-style conditionals inside the expression; no loops</td>
       </tr>
       <tr>
-        <td><strong>External I/O</strong></td>
-        <td><code>lvars</code>, <code>lkp</code>, <code>lcmd</code> (file access, external scripts)</td>
-        <td>None &mdash; no file or external access</td>
+        <td><strong>External files</strong></td>
+        <td>Load data lookups and variables from files, plus reusable function libraries (<code>lkp</code>, <code>lvars</code>, <code>lcmd</code>)</td>
+        <td>Load reusable function libraries from <code>.elib</code> files (<code>loadlib</code>)</td>
+      </tr>
+      <tr>
+        <td><strong>Speed</strong></td>
+        <td>Fast enough for anything</td>
+        <td>Very fast for pure number work</td>
       </tr>
     </table>
 
@@ -2023,7 +2033,7 @@ return {
     <p>String sources include literals in single quotes, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), <code>txtcol(...)</code> CSV columns, and the conversion functions (<code>num2rom</code>, <code>hex2num</code>, etc.). The <code>+</code> operator concatenates strings.</p>
     <p>The legacy form <code>(?=return [a, b, c])</code> still compiles and behaves the same as <code>(?=a + b + c)</code>; new expressions should prefer the direct form.</p>
     <section class="note">
-      <p><strong>String literals are ASCII-only.</strong> UTF-8 bytes in <code>'...'</code> will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside <code>(?=...)</code>. See <a href="#exprtk-limitations">Limitations</a> below.</p>
+      <p><strong>String literals accept UTF-8.</strong> Non-ASCII characters inside <code>'...'</code> (for example <code>'Gr&ouml;&szlig;e'</code> or <code>'caf&eacute;'</code>) work directly as needles, replacements, and comparison values. The String Pack functions process them correctly; only the byte-indexed <code>s[i:j]</code> slice and the <code>like</code>/<code>ilike</code> wildcards stay byte-level (see <a href="#exprtk-limitations">Limitations</a>).</p>
     </section>
   </section>
 
@@ -2144,7 +2154,7 @@ return {
     </ul>
     <p><strong>Parser conventions:</strong></p>
     <ul>
-      <li><code>hex2num</code>, <code>bin2num</code>, <code>oct2num</code> accept input <strong>case-insensitively</strong>, with or without the matching prefix, and trim surrounding whitespace. Invalid characters for the target base yield <code>NaN</code>.</li>
+      <li><code>hex2num</code>, <code>bin2num</code>, <code>oct2num</code> accept input <strong>case-insensitively</strong>, with or without the matching prefix, and trim surrounding Unicode whitespace. Invalid characters for the target base yield <code>NaN</code>.</li>
       <li><code>rom2num</code> is lenient: accepts both case and tolerates non-canonical forms like <code>"IIII"</code> for 4. Invalid characters yield <code>NaN</code>.</li>
       <li>Numeric overflow (values beyond double's safe-integer ceiling 2<sup>53</sup>) yields <code>NaN</code> rather than silently losing precision.</li>
     </ul>
@@ -2205,7 +2215,7 @@ return {
       <li><code>find</code> returns <code>0</code> when the needle is absent; an empty needle returns <code>1</code>.</li>
       <li><code>slice</code> clamps <code>n</code> to the available remainder; a <code>start</code> below 1 or past the end yields <code>""</code>.</li>
       <li><code>split</code> returns <code>""</code> for an out-of-range field; consecutive or trailing separators produce empty fields; an empty separator returns <code>s</code> for <code>i==1</code>.</li>
-      <li><code>trim</code>/<code>ltrim</code>/<code>rtrim</code> strip ASCII whitespace (space, tab, CR, LF).</li>
+      <li><code>trim</code>/<code>ltrim</code>/<code>rtrim</code> strip ASCII and Unicode whitespace (NBSP, BOM, ideographic space, line/paragraph separators, and other Unicode whitespace).</li>
       <li><code>replace</code> substitutes every occurrence; an empty <code>from</code> returns <code>s</code> unchanged.</li>
       <li><code>reptxt</code> returns <code>""</code> for <code>n &lt; 1</code>; very large output is capped to protect memory.</li>
       <li><code>tonum</code> accepts both <code>.</code> and <code>,</code> as the decimal separator and is the value-returning counterpart of <code>isnum</code>.</li>
@@ -2442,7 +2452,7 @@ end
         <li><code>s[0:1]</code> on a value starting with <code>&auml;</code> returns one half of the encoding &mdash; invalid UTF-8 &mdash; and displays as <code>?</code> or a replacement glyph</li>
       </ul>
       <p><strong>Prefer the String Pack for text.</strong> The codepoint-aware functions <code>len</code>, <code>find</code>, <code>slice</code>, <code>split</code>, <code>trim</code>, <code>replace</code>, <code>reptxt</code>, <code>chr2num</code>, and <code>num2chr</code> (see <a href="#exprtk-stringpack">String Pack</a>) count and slice by <strong>codepoint</strong>, are <strong>1-based</strong>, and handle multi-byte content correctly &mdash; <code>slice('Gr&ouml;&szlig;e', 2, 3)</code> returns <code>r&ouml;&szlig;</code>, where <code>s[1:4]</code> would cut the encoding apart. Reach for <code>s[]</code> / <code>s[i:j]</code> only when you specifically want byte-level work on ASCII data.</p>
-      <p><strong>Note on literals.</strong> A non-ASCII literal such as <code>'&auml;'</code> cannot appear inside an expression &mdash; the lexer rejects it (see <a href="#exprtk-limitations">Limitations</a>). Non-ASCII needles must come from a capture: <code>find(txt(1), txt(2))</code>, not <code>find(txt(1), '&auml;')</code>. Captures arrive as UTF-8 bytes and pass through the String Pack functions unchanged.</p>
+      <p><strong>Note on literals.</strong> Non-ASCII literals such as <code>'&auml;'</code> are accepted (<code>find(txt(1), '&auml;')</code> works), and captures arrive as UTF-8 bytes that pass through the String Pack unchanged. Both compile to the same byte sequence, so a literal needle and a captured one compare equal byte-for-byte.</p>
     </section>
     <p><strong>A minimal complete example.</strong> Strip leading zeros from a captured number string:</p>
     <pre><code>function strip_zeros(s: S) : S
@@ -2728,14 +2738,14 @@ end
       <tr><td><code>%z</code> <code>%Z</code></td><td>Timezone offset (<code>+0200</code>) / name (<code>CEST</code>)</td></tr>
       <tr><td><code>%%</code></td><td>Literal <code>%</code></td></tr>
     </table>
-    <p>Weekday/month names follow the system locale. The full list of <code>strftime</code> specifiers is platform-defined and passes through verbatim &mdash; anything your C library supports works here.</p>
+    <p>Weekday and month names (<code>%A</code>, <code>%B</code>) follow the user's system locale and are emitted as proper Unicode, so localized names with accents (for example German &quot;M&auml;rz&quot;, &quot;Mittwoch&quot;) render correctly. The full list of <code>strftime</code> specifiers is platform-defined; literal non-ASCII text in the pattern passes through unchanged.</p>
     <table class="optionsTable">
       <tr><th>Spec</th><th>Timestamp</th><th>Output (UTC)</th></tr>
       <tr><td><code>d:utc:%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>2023-11-14</code></td></tr>
       <tr><td><code>&gt;15 d:utc:%Y-%m-%d</code></td><td><code>1700000000</code></td><td><code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2023-11-14</code></td></tr>
       <tr><td><code>d:utc:%Y-%m-%dT%H:%M:%SZ</code></td><td><code>1700000000</code></td><td><code>2023-11-14T22:13:20Z</code></td></tr>
       <tr><td><code>d:utc:%d.%m.%Y</code></td><td><code>1700000000</code></td><td><code>14.11.2023</code></td></tr>
-      <tr><td><code>d:utc:%A</code></td><td><code>0</code></td><td><code>Thursday</code> (epoch was Thursday)</td></tr>
+      <tr><td><code>d:utc:%A</code></td><td><code>0</code></td><td><code>Thursday</code> / <code>Donnerstag</code> (locale)</td></tr>
       <tr><td><code>d:utc:Year %Y, week %V</code></td><td><code>1700000000</code></td><td><code>Year 2023, week 46</code></td></tr>
     </table>
     <p><strong>Range:</strong> timestamps must be &ge; 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (<code>1700000000.7</code> is treated as <code>1700000000</code>).</p>
@@ -3044,7 +3054,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <p>ExprTk is deliberately scoped. Things it does <strong>not</strong> do:</p>
     <ul>
       <li><strong>String manipulation inside <code>(?=...)</code>.</strong> The String Pack covers the common cases codepoint-correctly: length (<code>len</code>), search (<code>find</code>), slicing (<code>slice</code>), splitting (<code>split</code>), trimming, replacement, repetition, and codepoint conversion (see <a href="#exprtk-stringpack">String Pack</a>). The low-level byte primitives <code>s[i:j]</code> and <code>s[]</code> remain for ASCII/byte work. For anything beyond the built-ins &mdash; formatted assembly, custom encodings, multi-step parsing &mdash; write helper functions in a <code>.elib</code> library (see <a href="#exprtk-loadlib">Library Loading via loadlib</a>).</li>
-      <li><strong>UTF-8 inside string literals fails to compile.</strong> A literal like <code>'Gr&ouml;&szlig;e'</code> between <code>'...'</code> produces an <code>Invalid string token</code> error. This applies to both inline expressions and <code>.elib</code> bodies. The restriction is on <strong>literals only</strong> &mdash; non-ASCII text from a capture works fully. Source non-ASCII needles and content from <code>txt(N)</code> rather than typing them as literals (<code>find(txt(1), txt(2))</code> instead of <code>find(txt(1), '&auml;')</code>), and process them with the codepoint-aware <a href="#exprtk-stringpack">String Pack</a> functions, which handle multi-byte content correctly.</li>
+      <li><strong>Byte-indexed slicing and wildcards in built-ins (<code>s[i:j]</code>, <code>like</code>, <code>ilike</code>).</strong> The built-in range slice and wildcard match work on raw bytes, not whole characters, so they can split or mismatch multi-byte sequences. For correct results use the <a href="#exprtk-stringpack">String Pack</a> &mdash; <code>slice()</code> for ranges, <code>find()</code> and <code>replace()</code> for substring search &mdash; and reserve the built-in operators for plain ASCII. String literals themselves (<code>'Gr&ouml;&szlig;e'</code>, <code>'caf&eacute;'</code>) compile and round-trip fine; the limit is only about those byte-indexed operators.</li>
       <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>loadlib</code> loads <strong>code</strong>, not data.</li>
       <li><strong><code>todate</code> is intentionally minimal.</strong> It accepts the common strftime specifiers (<code>%Y %y %m %d %H %M %S %I %p %F %T %%</code>) &mdash; enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (<code>%B</code>), weekday names (<code>%A</code>), or week numbers (<code>%V</code>) are <strong>not</strong> accepted on the input side. For richer date input parsing, use Lua's date handling instead.</li>

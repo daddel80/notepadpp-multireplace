@@ -7,13 +7,19 @@
 
 #include "FormatSpec.h"
 
+#include "../Encoding.h"
 #include <array>
 #include <charconv>
+#include <clocale>
 #include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <cwchar>
+#include <locale.h>
 #include <string>
+#if !defined(_WIN32)
+#include <locale>     // newlocale / wcsftime_l live here on glibc
+#endif
 
 namespace FormatSpec {
 
@@ -673,15 +679,10 @@ namespace FormatSpec {
                 return makeError("Date spec is empty (need a strftime pattern after 'd:')");
             }
 
-            // Convert wstring -> utf8 narrow for strftime. The strftime
-            // patterns we expect are ASCII (%Y, %m, %d, separators), so
-            // a direct byte cast is enough; non-ASCII chars would only
-            // appear as literal output text, which strftime passes
-            // through verbatim.
-            out.dateFormat.reserve(body.size());
-            for (wchar_t wc : body) {
-                out.dateFormat.push_back(static_cast<char>(wc));
-            }
+            // Keep the pattern as wchar_t: wcsftime consumes it directly,
+            // so literal non-ASCII text between specifiers survives without
+            // any narrow/codepage round-trip.
+            out.dateFormat = body;
 
             out.valid = true;
             return out;
@@ -724,13 +725,36 @@ namespace FormatSpec {
             }
 #endif
 
-            // strftime may produce more bytes than the pattern length
-            // (full month names, %c output etc.). 256 covers any
-            // realistic single-line date pattern.
-            char buf[256];
-            const std::size_t n = std::strftime(buf, sizeof(buf),
-                spec.dateFormat.c_str(),
-                &tm);
+            // wcsftime renders straight to wchar_t, so locale month/day
+            // names (%B/%A) and literal non-ASCII text in the pattern come
+            // out as proper wide chars - no UTF-8/codepage guess needed.
+            // 256 covers any realistic single-line date pattern.
+            //
+            // Names like %B/%A follow the user's locale. We pass an explicit
+            // per-call locale instead of touching the global one: a plugin
+            // must not call setlocale() process-wide (it would change
+            // formatting for Notepad++ and every other plugin, and is not
+            // thread-safe). _wcsftime_l on Windows / wcsftime_l on POSIX
+            // take the locale as an argument and leave global state alone.
+            wchar_t buf[256];
+            std::size_t n = 0;
+#if defined(_WIN32)
+            const _locale_t loc = _wcreate_locale(LC_TIME, L"");
+            n = _wcsftime_l(buf, sizeof(buf) / sizeof(buf[0]),
+                spec.dateFormat.c_str(), &tm, loc);
+            if (loc) _free_locale(loc);
+#else
+            const locale_t loc = newlocale(LC_TIME_MASK, "", static_cast<locale_t>(0));
+            if (loc) {
+                n = wcsftime_l(buf, sizeof(buf) / sizeof(buf[0]),
+                    spec.dateFormat.c_str(), &tm, loc);
+                freelocale(loc);
+            }
+            else {
+                n = std::wcsftime(buf, sizeof(buf) / sizeof(buf[0]),
+                    spec.dateFormat.c_str(), &tm);
+            }
+#endif
             if (n == 0) {
                 // Either the pattern was empty (caught at parse time)
                 // or the output exceeded the buffer; surface as empty
@@ -738,12 +762,7 @@ namespace FormatSpec {
                 return L"";
             }
 
-            std::wstring out;
-            out.reserve(n);
-            for (std::size_t i = 0; i < n; ++i) {
-                out.push_back(static_cast<wchar_t>(static_cast<unsigned char>(buf[i])));
-            }
-            return out;
+            return std::wstring(buf, n);
         }
 
     }  // unnamed namespace
@@ -844,11 +863,11 @@ namespace FormatSpec {
             // Frame stage. Date/duration default align is Left.
             const TextAlign eff =
                 (spec.textAlign == TextAlign::Default) ? TextAlign::Left : spec.textAlign;
-            // body carries one strftime byte per wchar (built that way by the
-            // renderer); cast explicitly to avoid the wchar_t->char warning.
-            std::string narrow;
-            narrow.reserve(body.size());
-            for (wchar_t wc : body) narrow.push_back(static_cast<char>(wc & 0xFF));
+            // applyFrame works in UTF-8 and counts codepoints, so convert
+            // the wide body properly: date output may carry multi-byte
+            // characters (locale %B/%A names, literal non-ASCII text) that
+            // a per-wchar byte cast would mangle.
+            const std::string narrow = Encoding::wstringToUtf8(body);
             return applyFrame(spec, narrow, countCodepoints(narrow), eff);
         }
         case Kind::Numeric:  return formatPrintf(spec, value);

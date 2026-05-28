@@ -800,7 +800,7 @@ Find:    ^(Chapter )(\d+)(:.*)$
 Replace: $1(?=num2rom(num(2)))$3        -> Chapter XIV: ...
 ```
 
-> **String literals are ASCII-only.** UTF-8 bytes inside `'...'` will fail to compile. Non-ASCII text must come from the document via captures or string variables, or be placed in the literal portion of the replace string outside `(?=...)`. See [Limitations](#limitations) below.
+> **String literals accept UTF-8.** Non-ASCII characters inside `'...'` (`'Größe'`, `'café'`, `'日本語'`) compile and round-trip byte-for-byte, so they can be used directly as needles, replacements, and comparison values. The codepoint-aware [String Pack](#string-pack) functions process them correctly; the byte-indexed `s[i:j]` slice and the `like`/`ilike` wildcards remain byte-level (see [Limitations](#limitations)).
 
 <br>
 
@@ -1070,7 +1070,7 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 | Substring | `s[i:j]` | Bytes from index `i` (inclusive) to `j` (exclusive). 0-based. Low-level; for codepoint slicing use `slice(s, start, n)`. |
 | Concatenation | `a + b` | `+` joins strings, same operator as numeric add. |
 | Comparison | `s == 'X'`, `s != 'Y'` | Equality only. No `<` on strings. |
-| Literal | `'text'`, `''` for empty | ASCII only inside literals. |
+| Literal | `'text'`, `''` for empty | UTF-8 accepted; multi-byte literals round-trip byte-for-byte. |
 
 > **`s[]` and `s[i:j]` are byte-level operations.**
 >
@@ -1080,7 +1080,7 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 >
 > **Prefer the String Pack for text.** The codepoint-aware functions `len`, `find`, `slice`, `split`, `trim`, `replace`, `reptxt`, `chr2num`, and `num2chr` (see [String Pack](#string-pack)) count and slice by **codepoint**, are **1-based**, and handle multi-byte content correctly — `slice('Größe', 2, 3)` returns `röß`, where `s[1:4]` would cut the encoding apart. Reach for `s[]` / `s[i:j]` only when you specifically want byte-level work on ASCII data.
 >
-> **Note on literals.** A non-ASCII literal such as `'ä'` cannot appear inside an expression — the lexer rejects it (see [Limitations](#limitations)). Non-ASCII needles must come from a capture: `find(txt(1), txt(2))`, not `find(txt(1), 'ä')`. Captures arrive as UTF-8 bytes and pass through the String Pack functions unchanged.
+> **Note on literals.** Non-ASCII literals such as `'ä'` are accepted (`find(txt(1), 'ä')` works), and captures arrive as UTF-8 bytes that pass through the String Pack unchanged. Both compile to the same byte sequence, so a literal needle and a captured one compare equal byte-for-byte.
 
 **A minimal complete example.** Strip leading zeros from a captured number string:
 
@@ -1395,7 +1395,7 @@ The pattern accepts any standard strftime specifier. Literal text between specif
 | `%z` `%Z`   | Timezone offset (`+0200`) / name (`CEST`)                  |
 | `%%`        | Literal `%`                                                |
 
-Weekday/month names follow the system locale. The full list of `strftime` specifiers is platform-defined and passes through verbatim — anything your C library supports works here.
+Weekday and month names (`%A`, `%B`) follow the user's system locale and are emitted as proper Unicode, so localized names with accents (e.g. German "März", "Mittwoch") render correctly. The full list of `strftime` specifiers is platform-defined; literal non-ASCII text in the pattern passes through unchanged.
 
 **Local vs. UTC.** The same timestamp formatted both ways differs by your UTC offset. `d:` is the normal, local form; add `utc:` only when you specifically want UTC:
 
@@ -1412,7 +1412,7 @@ The examples below use `utc:` only so the output is reproducible here regardless
 | `>15 d:utc:%Y-%m-%d`          | `1700000000`  | `     2023-11-14`                  |
 | `d:utc:%Y-%m-%dT%H:%M:%SZ`    | `1700000000`  | `2023-11-14T22:13:20Z`             |
 | `d:utc:%d.%m.%Y`              | `1700000000`  | `14.11.2023`                       |
-| `d:utc:%A`                    | `0`           | `Thursday` (epoch was Thursday)    |
+| `d:utc:%A`                    | `0`           | `Thursday` / `Donnerstag` (locale)  |
 | `d:utc:Year %Y, week %V`      | `1700000000`  | `Year 2023, week 46`               |
 
 **Range:** timestamps must be ≥ 0 (years 1970 onwards). Negative values produce empty output. Subseconds are truncated (`1700000000.7` is treated as `1700000000`).

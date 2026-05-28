@@ -209,20 +209,20 @@ The color-coding of search results can be configured in [Settings > Appearance](
 
 When **Formula Support** is enabled, replacements run through a formula engine. MultiReplace ships with two: **Lua** and **ExprTk**. Switch via the `(L)` / `(E)` indicator next to the **Formula Support** checkbox. The choice is per tab and persists across sessions.
 
-**Quick guidance:** pick **Lua** for heavy text work, complex conditional logic, lookup tables, loops, or external scripts. Pick **ExprTk** when the task is mostly arithmetic on captured numbers, time durations, or date conversions and you want concise inline expressions — it also handles everyday string work (slice, split, trim, replace, concatenation) directly.
+**Quick guidance:** for most everyday jobs — doing math on a captured number, numbering matches, formatting a date or duration, a quick conditional — **ExprTk** is the easiest start: a single short formula, with captures available as numbers (`num(N)`) or text (`txt(N)`) without any conversion step. Choose **Lua** when the task grows into real programming: loops, multi-step logic, lookup tables, or loading external files. Both read and write UTF-8 and both handle everyday string work, so for simple tasks either one is fine — but if you're unsure, start with ExprTk and switch to Lua only when you actually need its extra power.
 
-|              | Lua                                                                       | ExprTk                                                                                            |
-|--------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
-| Best for     | Text and string work, conditional logic, lookups, external file loading   | High-speed numeric work, running totals, concise inline math, plus string slicing/splitting and date/duration formatting |
-| Captures     | `CAP1`, `CAP2`, ... (always strings, use `tonum()` for math)              | `num(N)` numeric, `txt(N)` string                                                                |
-| Strings      | Full string library (substitute, slice, format, upper/lower, etc.)        | Real string toolkit: `slice`/`split`/`trim`/`find`/`len`/`replace`/`reptxt`, concatenation, slicing `[a:b]`, `totxt`/`num2chr`/`chr2num` — ASCII-only in literals (document text and captures are full UTF-8) |
-| Math         | `math` library covers the basics (`sin`, `cos`, `log`, `sqrt`, `abs`, `floor`, `ceil`, ...); richer math built up in Lua code | Rich built-in math: full trigonometry, hyperbolic, log/exp variants, `clamp`, `sgn`, `roundn`, `erf`, `ncdf`, variadic `avg`/`sum`/`min`/`max` |
-| Output format| `string.format` for printf-style; `os.date` for date formatting            | Inline `(?= expr ~ spec )` for width/precision/sign, hex/binary, durations (`ts:hms`), dates (`d:%Y-%m-%d`), text alignment (`t:<15`) |
-| Dates        | `os.date` (string out), `os.time` (table in); full ISO/locale handling     | `d:fmt` output spec + `todate(str, fmt)` input function; ASCII-only patterns, common specifiers |
-| Loops & flow | Full control structures (`if/elseif/else`, `while`, `for`, `repeat`)      | Conditionals within expressions (no general loops)                                                |
-| UTF-8        | Full UTF-8 in the script                                                  | UTF-8 only in document text and captures, NOT in string literals inside the expression            |
-| Performance  | Bytecode VM with per-match globals and string allocations                 | Pre-compiled expression tree, direct double arithmetic; tends to be faster for pure numeric work  |
-| External I/O | `lvars`, `lkp`, `lcmd` (file access, external scripts)                    | None — no file or external access                                                                 |
+|              | Lua                                                          | ExprTk                                                       |
+|--------------|-------------------------------------------------------------|--------------------------------------------------------------|
+| Best for     | Logic-heavy text work: branching, lookups, loops, external files | Number crunching and tidy one-line formulas; dates and durations |
+| Style        | A small script — multiple statements, variables, control flow | One expression per replacement, kept short                 |
+| Captures     | `CAP1`, `CAP2`, … (text; `tonum()` for math)                | `txt(N)` for text, `num(N)` for math — no conversion step    |
+| Strings      | Full standard string library                                 | Everyday toolkit: `slice`, `split`, `trim`, `find`, `replace`, join with `+` |
+| Math         | The basics, build up the rest in code                        | Large built-in set out of the box (trig, stats, rounding, min/max/avg over many values) |
+| Dates        | `os.date` / `os.time`, full locale handling                  | `d:` output format + `todate()` for reading dates back in    |
+| Formatting   | `string.format` (printf-style)                               | Inline `~` spec: width, padding, sign, hex/binary, durations, date layout |
+| Logic & loops| Everything: `if/else`, `while`, `for`, `repeat`              | `if`-style conditionals inside the expression; no loops      |
+| External files | Load data lookups and variables from files, plus reusable function libraries (`lkp`, `lvars`, `lcmd`) | Load reusable function libraries from `.elib` files (`loadlib`) |
+| Speed        | Fast enough for anything                                     | Very fast for pure number work                               |
 
 ### Lua
 

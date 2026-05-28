@@ -1,219 +1,443 @@
-// This file is part of MultiReplace.
+// Test harness for FormatSpec. Builds standalone with the FormatSpec
+// library only - no MR, no ExprTk, no Win32. Run from the src/tests dir.
 //
-// MultiReplace is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 2 of the License, or
-// (at your option) any later version.
+// MSVC (x64 Native Tools Command Prompt for VS 2022):
+//   cl /std:c++17 /EHsc /I.. format_spec_qa.cpp ..\exprtk\FormatSpec.cpp /Fe:format_spec_qa.exe
+//   format_spec_qa.exe
 //
-// FormatSpec.h
-// Output formatting for the (?= formula ~ spec ) syntax. Parses a
-// spec string into a structured FormatSpec, then renders a numeric
-// value through it. Locale-independent: all output uses the C
-// locale (dot decimal) regardless of system settings, so the CSV
-// list format stays stable across machines.
+// MinGW / g++:
+//   g++ -std=c++17 -Wall -Wextra -I.. format_spec_qa.cpp ../exprtk/FormatSpec.cpp -o format_spec_qa
+//   ./format_spec_qa
 //
-// Spec grammar (v2):
-//
-//   A spec is a universal frame, an optional/required type marker, then a
-//   type-specific tail:
-//
-//     [ [fill] align ] [width]   [marker:]   <type tail>
-//
-//   fill/align/width form the FRAME and apply to EVERY kind, padding the
-//   finished value. align: '<' left, '>' right, '^' center. fill is any
-//   single char, recognised only when an align char follows it. width is
-//   the minimum codepoint length. The frame's default align is per-kind:
-//   numbers right, text/date/duration left. When a marker is present it
-//   ALWAYS sits between the frame and the body (frame leads), with one
-//   optional space allowed (">12 d:%Y" == ">12d:%Y", "<8 n:.2f"). A marker
-//   before the frame ("n:<8.2f", "t:>8.3") is rejected.
-//
-//   numeric:   [ [fill]align ][width] [n:] [+] [0] [width] [.prec|.min-max] [type]
-//              types: f e g x b o d ; n: is an OPTIONAL cosmetic marker
-//              placed after the frame. width may be in the frame OR the
-//              body, not both. examples: 5.2f  >8.2f  <8 n:.2f  +.4g  08x
-//              '0' is the sign-aware zero-pad flag; mixing it with an
-//              explicit align (e.g. >05d, or >8 n:05) is an error - pick one.
-//
-//   text:      [ [fill]align ][width] [t:] [.maxlen]
-//              No marker needed: a bare spec on a string value is text.
-//              't:' stays valid as an OPTIONAL assertion, placed after the
-//              frame (">8 t:.3"). .N on text is the max codepoint length
-//              (truncation); on a number it is decimal places - the same
-//              .N, polymorphic by value type.
-//              examples: >15   <20.10   *<20   ^10   >8 t:.3 (explicit)
-//
-//   duration:  [ [fill]align ] t<unit>:<mode>
-//              units: ts (sec) tm (min) th (hour) td (day)
-//              modes: ms hm hms dh dhm dhms
-//              examples: ts:hms   >12 ts:hms   td:dhms   ^10tm:hm
-//
-//   date:      [ [fill]align ] d:<strftime fmt>  or  d:utc:<strftime fmt>
-//              Value is a Unix timestamp (seconds since 1970-01-01 UTC).
-//              Without 'utc:': local time. With 'utc:': UTC.
-//              examples: d:%Y-%m-%d   >12 d:utc:%Y-%m-%dT%H:%M:%SZ
-//
-//              For every marker the frame is written BEFORE it (see the
-//              top-level note above); one optional space may separate them
-//              (">12 d:%Y" equals ">12d:%Y"). The '~' character is the spec
-//              separator and so cannot appear inside a strftime pattern.
-//
-// Length semantics for text specs operate on UTF-8 codepoints, not
-// bytes, so multi-byte characters count as one. Padding fill character
-// is taken from the spec as a UTF-8 codepoint as well.
-//
-// Locale-dependent modifiers (thousand sep, currency) are not part of v2.
+// Pass -v for a verbose pass-by-pass listing.
 
-#pragma once
+#include "../exprtk/FormatSpec.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
 #include <string>
 
-namespace FormatSpec {
+namespace {
 
-    // High-level category. Drives which subfields are valid.
-    enum class Kind {
-        Numeric,
-        Text,
-        Duration,
-        Date
-    };
+int passed = 0;
+int failed = 0;
+bool verbose = false;  // toggled via -v command line flag
 
-    enum class NumericType {
-        Default,    // type omitted entirely - shortest round-trip (std::to_chars)
-        Fixed,      // f
-        Scientific, // e
-        General,    // g
-        Hex,        // x
-        Binary,     // b
-        Octal,      // o
-        Integer     // d  - signed base-10, truncated toward zero
-    };
+void check(const std::wstring& specText, double value,
+           const std::wstring& expected, const char* label)
+{
+    auto spec = FormatSpec::parse(specText);
+    if (!spec.valid) {
+        std::wcout << L"FAIL [" << label << L"] parse error: "
+                   << std::wstring(spec.errorMessage.begin(), spec.errorMessage.end())
+                   << L"\n";
+        ++failed;
+        return;
+    }
+    std::wstring got = FormatSpec::apply(spec, value);
+    if (got != expected) {
+        std::wcout << L"FAIL [" << label << L"] spec=\"" << specText
+                   << L"\" value=" << value
+                   << L" expected=\"" << expected
+                   << L"\" got=\"" << got << L"\"\n";
+        ++failed;
+        return;
+    }
+    if (verbose) {
+        std::wprintf(L"PASS  %-14ls  %-14g  -> %-20ls  (%hs)\n",
+                     specText.c_str(), value, got.c_str(), label);
+    }
+    ++passed;
+}
 
-    enum class TextAlign {
-        Default, // no explicit align; Stage B picks per kind (num=right, text=left)
-        Left,    // <
-        Right,   // >
-        Center   // ^
-    };
+void checkText(const std::wstring& specText, const std::string& value,
+               const std::wstring& expected, const char* label)
+{
+    auto spec = FormatSpec::parse(specText);
+    if (!spec.valid) {
+        std::wcout << L"FAIL [" << label << L"] parse error: "
+                   << std::wstring(spec.errorMessage.begin(), spec.errorMessage.end())
+                   << L"\n";
+        ++failed;
+        return;
+    }
+    std::wstring got = FormatSpec::apply(spec, value);
+    if (got != expected) {
+        std::wcout << L"FAIL [" << label << L"] spec=\"" << specText
+                   << L"\" expected=\"" << expected
+                   << L"\" got=\"" << got << L"\"\n";
+        ++failed;
+        return;
+    }
+    if (verbose) {
+        std::wprintf(L"PASS  %-14ls  (text)          -> %-20ls  (%hs)\n",
+                     specText.c_str(), got.c_str(), label);
+    }
+    ++passed;
+}
 
-    enum class DurationUnit {
-        Seconds,  // ts
-        Minutes,  // tm
-        Hours,    // th
-        Days      // td
-    };
+void checkParseError(const std::wstring& specText, const char* label)
+{
+    auto spec = FormatSpec::parse(specText);
+    if (spec.valid) {
+        std::wcout << L"FAIL [" << label << L"] expected parse error for \""
+                   << specText << L"\" but parsed OK\n";
+        ++failed;
+        return;
+    }
+    if (verbose) {
+        std::wprintf(L"PASS  %-14ls                  -> <error>             (%hs: %hs)\n",
+                     specText.c_str(), label, spec.errorMessage.c_str());
+    }
+    ++passed;
+}
 
-    enum class DurationMode {
-        Ms,    // M:SS
-        Hm,    // H:MM
-        Hms,   // H:MM:SS
-        Dh,    // D HH
-        Dhm,   // D HH:MM
-        Dhms   // D HH:MM:SS
-    };
+void checkSplit(const std::string& body,
+                const std::string& expectedFormula,
+                const std::string& expectedSpec,
+                bool expectHasSpec,
+                const char* label)
+{
+    auto s = FormatSpec::splitFormulaSpec(body);
+    bool ok = (s.formula == expectedFormula)
+           && (s.spec == expectedSpec)
+           && (s.hasSpec == expectHasSpec);
+    if (!ok) {
+        std::wcout << L"FAIL [" << label << L"] body=\""
+                   << std::wstring(body.begin(), body.end())
+                   << L"\"\n"
+                   << L"  expected formula=\""
+                   << std::wstring(expectedFormula.begin(), expectedFormula.end())
+                   << L"\" spec=\""
+                   << std::wstring(expectedSpec.begin(), expectedSpec.end())
+                   << L"\" hasSpec=" << expectHasSpec << L"\n"
+                   << L"  got      formula=\""
+                   << std::wstring(s.formula.begin(), s.formula.end())
+                   << L"\" spec=\""
+                   << std::wstring(s.spec.begin(), s.spec.end())
+                   << L"\" hasSpec=" << s.hasSpec << L"\n";
+        ++failed;
+        return;
+    }
+    if (verbose) {
+        std::wcout << L"PASS  split \""
+                   << std::wstring(body.begin(), body.end())
+                   << L"\" -> formula=\""
+                   << std::wstring(s.formula.begin(), s.formula.end())
+                   << L"\" spec=\""
+                   << std::wstring(s.spec.begin(), s.spec.end())
+                   << L"\" (" << label << L")\n";
+    }
+    ++passed;
+}
 
-    // Parsed representation of a format spec. Filled by parse(); the
-    // unused subfield is left default. Width/precision values of -1
-    // mean "not specified".
-    struct Spec {
-        Kind kind = Kind::Numeric;
+}  // namespace
 
-        // Numeric subfields
-        NumericType numericType = NumericType::Default;
-        bool forceSign = false;     // +
-        bool zeroPad = false;       // 0
-        int  width = -1;            // -1 = not set
-        int  precisionMin = -1;     // -1 = not set; for .N also stored here
-        int  precisionMax = -1;     // -1 = not set; only set for .min-max form
+int main(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+        std::string a(argv[i]);
+        if (a == "-v" || a == "--verbose") verbose = true;
+    }
 
-        // Duration subfields
-        DurationUnit durationUnit = DurationUnit::Seconds;
-        DurationMode durationMode = DurationMode::Hms;
+    if (verbose) {
+        std::wprintf(L"%-6ls %-14ls  %-14ls     %-20ls  %ls\n",
+                     L"status", L"spec", L"value", L"output", L"note");
+        std::wprintf(L"%-6ls %-14ls  %-14ls     %-20ls  %ls\n",
+                     L"------", L"------------", L"------------", L"-------------------", L"----");
+    }
+    // ---- Numeric: type letter only ----
+    check(L"f",     3.14,        L"3.140000",     "f default precision");
+    check(L"e",     12345.0,     L"1.234500e+04", "e default precision");
+    check(L"g",     0.0001,      L"0.0001",       "g small");
+    check(L"x",     255.0,       L"ff",           "x");
+    check(L"o",     8.0,         L"10",           "o");
+    check(L"b",     5.0,         L"101",          "b");
+    check(L"b",     0.0,         L"0",            "b zero");
 
-        // Date subfields. dateFormat holds the strftime pattern that
-        // follows 'd:', without the leading 'utc:' keyword (which is
-        // captured by dateUtc). UTF-8 storage so it can be passed straight
-        // to strftime() in the renderer.
-        bool dateUtc = false;
-        std::string dateFormat;
+    // ---- Numeric: width ----
+    check(L"5f",    3.14,        L"3.140000",     "5f width below printf default");
+    check(L"10f",   3.14,        L"  3.140000",   "10f width padding spaces");
+    check(L"010f",  3.14,        L"003.140000",   "010f zero pad");
+    check(L"8x",    255.0,       L"      ff",     "8x width");
+    check(L"08x",   255.0,       L"000000ff",     "08x zero pad");
+    check(L"8b",    5.0,         L"     101",     "8b width");
+    check(L"08b",   5.0,         L"00000101",     "08b zero pad");
 
-        // Universal frame subfields (apply to every kind in the final pad
-        // stage). width above is the minimum codepoint length. textAlign
-        // defaults to Default so the renderer picks per kind (number=right,
-        // text=left). textFill is a UTF-8 byte sequence for one codepoint -
-        // typically one byte (space) but kept as a string to handle
-        // non-ASCII fill characters cleanly. textMaxLength is text-only
-        // (truncation); it does not share semantics with numeric precision.
-        TextAlign textAlign = TextAlign::Default;
-        std::string textFill = " ";     // single codepoint as UTF-8
-        int textMaxLength = -1;         // -1 = not set; text only
+    // ---- Numeric: precision ----
+    check(L".2f",   3.14159,     L"3.14",         ".2f");
+    check(L".4f",   3.14159,     L"3.1416",       ".4f rounds");
+    check(L".0f",   3.7,         L"4",            ".0f rounds");
+    check(L"05.2f", 3.14159,     L"03.14",        "05.2f");
+    check(L"8.2f",  3.14159,     L"    3.14",     "8.2f");
+    check(L".3g",   123456.0,    L"1.23e+05",     ".3g");
 
-        // True if parse() succeeded. Callers should check before apply().
-        bool valid = false;
+    // ---- Numeric: force sign ----
+    check(L"+f",    3.14,        L"+3.140000",    "+f positive");
+    check(L"+f",    -3.14,       L"-3.140000",    "+f negative");
+    check(L"+05.2f", 3.14,       L"+3.14",        "+05.2f positive");
 
-        // Human-readable error from parse() when valid==false. The
-        // ExprTk engine surfaces this through the same dialog path as
-        // ExprTk compile errors.
-        std::string errorMessage;
-    };
+    // ---- Numeric: min-max precision (trailing zero trim) ----
+    check(L".2-5f", 3.1,         L"3.10",         ".2-5f keeps min");
+    check(L".2-5f", 3.14,        L"3.14",         ".2-5f mid");
+    check(L".2-5f", 3.14159,     L"3.14159",      ".2-5f max");
+    check(L".2-5f", 3.141592,    L"3.14159",      ".2-5f rounds at max");
+    check(L".0-3f", 3.0,         L"3",            ".0-3f strips dot when zero");
+    check(L".0-3f", 3.140,       L"3.14",         ".0-3f keeps non-zero");
 
-    // Parse a spec string into a Spec. Leading/trailing whitespace
-    // is tolerated. An empty spec is rejected (caller should not
-    // call parse() in that case; that's the no-spec path with
-    // default ExprTk output). Strict on unknown type letters and
-    // malformed grammar.
-    Spec parse(const std::wstring& specText);
+    // ---- Numeric: default (no type letter) ----
+    check(L"+",     3.14,        L"+3.14",        "+ only, default type");
+    check(L"+",     -3.14,       L"-3.14",        "+ only negative");
+    check(L"08",    3.14,        L"00003.14",     "08 only");
+    check(L"8",     3.14,        L"    3.14",     "8 only");
 
-    // Render a numeric value through spec. Valid for kinds Numeric,
-    // Duration, Date. For Text-kind specs this returns an empty string;
-    // callers must route those through the string overload instead.
-    //
-    // For Duration kind, value is interpreted in spec.durationUnit
-    // (seconds / minutes / hours / days). Negative values produce
-    // a leading '-' on the whole output.
-    std::wstring apply(const Spec& spec, double value);
+    // ---- Numeric: negative values ----
+    check(L"05.2f", -3.14,       L"-3.14",        "neg eats width");
+    check(L"06.2f", -3.14,       L"-03.14",       "neg with zeropad");
+    check(L"x",     -1.0,        L"ffffffffffffffff", "x negative wraps");
 
-    // True if spec is a PURE frame: parsed as Numeric (the default kind) but
-    // carrying only fill/align/width/.precision - no numeric-only traits
-    // (sign, zero-pad, a type letter, or a range precision). Such a spec is
-    // type-neutral and may be applied to a string value (where .precision
-    // means truncation) as well as to a number. Used by the engine to allow
-    // a marker-free spec on a string-returning formula.
-    bool isPureFrame(const Spec& spec);
+    // ---- Numeric: v2 universal frame (align/fill on numbers) ----
+    check(L"5",      123,        L"  123",        "num default align = right");
+    check(L"<5",     123,        L"123  ",        "num align left");
+    check(L">5",     123,        L"  123",        "num align right explicit");
+    check(L"^5",     123,        L" 123 ",        "num align center");
+    check(L">5.2f",  3.14159,    L" 3.14",        "float right + precision");
+    check(L"<5.2f",  3.14159,    L"3.14 ",        "float left + precision");
+    check(L"^5.2f",  3.14159,    L"3.14 ",        "float center + precision");
+    check(L"*>5.2f", 3.14159,    L"*3.14",        "float fill '*' right");
+    check(L"*<5.2f", 3.14159,    L"3.14*",        "float fill '*' left");
+    check(L"<8d",    42,         L"42      ",     "int left");
+    checkParseError(L">05d",                      "align + zeropad conflict");
 
-    // Render a string through spec. Valid for Text kind and for a pure frame
-    // (see isPureFrame); for a pure frame the precision is the max codepoint
-    // length (truncation). Any other kind returns the input unchanged - a
-    // genuine type mismatch the engine surfaces at compile time.
-    //
-    // The input is treated as UTF-8. Width and max-length are counted in
-    // codepoints; truncation never splits a multi-byte sequence.
-    std::wstring apply(const Spec& spec, const std::string& text);
+    // ---- Numeric: default type with precision behaves like 'g' ----
+    check(L".3",     3.14159,    L"3.14",         "default prec = significant (g)");
+    check(L".3",     1234.5678,  L"1.23e+03",     "default prec switches to sci (g)");
+    check(L".3",     3.0,        L"3",            "default prec trims zeros (g)");
+    check(L".5",     3.14159,    L"3.1416",       "default prec 5 significant");
 
-    // ---- Formula / spec splitter --------------------------------------
-    //
-    // Splits the body of an (?= ... ) block into the formula part and
-    // the optional spec part at the LAST unquoted '~' that sits outside
-    // ExprTk string literals. Quote-aware: single and double quotes
-    // inside the formula (ExprTk string literals like 'a~b' or "a~b")
-    // are skipped. Picking the LAST '~' keeps a formula that legitimately
-    // contains '~' (e.g. ExprTk's multi-sequence operator `~{a; b}`)
-    // unambiguous - any earlier '~' belongs to the formula, the last one
-    // is the spec separator.
-    //
-    // Returned pair:
-    //   .first  = formula text (left of the separator), trimmed
-    //   .second = spec text (right of the separator), trimmed; empty
-    //             when no separator was found
-    //
-    // No '~' present -> the whole input goes into .first, .second
-    // stays empty. That's the back-compat path: ExprTk evaluates the
-    // formula and formats with the default shortest round-trip.
-    struct Split {
-        std::string formula;
-        std::string spec;
-        bool hasSpec = false;
-    };
-    Split splitFormulaSpec(const std::string& blockBody);
+    // ---- Duration: ts ----
+    check(L"ts:hms",  3725.0,    L"1:02:05",      "ts:hms 1h2m5s");
+    check(L"ts:hms",  0.0,       L"0:00:00",      "ts:hms zero");
+    check(L"ts:ms",   90.0,      L"1:30",         "ts:ms 90sec");
+    check(L"ts:ms",   125.0,     L"2:05",         "ts:ms 125sec");
+    check(L"ts:hms",  -3725.0,   L"-1:02:05",     "ts:hms negative");
 
-}  // namespace FormatSpec
+    // ---- Duration: tm ----
+    check(L"tm:hm",   90.0,      L"1:30",         "tm:hm 90min");
+    check(L"tm:hms",  90.0,      L"1:30:00",      "tm:hms 90min");
+    check(L"tm:hm",   480.0,     L"8:00",         "tm:hm 8h workday");
+
+    // ---- Duration: th ----
+    check(L"th:hms",  2.5,       L"2:30:00",      "th:hms 2.5h");
+    check(L"th:dh",   25.0,      L"1 01",         "th:dh 25h = 1d 1h");
+
+    // ---- Duration: td ----
+    check(L"td:dhms", 1.5,       L"1 12:00:00",   "td:dhms 1.5d");
+    check(L"td:dhm",  1.5,       L"1 12:00",      "td:dhm 1.5d");
+
+    // ---- v2 universal frame on duration / date ----
+    check(L"^12 ts:hms", 3725.0,  L"  1:02:05   ", "dur align center");
+    check(L">12 ts:hms", 3725.0,  L"     1:02:05", "dur align right");
+    check(L"<12 ts:hms", 3725.0,  L"1:02:05     ", "dur align left");
+    check(L"*>12ts:hms", 3725.0,  L"*****1:02:05", "dur fill, no space before marker");
+    check(L">15 d:utc:%Y-%m-%d", 1700000000.0, L"     2023-11-14", "date align right");
+    check(L"<15 d:utc:%Y-%m-%d", 1700000000.0, L"2023-11-14     ", "date align left");
+
+    // ---- v2 marker-free: bare frame on a STRING value (t: dropped) ----
+    checkText(L">8",    "abc",   L"     abc",     "bare frame on text, right");
+    checkText(L"<8",    "abc",   L"abc     ",     "bare frame on text, left");
+    checkText(L"^8",    "abc",   L"  abc   ",     "bare frame on text, center");
+    checkText(L"*>8",   "abc",   L"*****abc",     "bare frame on text, fill");
+    checkText(L">8.3",  "hello", L"     hel",     "bare frame on text, .3 = truncation");
+    // v2 marker in the MIDDLE: frame, then marker, then body (uniform with d:/ts:)
+    checkText(L">8 t:",  "abc",   L"     abc",     "t: marker after frame");
+    checkText(L">8 t:.3","hello", L"     hel",     "t: after frame + truncation");
+    // n: optional == bare (numeric value), marker after the frame
+    check(L">8 n:.2f", 3.14159,   L"    3.14",     "n: after frame == bare");
+    check(L">8.2f",    3.14159,   L"    3.14",     "bare == n:");
+    // Old marker-FIRST spelling is no longer valid (frame must lead)
+    checkParseError(L"n:>8.2f", "n: before frame rejected");
+    checkParseError(L"t:>8",    "t: before frame rejected");
+    checkParseError(L"t:>8.3",  "t: before frame+trunc rejected");
+    // n: in the middle, marker is cosmetic: same output as bare, all bodies
+    check(L"n:5.2f",  3.14,      L" 3.14",        "n: no frame, body only");
+    check(L"<8 n:.2f",3.14159,   L"3.14    ",     "n: after left-align frame");
+    check(L"^10 n:.2f",3.14159,  L"   3.14   ",   "n: after center frame");
+    check(L"*>8 n:x", 255,       L"******ff",     "n: after fill+align, hex body");
+    // align + zero-pad still conflicts whether the align is in the body (>05d)
+    // or inherited from a frame before n: (>8 n:05)
+    checkParseError(L">05d",     "align+zeropad conflict (body)");
+    checkParseError(L">8 n:05",  "align+zeropad conflict (frame+n:)");
+    // n:/t: alone (no body, no frame): n: empty is an error, t: is a no-op frame
+    checkParseError(L"n:",       "n: with empty body");
+
+    // ---- Parse errors ----
+    checkParseError(L"",         "empty");
+    checkParseError(L"  ",       "all whitespace");
+    checkParseError(L"q",        "unknown type letter");
+    checkParseError(L"05qf",     "bad char before type");
+    checkParseError(L"05.2fx",   "trailing junk");
+    checkParseError(L".f",       "precision dot no digit");
+    checkParseError(L".5-",      "range no max");
+    checkParseError(L".5-2f",    "range max < min");
+    checkParseError(L".2x",      "precision with int type");
+    checkParseError(L"+x",       "force-sign with int type");
+    checkParseError(L"t",        "duration too short");
+    checkParseError(L"tq:hms",   "unknown duration unit");
+    checkParseError(L"ts",       "duration no mode");
+    checkParseError(L"ts:",      "duration empty mode");
+    checkParseError(L"ts:foo",   "unknown duration mode");
+    checkParseError(L"tshms",    "duration no colon");
+
+    // ---- More edge cases ----
+    check(L"f",     0.0,         L"0.000000",     "f zero");
+    check(L"+f",    0.0,         L"+0.000000",    "+f zero stays positive");
+    check(L".0f",   0.4,         L"0",            ".0f rounds down");
+    check(L".0f",   0.5,         L"0",            ".0f banker's rounding (varies)");
+    check(L".2-4f", 1.0,         L"1.00",         ".2-4f integer keeps min");
+    check(L".2-4f", 1.23456,     L"1.2346",       ".2-4f at max");
+    check(L"x",     16.0,        L"10",           "x small");
+    check(L"b",     -1.0,        L"1111111111111111111111111111111111111111111111111111111111111111",  "b -1 all bits");
+
+    // Very large values
+    check(L".2f",   1e10,        L"10000000000.00", ".2f large");
+    check(L"g",     1234.5,      L"1234.5",       "g default no scientific");
+
+    // Duration edge cases
+    check(L"ts:hms",  0.5,       L"0:00:00",      "ts:hms half-second truncates");
+    check(L"ts:hms",  86400.0,   L"24:00:00",     "ts:hms one day in hours");
+    check(L"td:dhms", 0.0,       L"0 00:00:00",   "td:dhms zero");
+    check(L"ts:ms",   3600.0,    L"60:00",        "ts:ms hour in minutes");
+
+    // ---- Splitter tests --------------------------------------------------
+
+    // Basic: no separator
+    checkSplit("num(1)",                      "num(1)",           "",       false, "no spec");
+    checkSplit("  num(1)  ",                  "num(1)",           "",       false, "no spec with whitespace");
+    checkSplit("num(1)*0.9",                  "num(1)*0.9",       "",       false, "expression no spec");
+
+    // Basic: one separator
+    checkSplit("num(1) ~ 05.2f",              "num(1)",           "05.2f",  true,  "simple split");
+    checkSplit("num(1)*0.9~05.2f",            "num(1)*0.9",       "05.2f",  true,  "no whitespace around tilde");
+    checkSplit("  num(1)  ~  05.2f  ",        "num(1)",           "05.2f",  true,  "whitespace around all");
+
+    // Multiple separators - LAST one wins
+    checkSplit("a ~ b ~ c",                   "a ~ b",            "c",      true,  "last tilde wins");
+    checkSplit("num(1) ~ num(2) ~ 05.2f",     "num(1) ~ num(2)",  "05.2f",  true,  "two tildes formula has one");
+
+    // Quoted strings - tildes inside are NOT separators
+    checkSplit("'a~b' ~ 05.2f",               "'a~b'",            "05.2f",  true,  "tilde in single-quoted string");
+    checkSplit("\"a~b\" ~ 05.2f",             "\"a~b\"",          "05.2f",  true,  "tilde in double-quoted string");
+    checkSplit("'a~b'",                       "'a~b'",            "",       false, "only tilde inside string");
+    checkSplit("'~' ~ '~~' ~ 05.2f",          "'~' ~ '~~'",       "05.2f",  true,  "many tildes in strings");
+
+    // Escaped quotes inside strings
+    checkSplit("'a\\'b' ~ 05.2f",             "'a\\'b'",          "05.2f",  true,  "escaped single quote");
+    checkSplit("\"a\\\"b\" ~ 05.2f",          "\"a\\\"b\"",       "05.2f",  true,  "escaped double quote");
+
+    // Edge: only tilde, no formula
+    checkSplit("~ 05.2f",                     "",                 "05.2f",  true,  "empty formula");
+
+    // Edge: trailing tilde, no spec
+    checkSplit("num(1) ~",                    "num(1)",           "",       true,  "trailing tilde empty spec");
+
+    // Empty input
+    checkSplit("",                            "",                 "",       false, "empty input");
+
+    // ---- Date tests (UTC for determinism) ------------------------------
+
+    // Known anchor: 1700000000 = 2023-11-14 22:13:20 UTC
+    check(L"d:utc:%Y-%m-%d",        1700000000.0, L"2023-11-14",         "date UTC y-m-d");
+    check(L"d:utc:%H:%M:%S",        1700000000.0, L"22:13:20",           "date UTC h:m:s");
+    check(L"d:utc:%Y-%m-%d %H:%M:%S", 1700000000.0, L"2023-11-14 22:13:20","date UTC datetime");
+
+    // Unix epoch
+    check(L"d:utc:%Y-%m-%d",        0.0,          L"1970-01-01",         "date UTC epoch");
+    check(L"d:utc:%Y-%m-%dT%H:%M:%SZ", 0.0,       L"1970-01-01T00:00:00Z","date UTC ISO 8601");
+
+    // Subsecond truncation: 1.9 still equals 1970-01-01 00:00:01 (truncation, not rounding)
+    check(L"d:utc:%H:%M:%S",        1.9,          L"00:00:01",           "date subsecond truncation");
+
+    // Literal text inside the strftime pattern
+    check(L"d:utc:Year %Y",         1700000000.0, L"Year 2023",          "date literal text");
+    check(L"d:utc:%d.%m.%Y",        1700000000.0, L"14.11.2023",         "date european format");
+
+    // Locale-dependent (just check non-empty, exact value depends on test runner TZ)
+    {
+        auto sp = FormatSpec::parse(L"d:%Y-%m-%d");
+        if (sp.valid && !FormatSpec::apply(sp, 1700000000.0).empty()) {
+            ++passed;
+            if (verbose) {
+                std::wprintf(L"PASS  %-14ls  %-14g  -> (non-empty local)   (date local time path)\n",
+                             L"d:%Y-%m-%d", 1700000000.0);
+            }
+        } else {
+            std::wcout << L"FAIL [date local time path]\n";
+            ++failed;
+        }
+    }
+
+    // Date parse errors
+    checkParseError(L"d:",                   "date empty pattern");
+    checkParseError(L"d:utc:",                  "date only utc marker");
+
+    // Date negative timestamp returns empty (defensive, would have been
+    // routed through dialog upstream).
+    {
+        auto sp = FormatSpec::parse(L"d:utc:%Y-%m-%d");
+        std::wstring r = FormatSpec::apply(sp, -1.0);
+        if (r.empty()) {
+            ++passed;
+            if (verbose) {
+                std::wprintf(L"PASS  d:utc:%%Y-%%m-%%d   -1              -> <empty>             (date negative returns empty)\n");
+            }
+        } else {
+            std::wcout << L"FAIL [date negative] got: " << r << L"\n";
+            ++failed;
+        }
+    }
+
+    // More date edge cases
+    check(L"d:utc:%A",              0.0,          L"Thursday",           "date weekday name (epoch=Thu)");
+    check(L"d:utc:%B",              0.0,          L"January",            "date month name");
+    check(L"d:utc:%j",              0.0,          L"001",                "date day of year");
+
+    // Y2038 boundary: 2147483647 = 2038-01-19 03:14:07 UTC (last 32-bit signed)
+    check(L"d:utc:%Y-%m-%d %H:%M:%S", 2147483647.0, L"2038-01-19 03:14:07","date Y2038 boundary");
+
+    // Brackets in pattern - test that strftime literals work
+    check(L"d:utc:(%Y)",            1700000000.0, L"(2023)",             "date parens in pattern");
+
+    // ---- Closed-set utc: keyword: parse-level checks (TZ-independent) ----
+    // Bare d: must stay local (no utc flag), pattern kept verbatim.
+    {
+        auto sp = FormatSpec::parse(L"d:%Y-%m-%d %H:%M:%S");
+        if (sp.valid && !sp.dateUtc && sp.dateFormat == L"%Y-%m-%d %H:%M:%S") ++passed;
+        else { std::wcout << L"FAIL [bare d: stays local]\n"; ++failed; }
+    }
+    // utc: sets the flag and is stripped from the stored pattern.
+    {
+        auto sp = FormatSpec::parse(L"d:utc:%Y-%m-%d");
+        if (sp.valid && sp.dateUtc && sp.dateFormat == L"%Y-%m-%d") ++passed;
+        else { std::wcout << L"FAIL [utc: sets flag and strips]\n"; ++failed; }
+    }
+    // Pattern beginning with literal "utc" but no colon is NOT the marker.
+    {
+        auto sp = FormatSpec::parse(L"d:utc %Y");
+        if (sp.valid && !sp.dateUtc && sp.dateFormat == L"utc %Y") ++passed;
+        else { std::wcout << L"FAIL [literal utc without colon kept]\n"; ++failed; }
+    }
+    // A time pattern with colons but no marker stays local and intact.
+    {
+        auto sp = FormatSpec::parse(L"d:%H:%M:%S");
+        if (sp.valid && !sp.dateUtc && sp.dateFormat == L"%H:%M:%S") ++passed;
+        else { std::wcout << L"FAIL [colon pattern no marker]\n"; ++failed; }
+    }
+
+    // ---- Result summary ----
+    std::wcout << L"\n========================================\n";
+    std::wcout << L"PASSED: " << passed << L"\n";
+    std::wcout << L"FAILED: " << failed << L"\n";
+    std::wcout << L"========================================\n";
+    return failed == 0 ? 0 : 1;
+}

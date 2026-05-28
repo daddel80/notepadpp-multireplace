@@ -132,10 +132,11 @@ namespace FormatSpec {
 
         // Date subfields. dateFormat holds the strftime pattern that
         // follows 'd:', without the leading 'utc:' keyword (which is
-        // captured by dateUtc). UTF-8 storage so it can be passed straight
-        // to strftime() in the renderer.
+        // captured by dateUtc). Stored as a wide string and rendered via
+        // wcsftime so locale-dependent names (%B/%A) and any literal
+        // non-ASCII text round-trip as wchar_t without a codepage guess.
         bool dateUtc = false;
-        std::string dateFormat;
+        std::wstring dateFormat;
 
         // Universal frame subfields (apply to every kind in the final pad
         // stage). width above is the minimum codepoint length. textAlign
