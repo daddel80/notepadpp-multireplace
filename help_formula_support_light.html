@@ -1844,20 +1844,20 @@ return {
     <h3>numout / txtout &mdash; read a block's output</h3>
     <table class="optionsTable">
       <tr><th>Function</th><th>Default <code>p</code></th><th>Default <code>v</code></th><th>Description</th></tr>
-      <tr><td><code>numout(N)</code></td><td><strong>0</strong></td><td><code>NaN</code></td><td>Block N's numeric output from the current match (earlier finished blocks).</td></tr>
+      <tr><td><code>numout(N)</code></td><td><strong>0</strong></td><td><code>NaN</code></td><td>Block N's numeric output from the current match (earlier finished blocks). N is 1-based: <code>numout(1)</code> is the first block.</td></tr>
       <tr><td><code>numout(N, P)</code></td><td>&mdash;</td><td><code>NaN</code></td><td>Block N's numeric output from match P ago. <code>P=0</code> reads earlier finished blocks of the same match.</td></tr>
       <tr><td><code>numout(N, P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, with explicit fallback (also fires on type mismatch and non-finite).</td></tr>
-      <tr><td><code>txtout(N)</code></td><td><strong>0</strong></td><td><code>""</code></td><td>Block N's string output from the current match (earlier finished blocks).</td></tr>
+      <tr><td><code>txtout(N)</code></td><td><strong>0</strong></td><td><code>""</code></td><td>Block N's string output from the current match (earlier finished blocks). N is 1-based.</td></tr>
       <tr><td><code>txtout(N, P)</code></td><td>&mdash;</td><td><code>""</code></td><td>Block N's string output from match P ago.</td></tr>
       <tr><td><code>txtout(N, P, V)</code></td><td>&mdash;</td><td><code>V</code></td><td>Same, with explicit fallback string.</td></tr>
     </table>
 
-    <p>The arity-1 default <code>P=0</code> reads within the <strong>current</strong> match &mdash; the typical question is "what did an earlier block on this line produce?". A block can only read <strong>earlier</strong> finished blocks; reading the current block or any later one returns the fallback. Use an explicit <code>P&gt;=1</code> to reach back into previous matches.</p>
+    <p>The block index <code>N</code> is <strong>1-based</strong>: <code>numout(1)</code> is the first block, <code>numout(2)</code> the second. <code>numout(0)</code> is invalid and returns the fallback (there is no "block zero"; this differs from <code>num(0)</code>, which mirrors the regex whole-match group). The arity-1 default <code>P=0</code> reads within the <strong>current</strong> match &mdash; the typical question is "what did an earlier block on this line produce?". A block can only read <strong>earlier</strong> finished blocks; reading the current block or any later one returns the fallback. Use an explicit <code>P&gt;=1</code> to reach back into previous matches.</p>
 
     <table class="optionsTable">
       <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
-      <tr><td><code>^(\w+),(\d+)$</code></td><td><code>(?=num(2)) (?=numout(0) * 2)</code></td><td>Block 1 reads block 0's output of the same match (default <code>P=0</code>) and doubles it.</td></tr>
-      <tr><td><code>(\d+)</code></td><td><code>(?=num(1)) prev:(?=numout(0, 1, 0))</code></td><td>First spec emits the value; second spec emits the previous match's block 0 (or 0 the first time).</td></tr>
+      <tr><td><code>^(\w+),(\d+)$</code></td><td><code>(?=num(2)) (?=numout(1) * 2)</code></td><td>The second block reads the first block's output of the same match (default <code>P=0</code>) and doubles it.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=num(1)) prev:(?=numout(1, 1, 0))</code></td><td>First spec emits the value; second spec emits the previous match's first block (or 0 the first time).</td></tr>
     </table>
 
     <br>
@@ -1887,32 +1887,32 @@ return {
     <h3>Worked examples: <code>numout</code> vs <code>numprev</code></h3>
     <p>Both readers reach into history, but along different axes: <code>numout</code> reads <strong>another block</strong> (any match, via <code>P</code>), <code>numprev</code> reads the <strong>same block</strong> one or more matches back. Example 1 shows <code>numout</code> with an explicit lookback; example 2 combines the same-match <code>numout</code> default with <code>numprev</code>.</p>
 
-    <p><strong>Example 1 &mdash; <code>numout</code> with an explicit <code>P</code> (reading a previous match).</strong> Block 0 passes the raw value through; block 1 subtracts the raw value of the <em>previous</em> line via <code>numout(0, 1, 0)</code> &mdash; block 0, one match back, fallback 0. This is the line-to-line delta.</p>
+    <p><strong>Example 1 &mdash; <code>numout</code> with an explicit <code>P</code> (reading a previous match).</strong> The first block passes the raw value through; the second block subtracts the raw value of the <em>previous</em> line via <code>numout(1, 1, 0)</code> &mdash; first block, one match back, fallback 0. This is the line-to-line delta.</p>
     <ul>
       <li><strong>Find:</strong> <code>(\d+)</code></li>
-      <li><strong>Replace:</strong> <code>(?=num(1)) (delta (?=num(1) - numout(0, 1, 0)))</code></li>
+      <li><strong>Replace:</strong> <code>(?=num(1)) (delta (?=num(1) - numout(1, 1, 0)))</code></li>
     </ul>
     <table class="optionsTable">
-      <tr><th>Input line</th><th>Block 0 <code>num(1)</code></th><th><code>numout(0, 1, 0)</code> (prev. raw)</th><th>Block 1 delta</th><th>Output</th></tr>
+      <tr><th>Input line</th><th>Block 1 <code>num(1)</code></th><th><code>numout(1, 1, 0)</code> (prev. raw)</th><th>Block 2 delta</th><th>Output</th></tr>
       <tr><td><code>100</code></td><td>100</td><td>0 (no previous)</td><td>100</td><td><code>100 (delta 100)</code></td></tr>
       <tr><td><code>105</code></td><td>105</td><td>100</td><td>5</td><td><code>105 (delta 5)</code></td></tr>
       <tr><td><code>103</code></td><td>103</td><td>105</td><td>-2</td><td><code>103 (delta -2)</code></td></tr>
       <tr><td><code>110</code></td><td>110</td><td>103</td><td>7</td><td><code>110 (delta 7)</code></td></tr>
     </table>
-    <p>The <code>1</code> in <code>numout(0, 1, 0)</code> is the lookback: one match back. Without it, <code>numout(0)</code> would read block 0 of the <em>same</em> match (the default <code>P=0</code>) &mdash; here you explicitly want the previous line, so <code>P=1</code> is required. The <code>0</code> is the fallback for the first line, which has no predecessor.</p>
+    <p>The <code>1</code> in the middle of <code>numout(1, 1, 0)</code> is the lookback: one match back. Without it, <code>numout(1)</code> would read the first block of the <em>same</em> match (the default <code>P=0</code>) &mdash; here you explicitly want the previous line, so <code>P=1</code> is required. The trailing <code>0</code> is the fallback for the first line, which has no predecessor.</p>
 
-    <p><strong>Example 2 &mdash; <code>numout</code> and <code>numprev</code> together (running total).</strong> Block 0 is the line subtotal; block 1 adds the subtotal of <em>this</em> line (<code>numout(0)</code>, sideways) to the running total carried from the <em>previous</em> line (<code>numprev()</code>, backwards in time).</p>
+    <p><strong>Example 2 &mdash; <code>numout</code> and <code>numprev</code> together (running total).</strong> The first block is the line subtotal again; the second block adds the subtotal of <em>this</em> line (<code>numout(1)</code>, sideways) to the running total carried from the <em>previous</em> line (<code>numprev()</code>, backwards in time).</p>
     <ul>
       <li><strong>Find:</strong> <code>^(\d+),(\d+)$</code></li>
-      <li><strong>Replace:</strong> <code>(?=num(1)*num(2)) running: (?=numout(0)+numprev())</code></li>
+      <li><strong>Replace:</strong> <code>(?=num(1)*num(2)) running: (?=numout(1)+numprev())</code></li>
     </ul>
     <table class="optionsTable">
-      <tr><th>Input line</th><th>Block 0</th><th><code>numout(0)</code> (this line)</th><th><code>numprev()</code> (prev. total)</th><th>Block 1</th></tr>
+      <tr><th>Input line</th><th>Block 1</th><th><code>numout(1)</code> (this line)</th><th><code>numprev()</code> (prev. total)</th><th>Block 2</th></tr>
       <tr><td><code>10,2</code></td><td>20</td><td>20</td><td>0 (no previous, <code>v=0</code>)</td><td><strong>20</strong></td></tr>
       <tr><td><code>5,3</code></td><td>15</td><td>15</td><td>20</td><td><strong>35</strong></td></tr>
       <tr><td><code>4,4</code></td><td>16</td><td>16</td><td>35</td><td><strong>51</strong></td></tr>
     </table>
-    <p>The first match has no predecessor, so <code>numprev()</code> returns its <code>v=0</code> default and the chain starts cleanly at 20 instead of propagating <code>NaN</code>. <code>numout(0)</code> always points at this line's own block 0; <code>numprev()</code> always points at this block's own output one match back.</p>
+    <p>The first match has no predecessor, so <code>numprev()</code> returns its <code>v=0</code> default and the chain starts cleanly at 20 instead of propagating <code>NaN</code>. <code>numout(1)</code> always points at this line's own first block; <code>numprev()</code> always points at this block's own output one match back.</p>
 
     <br>
 

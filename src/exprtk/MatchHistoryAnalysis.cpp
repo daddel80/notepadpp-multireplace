@@ -529,7 +529,7 @@ namespace MultiReplaceEngine {
             // Arity-1 num/txt are the legacy single-match readers - no ring
             // needed for them alone. Everything else either reaches into the
             // ring directly or has the potential to (effectiveP could still
-            // be 0 for, e.g., numout(0, 0); but the engine code path goes
+            // be 0 for, e.g., numout(1, 0); but the engine code path goes
             // through the history-aware function classes, and the ring being
             // size 0 is fine for those).
             if (call.kind == FuncKind::NumF || call.kind == FuncKind::TxtF) {

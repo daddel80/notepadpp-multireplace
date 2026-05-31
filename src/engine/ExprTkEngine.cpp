@@ -624,13 +624,13 @@ namespace MultiReplaceEngine {
             // Size the ring buffer. depth=0 path keeps pushSwap as a
             // no-op so templates without history pay no runtime cost.
             //
-            // Block indexing convention: block N is the N-th Expression
-            // segment in the template (0-based, in source order); Literal
-            // segments don't count. This matches user-visible semantics:
-            // `numout(0, 1)` reads the FIRST (?=...) block's previous
-            // output, regardless of how much literal text precedes or
-            // follows it. ha.blockCount comes from analyzeHistory which
-            // counts only Expression segments.
+            // Block indexing convention: internally block N is the N-th
+            // Expression segment in the template (0-based, in source order);
+            // Literal segments don't count. The user-facing index is 1-based
+            // (numout/txtout translate at the boundary): `numout(1, 1)` reads
+            // the FIRST (?=...) block's previous output, regardless of how
+            // much literal text precedes or follows it. ha.blockCount comes
+            // from analyzeHistory which counts only Expression segments.
             const std::size_t blockCount = ha.blockCount;
             const std::size_t captureSlots = ha.maxCaptureIndex + 1;
             _history = MatchHistory(ha.maxLookback, captureSlots, blockCount);
@@ -806,11 +806,13 @@ namespace MultiReplaceEngine {
         _currentBlockIndex = 0;
 
         // Maps segment-index to expression-index: only Expression segments
-        // increment this. The user-visible "block index" addresses this
-        // counter, not the raw segment position - so a template like
+        // increment this. This internal block index is 0-based; the
+        // user-facing index is 1-based (numout/txtout translate at the
+        // boundary). For a template like
         //   foo (?=A) bar (?=B)
-        // gives A=block 0 and B=block 1, with the "foo " and " bar "
-        // literals contributing nothing.
+        // A is internal block 0 (numout(1) for the user) and B is internal
+        // block 1 (numout(2)), with the "foo " and " bar " literals
+        // contributing nothing.
         std::size_t expressionIdx = 0;
 
         const auto& segs = _parsedTemplate.segments;
@@ -826,8 +828,8 @@ namespace MultiReplaceEngine {
             // inside this expression know their implicit n. The
             // within-match guard in lookupBlockOutputAt uses this value
             // to block reads of the running block or any later one.
-            // expressionIdx counts only Expression segments - matching
-            // the user-visible block-index convention.
+            // expressionIdx counts only Expression segments and is the
+            // internal 0-based block index.
             _currentBlockIndex = expressionIdx;
 
             // Eval. ExprTk's return statement turns into a side-channel
@@ -2394,6 +2396,11 @@ namespace MultiReplaceEngine {
 
         if (!indexOk) return fallback;
 
+        // Block index N is 1-based (N=1 is the first block); numout(0) is
+        // invalid. Translate to the 0-based internal index before lookup.
+        if (n < 1) return fallback;
+        --n;
+
         double value = 0.0;
         if (!_owner->lookupBlockOutputAt(n, pLookback, value)) {
             return fallback;
@@ -2442,6 +2449,11 @@ namespace MultiReplaceEngine {
         }
 
         if (!indexOk) { result = fallback; return 0.0; }
+
+        // Block index N is 1-based (N=1 is the first block); txtout(0) is
+        // invalid. Translate to the 0-based internal index before lookup.
+        if (n < 1) { result = fallback; return 0.0; }
+        --n;
 
         if (!_owner->lookupBlockOutputAt(n, pLookback, result)) {
             result = fallback;
