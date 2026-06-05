@@ -270,6 +270,50 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
             }
         }
 
+        // Arrow nav in a Find/Replace/Filter/Dir combo edit: remember unsaved
+        // typed text (never inserted into the list) so arrow-up past the top
+        // entry restores it. Only the top edge is special.
+        if (pMsg->message == WM_KEYDOWN
+            && (pMsg->wParam == VK_DOWN || pMsg->wParam == VK_UP)
+            && !(GetKeyState(VK_MENU) & 0x8000)
+            && !(GetKeyState(VK_CONTROL) & 0x8000)) {
+            HWND hFocus = GetFocus();
+            const int combos[] = { IDC_FIND_EDIT, IDC_REPLACE_EDIT, IDC_FILTER_EDIT, IDC_DIR_EDIT };
+            for (int id : combos) {
+                HWND hCombo = GetDlgItem(instance->_hSelf, id);
+                COMBOBOXINFO cbi{}; cbi.cbSize = sizeof(cbi);
+                if (!hCombo || !GetComboBoxInfo(hCombo, &cbi) || cbi.hwndItem != hFocus)
+                    continue;
+
+                const LRESULT cursel = SendMessage(hCombo, CB_GETCURSEL, 0, 0);
+
+                if (pMsg->wParam == VK_DOWN && cursel == CB_ERR) {
+                    // Remember unsaved text before navigation overwrites it.
+                    const int len = static_cast<int>(SendMessage(hCombo, WM_GETTEXTLENGTH, 0, 0));
+                    std::vector<wchar_t> buf(static_cast<size_t>(len) + 1);
+                    SendMessage(hCombo, WM_GETTEXT, buf.size(), reinterpret_cast<LPARAM>(buf.data()));
+                    instance->_rememberedComboText[hCombo] = std::wstring(buf.data());
+                    // do not consume: let Windows move to the first list entry
+                }
+                else if (pMsg->wParam == VK_UP && cursel == 0) {
+                    // Top edge: restore remembered text instead of clamping.
+                    auto it = instance->_rememberedComboText.find(hCombo);
+                    const std::wstring restore = (it != instance->_rememberedComboText.end()) ? it->second : L"";
+                    SendMessage(hCombo, CB_SETCURSEL, static_cast<WPARAM>(-1), 0);
+                    SetWindowTextW(hCombo, restore.c_str());
+                    SendMessage(hCombo, CB_SETEDITSEL, 0, MAKELPARAM(-1, -1));
+                    pMsg->message = WM_NULL;
+                    return 1;
+                }
+                else if (pMsg->wParam == VK_UP && cursel == CB_ERR) {
+                    // Already at the text: stop, do not let Windows re-enter the list.
+                    pMsg->message = WM_NULL;
+                    return 1;
+                }
+                break;
+            }
+        }
+
         if (pMsg->message == WM_SYSKEYDOWN && (GetKeyState(VK_MENU) & 0x8000)) {
             // Only intercept when focus is inside our panel
             HWND hFocus = GetFocus();

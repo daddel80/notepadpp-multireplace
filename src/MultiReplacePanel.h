@@ -921,6 +921,9 @@ private:
     // Same lifetime as lineDelimiterPositions.
     mutable std::unordered_map<std::string, int> _csvHeaderMap;
     mutable bool _csvHeaderMapBuilt = false;
+    // Unsaved edit text per combo, remembered (not inserted into the list) so
+    // arrow-up past the top entry restores it. Never persisted.
+    std::unordered_map<HWND, std::wstring> _rememberedComboText;
     std::vector<char> styleBuffer; // reusable Buffer for highlightColumnsInLine()
     std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in fillCapturesForEngine()
     size_t _currentRuleIndex = SIZE_MAX; // List index for showErrorMessage; SIZE_MAX = no engine call active
