@@ -16235,25 +16235,6 @@ void MultiReplace::loadTabsFromConfig()
         if (snapshotName.empty()) {
             snapshotName = L"tab" + std::to_wstring(i) + L".mrtab";
         }
-        else {
-            // TODO(post-dsanalytics-release): remove this .csv->.mrtab migration block.
-            const size_t dot = snapshotName.find_last_of(L'.');
-            if (dot != std::wstring::npos) {
-                std::wstring ext = snapshotName.substr(dot + 1);
-                for (wchar_t& c : ext) if (c >= L'A' && c <= L'Z') c = c + (L'a' - L'A');
-                if (ext == L"csv") {
-                    const std::wstring oldName = snapshotName;
-                    snapshotName = snapshotName.substr(0, dot) + L".mrtab";
-                    const std::wstring oldPath = dir + L"\\" + oldName;
-                    const std::wstring newPath = dir + L"\\" + snapshotName;
-                    std::error_code ec;
-                    if (std::filesystem::exists(oldPath, ec) &&
-                        !std::filesystem::exists(newPath, ec)) {
-                        std::filesystem::rename(oldPath, newPath, ec);
-                    }
-                }
-            }
-        }
         tab->snapshotPath = dir + L"\\" + snapshotName;
 
         if (tab->name.empty()) {
