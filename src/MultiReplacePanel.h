@@ -687,6 +687,7 @@ public:
     void applyConfigSettingsOnly();
     static  std::wstring generateConfigFilePaths();
     static std::wstring getSnapshotsDir();
+    static std::wstring getLegacyListPath();   // [v5-legacy]
     static bool         snapshotsDirExists();
     static bool         ensureSnapshotsDir();  // returns false only on filesystem error
     static void         migrateSnapshotsDir(); // one-shot move from legacy nested path

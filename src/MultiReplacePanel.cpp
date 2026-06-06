@@ -159,6 +159,18 @@ namespace {
         return path + L"." + *wanted;
     }
 
+    // [v5-legacy] Peek the first line for the old "Use Variables" column.
+    // It marks a V5 internal-format file regardless of extension; the
+    // internal format is always comma-separated with bare column names.
+    bool firstLineHasLegacyUseVariablesHeader(const std::wstring& text) {
+        const std::wstring firstLine = text.substr(0, text.find_first_of(L"\r\n"));
+        std::vector<std::wstring> cells;
+        std::wstringstream stream(firstLine);
+        for (std::wstring cell; std::getline(stream, cell, L','); )
+            cells.push_back(cell);
+        return ListCodec::hasLegacyUseVariablesHeader(cells);
+    }
+
     FileFormat resolveFormat(const std::wstring& path) {
         const std::wstring ext = lowerExtension(path);
         FileFormat fmt;
@@ -15202,14 +15214,24 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         }
     }
 
-    const CsvListFormat::Dialect dialect = fmt.dialect;
-
     // Read the remaining CSV text (after the optional settings block)
     // and split it quote-aware so multi-line quoted fields stay intact.
     // Record 0 is the header; the rest are data rows.
     std::wstring csvText(
         (std::istreambuf_iterator<wchar_t>(contentStream)),
         std::istreambuf_iterator<wchar_t>());
+
+    // [v5-legacy] A V5 list under a non-.mrl name (e.g. .csv or the pre-v6
+    // .ini) carries the old "Use Variables" header and is the internal
+    // format. Recognize it up front so it decodes as Mr on the first read -
+    // no second pass, no garbled intermediate. The dialog path below still
+    // prompts a rename instead of adopting it silently.
+    CsvListFormat::Dialect dialect = fmt.dialect;
+    if (!raiseLegacyDialog && dialect == CsvListFormat::Dialect::Rfc4180 &&
+        firstLineHasLegacyUseVariablesHeader(csvText)) {
+        dialect = CsvListFormat::Dialect::Mr;
+    }
+
     // Plain CSV may use comma or semicolon; sniff it from the header.
     // The internal escaped format is always comma-separated.
     const wchar_t delimiter = (dialect == CsvListFormat::Dialect::Rfc4180)
@@ -15445,6 +15467,15 @@ std::wstring MultiReplace::getSnapshotsDir()
     ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
     configDir[MAX_PATH - 1] = '\0';
     return std::wstring(configDir) + L"\\MultiReplace.tabs";
+}
+
+// [v5-legacy] Full path to the pre-v6 list file (V5 auto-saved its working list here).
+std::wstring MultiReplace::getLegacyListPath()
+{
+    wchar_t configDir[MAX_PATH] = {};
+    ::SendMessage(nppData._nppHandle, NPPM_GETPLUGINSCONFIGDIR, MAX_PATH, reinterpret_cast<LPARAM>(configDir));
+    configDir[MAX_PATH - 1] = '\0';
+    return std::wstring(configDir) + L"\\MultiReplaceList.ini";
 }
 
 void MultiReplace::migrateSnapshotsDir()
@@ -16376,11 +16407,43 @@ void MultiReplace::loadTabsFromConfig()
 
 void MultiReplace::migrateLegacyList()
 {
-    // Legacy state has already been read into replaceListData,
-    // listFilePath and originalListHash by loadSettings(). Wrap that
-    // state into a primary tab so further code paths uniformly use
-    // the tab model. snapshots/ is created on the next save.
+    // [v5-legacy] V5 kept the working list (incl. unsaved edits) in
+    // MultiReplaceList.ini in the internal format; v6 has no such
+    // auto-restore. Load it here so the primary tab picks it up. Users
+    // not coming from V5 have no such file - then replaceListData stays
+    // empty and the primary tab starts blank.
+    const std::wstring legacyListPath = getLegacyListPath();
+    std::error_code ec;
+    if (std::filesystem::exists(legacyListPath, ec)) {
+        // .ini resolves to the internal (Mr) dialect; bad file: stay blank.
+        try { loadListFromCsvSilent(legacyListPath, replaceListData); }
+        catch (const CsvLoadException&) { replaceListData.clear(); }
+    }
+
+    // Wrap the (possibly loaded) state into a primary tab so further
+    // code paths uniformly use the tab model. snapshots/ is created
+    // on the next save.
     ensurePrimaryTabExists();
+
+    // [v5-legacy] If the working list is file-backed, re-base the change
+    // baseline to the file as v6 reads it (the V5-stored hash predates the
+    // dialect handling). With no working list, adopt the file as content.
+    // Keeps the freshly migrated tab in sync so the startup file-change
+    // check stays silent instead of popping a reload prompt.
+    if (!_tabs.empty() && !_tabs[0]->filePath.empty()) {
+        std::error_code fec;
+        if (std::filesystem::exists(_tabs[0]->filePath, fec)) {
+            try {
+                std::vector<ReplaceItemData> fileData;
+                loadListFromCsvSilent(_tabs[0]->filePath, fileData);
+                if (_tabs[0]->data.empty())
+                    _tabs[0]->data = fileData;
+                _tabs[0]->originalHash = computeListHash(fileData);
+                _tabs[0]->isDirty = (computeListHash(_tabs[0]->data) != _tabs[0]->originalHash);
+            }
+            catch (const CsvLoadException&) {}
+        }
+    }
 
     // V5 stored column visibility/lock state globally in [ListColumns];
     // V6 keeps it per-tab. Carry the user's choices into the primary tab.
