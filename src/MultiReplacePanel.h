@@ -829,6 +829,7 @@ private:
     inline static HWND s_hScintilla = nullptr;
     inline static HWND s_hDlg = nullptr;
     HWND hwndEdit = nullptr;
+    bool _isClosingEdit = false; // Reentrancy guard for closeEditField()
     WNDPROC originalListViewProc;
     inline static std::map<int, ControlInfo> ctrlMap{};
 

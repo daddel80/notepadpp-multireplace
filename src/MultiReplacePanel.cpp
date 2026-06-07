@@ -4171,7 +4171,20 @@ void MultiReplace::editTextAt(int itemIndex, ColumnID columnID) {
 
 void MultiReplace::closeEditField(bool commitChanges)
 {
+    // Reentrancy guard: DestroyWindow(hwndEdit) can re-enter via WM_KILLFOCUS
+    // before hwndEdit is cleared, so this check must precede the hwndEdit test.
+    if (_isClosingEdit) return;
+
     if (!hwndEdit) return;
+
+    // RAII: clear the guard on every exit path.
+    struct ClosingGuard {
+        bool& flag;
+        explicit ClosingGuard(bool& f) : flag(f) { flag = true; }
+        ~ClosingGuard() { flag = false; }
+        ClosingGuard(const ClosingGuard&) = delete;
+        ClosingGuard& operator=(const ClosingGuard&) = delete;
+    } closingGuard(_isClosingEdit);
 
     if (commitChanges &&
         _editingColumnID != ColumnID::INVALID &&
