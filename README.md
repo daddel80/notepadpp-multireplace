@@ -7,7 +7,7 @@ MultiReplace is a Notepad++ plugin designed for complex and repeatable text tran
 
 For data-heavy tasks, the plugin provides dedicated tools. These include specific operations on CSV columns (e.g., sort, delete) and the use of external files as lookup tables.
 
-At its core, a rule engine allows any replacement to be enhanced with conditional (if/then) and mathematical logic, providing the flexibility needed for specific and complex requirements.
+At its core, an optional **Formula Support** mode lets any replacement be enhanced with conditional (if/then) and mathematical logic, providing the flexibility needed for specific and complex requirements.
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
@@ -49,13 +49,11 @@ At its core, a rule engine allows any replacement to be enhanced with conditiona
 - **Batch Replacement Lists** — Run any number of search-and-replace pairs in a single pass, either in the current document, across filtered open documents, or in entire directory trees.
 - **CSV Column Toolkit** — Search, replace, sort, or delete specific columns; with numeric-aware sorting and header exclusion across all operations.
 - **Reusable Replacement Lists** — Save, load, and drag-and-drop lists with all options intact—perfect for recurring workflows.
-- **Rule-Driven & Variable Replacements** — Variables, conditions, and calculations enable dynamic, context-aware substitutions.
 - **External Lookup Tables** — Swap matches with values from external hash/lookup files—ideal for large or frequently updated mapping tables.
-- **Open Scripting API** — Add your own Lua functions to handle advanced formatting, data logging, and fully custom replacement logic.
+- **Smart Replacements** — Turn on **Formula Support** to calculate or change matches with variables and conditions, powered by ExprTk or Lua.
 - **Precision Scopes & Selections** — Rectangle and multi-selection support, column scopes, and "replace at specific match" for pinpoint operations.
 - **Multi-Color Highlighting** — Highlight search hits in up to 28 distinct colors for rapid visual confirmation.
-- **Search Results Window** — A dedicated dockable panel displays all search hits with folding, color-coding, and one-click navigation.
-- **Tandem Mode** — Dock the plugin window to the edge of Notepad++ and have it follow moves and resizes automatically, keeping it attached like a built-in tool window.
+- **Search Results Window** — A dockable panel lists every hit; double-click a result to jump straight to it, with folding and color-coding.
 
 <br>
 
@@ -125,9 +123,9 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 - **Exclude Header Lines** — Header rows are protected from sort, duplicate detection, and find/replace. Configure the number of header rows in [Settings > CSV Options](#3-csv-options). Set to `0` to disable.
 - **Deleting Multiple Columns** — Remove specified columns at once, automatically cleaning up obsolete delimiters.
 - **Clipboard Column Copying** — Copy the content of specified columns, including their delimiters, to the clipboard.
-- **Flow Tabs Alignment** — Visually aligns columns in tab-delimited and CSV files for easier reading and editing.
+- **Flow Tabs (Column Alignment)** — Visually aligns columns in tab-delimited and CSV files for easier reading and editing.
   - For CSV files, temporary tabs are inserted to simulate uniform column spacing. For tab-delimited files, existing tabs are realigned.
-  - The **Align Columns** button toggles alignment on or off; pressing it again restores the original spacing.
+  - The **Column Alignment** button toggles alignment on or off; pressing it again restores the original spacing.
   - Numeric values are right-aligned by default; this behavior can be turned off in [Settings > CSV Options](#3-csv-options).
 - **Duplicate Line Detection** — Identifies and marks duplicate rows based on specified columns.
   - The first occurrence of each group is kept; only subsequent duplicates are marked.
