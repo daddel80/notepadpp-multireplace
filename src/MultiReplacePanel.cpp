@@ -16778,10 +16778,10 @@ void MultiReplace::toggleTandemMode()
 
     _tandemTimerId = SetTimer(_hSelf, 0xFADE, 50, nullptr);
 
-    // Dock immediately to the chosen edge so the toggle has a
-    // visible effect - otherwise the user would have to drag MR to
-    // trigger anything and might think the menu item did nothing.
-    tandemDockToCurrentEdge();
+    // Dock only if MR already sits at a host edge. A panel parked
+    // somewhere else stays where it is; the free tick docks it as
+    // soon as it comes within magnet range.
+    tandemDockIfNearHost();
 
     showStatusMessage(LM.get(L"status_tandem_enabled"), MessageStatus::Info);
 }
@@ -16810,7 +16810,7 @@ bool MultiReplace::tandemRestoreFromIniIfEnabled()
 
     _tandemEnabled = true;
     _tandemTimerId = SetTimer(_hSelf, 0xFADE, 50, nullptr);
-    tandemDockToCurrentEdge();
+    tandemDockIfNearHost();  // free position survives a restart
     return true;
 }
 
@@ -16827,6 +16827,29 @@ bool MultiReplace::isTandemPersistedEnabled()
 // -------------------------------------------------------------------
 //  State-transition helpers (internal)
 // -------------------------------------------------------------------
+
+bool MultiReplace::tandemDockIfNearHost()
+{
+    using namespace tandem_dock;
+    if (!IsWindow(nppData._nppHandle)) return false;
+
+    RECT mrRect{};
+    if (!GetWindowRect(_hSelf, &mrRect)) return false;
+
+    // Same magnet test the drag uses: dock only if MR already sits
+    // within snap range of a host edge. Otherwise stay free - the
+    // free tick engages once MR or N++ comes close enough.
+    RECT probe = mrRect;
+    const SnapResult snap = snapMovingRectToHost(
+        &probe,
+        getVisualBounds(nppData._nppHandle),
+        getShadowOffsets(_hSelf));
+    if (!snap.applied) return false;
+
+    _tandemDockEdge = fromLibEdge(snap.edge);
+    tandemDockToCurrentEdge();
+    return true;
+}
 
 void MultiReplace::tandemDockToCurrentEdge()
 {
@@ -16978,7 +17001,6 @@ void MultiReplace::onTandemTick()
 
 void MultiReplace::onTandemFreeTick()
 {
-    using namespace tandem_dock;
     // MR hidden: don't snap-back to N++ while invisible.
     if (!IsWindowVisible(_hSelf)) return;
     if (!IsWindow(nppData._nppHandle)) return;
@@ -16987,29 +17009,11 @@ void MultiReplace::onTandemFreeTick()
     // bogus (off-screen) and would never qualify as "near" anyway.
     if (IsIconic(nppData._nppHandle)) return;
 
-    // MR is currently free. Ask the lib: would MR's rect, as it
-    // stands now, fall within the magnet threshold of any host
-    // edge? If yes, the library shifts a copy of the rect to the
-    // snap target and we transition into the docked state.
-    RECT mrRect{};
-    if (!GetWindowRect(_hSelf, &mrRect)) return;
-
-    const RECT          hostVis = getVisualBounds(nppData._nppHandle);
-    const ShadowOffsets clientShadow = getShadowOffsets(_hSelf);
-
-    RECT probe = mrRect;
-    const SnapResult snap = snapMovingRectToHost(
-        &probe, hostVis, clientShadow);
-
-    if (!snap.applied) return;
-
-    // N++ just came close enough. Adopt the edge and dock. We do
-    // not apply `probe` directly - tandemDockToCurrentEdge() runs
-    // the full solver so host-rescue and size-clamp stay consistent
-    // with the normal dock path (user-dragged MR case).
-    _tandemDockEdge = fromLibEdge(snap.edge);
-    tandemDockToCurrentEdge();
-    tandemPersistEdgeToIni();
+    // MR is free: dock as soon as it sits within magnet range of a
+    // host edge (either window may have moved).
+    if (tandemDockIfNearHost()) {
+        tandemPersistEdgeToIni();
+    }
 }
 
 // -------------------------------------------------------------------

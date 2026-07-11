@@ -1579,6 +1579,7 @@ private:
     void tandemHandleMoving(RECT* pTargetRect);     // WM_MOVING snap
     void tandemHandleExitSizeMove();                // WM_EXITSIZEMOVE state transition
     void tandemDockToCurrentEdge();         // free -> docked (captures desired sizes)
+    bool tandemDockIfNearHost();            // dock only when MR sits at a host edge
     void tandemReleaseHostStrip(TandemDockEdge edge); // give the tracked strip back to the host
     LRESULT tandemFilterHitTest(LRESULT hit) const;   // hide resize handles of the slaved axis
     void tandemPersistEdgeToIni() const;    // write last dock edge to INI cache
