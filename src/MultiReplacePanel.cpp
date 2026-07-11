@@ -5467,6 +5467,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             _tandemUserDragging = true;
             _tandemMagnetEngaged = _tandemDocked;
             _tandemDragStartEdge = _tandemDockEdge;
+            _tandemHasMovingRect = false;
             GetWindowRect(_hSelf, &_tandemDragStartMrRect);
             if (_tandemMagnetEngaged) {
                 POINT cursor{};
@@ -6521,6 +6522,17 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDCANCEL:
         {
             CloseDebugWindow(); // Close the formula debug window if it is open
+
+            // Hand the docked strip back before hiding. EndDialog()
+            // already hides the dialog, so the later ShowWindow(SW_HIDE)
+            // is a no-op and WM_SHOWWINDOW never fires. Park the dock
+            // state so a re-open re-engages, same as the hide path.
+            if (_tandemDocked && !_isShuttingDown) {
+                _tandemSuspendedByHide = true;
+                tandemReleaseHostStrip(_tandemDockEdge);
+                _tandemDocked = false;
+            }
+
             EndDialog(_hSelf, 0);
             _MultiReplace.display(false);
             return TRUE;
@@ -17287,6 +17299,11 @@ void MultiReplace::tandemHandleMoving(RECT* pTargetRect)
         *pTargetRect = realBounds;
     }
     // else: was free, still free - leave pTargetRect alone.
+
+    // Remember what we told Windows; WM_EXITSIZEMOVE compares against
+    // it to detect (and undo) an OS snap applied on mouse-up.
+    _tandemLastMovingRect = *pTargetRect;
+    _tandemHasMovingRect = true;
 }
 
 // -------------------------------------------------------------------
@@ -17296,8 +17313,26 @@ void MultiReplace::tandemHandleMoving(RECT* pTargetRect)
 void MultiReplace::tandemHandleExitSizeMove()
 {
     using namespace tandem_dock;
+    const bool wasMove = _tandemUserDragging && _tandemHasMovingRect;
     _tandemUserDragging = false;
+    _tandemHasMovingRect = false;
     if (!_tandemEnabled) return;
+
+    // Windows Snap grabs MR on mouse-up near a screen edge (MR is a
+    // resizable top-level window) and overrides the rect WM_MOVING
+    // handed out - MR would stick to the screen instead of the host.
+    // In tandem mode our placement wins: restore what we last asked for.
+    if (wasMove) {
+        if (IsZoomed(_hSelf)) ShowWindow(_hSelf, SW_RESTORE);
+        RECT now{};
+        if (GetWindowRect(_hSelf, &now) &&
+            !EqualRect(&now, &_tandemLastMovingRect)) {
+            const RECT& m = _tandemLastMovingRect;
+            SetWindowPos(_hSelf, nullptr,
+                m.left, m.top, m.right - m.left, m.bottom - m.top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
 
     if (!IsWindow(nppData._nppHandle)) {
         // Host gone - nothing to dock to. Drop out of docked state.

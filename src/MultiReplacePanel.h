@@ -1012,6 +1012,11 @@ private:
     RECT           _tandemDragStartMrRect = {};
     TandemDockEdge _tandemDragStartEdge = TandemDockEdge::Bottom;
 
+    // Last rect handed back to Windows from WM_MOVING. Windows Snap
+    // may override it on mouse-up; WM_EXITSIZEMOVE restores it.
+    RECT _tandemLastMovingRect = {};
+    bool _tandemHasMovingRect = false;
+
     // User-desired OUTER size along the free axis of the current
     // dock (height for Bottom, width for Right/Left).
     int _tandemDesiredMrHeight = 0;
