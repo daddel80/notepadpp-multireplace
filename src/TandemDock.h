@@ -181,6 +181,34 @@ namespace tandem_dock {
     DockLayout solveDock(const DockInputs& in);
 
     // -------------------------------------------------------------------
+    //  Seam resize
+    // -------------------------------------------------------------------
+
+    // Result of solveSeamDrag().
+    struct SeamLayout
+    {
+        // Host outer rect honouring the new seam position.
+        RECT hostOuterTarget = {};
+
+        // Client OUTER length along the primary axis implied by the
+        // seam, keeping the client's far edge where the user left it.
+        int clientPrimaryOuter = 0;
+    };
+
+    // After the user dragged the client's seam edge (the edge facing
+    // the host), compute the host rect and client primary length that
+    // keep the client's FAR edge in place while the host yields or
+    // reclaims the difference. The seam is clamped so the host keeps
+    // at least minHostPrimary visible pixels. Pure function.
+    SeamLayout solveSeamDrag(DockEdge edge,
+        const RECT& clientVisible,
+        const RECT& hostVisible,
+        const RECT& hostFull,
+        const ShadowOffsets& hostShadow,
+        const ShadowOffsets& clientShadow,
+        int minHostPrimary = 200);
+
+    // -------------------------------------------------------------------
     //  Magnetic snap during user drag
     // -------------------------------------------------------------------
 

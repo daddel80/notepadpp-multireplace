@@ -333,6 +333,59 @@ namespace tandem_dock {
     }
 
     // =====================================================================
+    //  Seam resize
+    // =====================================================================
+    //
+    //  Same flush-join math as the solvers, run backwards: the client's
+    //  seam edge (as the user left it) dictates the host edge; the
+    //  client's far edge stays put and yields the primary length.
+
+    SeamLayout solveSeamDrag(DockEdge edge,
+        const RECT& clientVisible,
+        const RECT& hostVisible,
+        const RECT& hostFull,
+        const ShadowOffsets& hostShadow,
+        const ShadowOffsets& clientShadow,
+        int minHostPrimary)
+    {
+        SeamLayout out{};
+        out.hostOuterTarget = hostFull;
+
+        switch (edge) {
+        case DockEdge::Bottom: {
+            int seamVis = clientVisible.top;
+            const int minSeam = hostVisible.top + minHostPrimary;
+            if (seamVis < minSeam) seamVis = minSeam;
+            out.hostOuterTarget.bottom = seamVis + hostShadow.bottom;
+            out.clientPrimaryOuter = (clientVisible.bottom - seamVis)
+                + clientShadow.top + clientShadow.bottom;
+            break;
+        }
+        case DockEdge::Right: {
+            int seamVis = clientVisible.left + kVerticalEdgeOverlapPx;
+            const int minSeam = hostVisible.left + minHostPrimary;
+            if (seamVis < minSeam) seamVis = minSeam;
+            out.hostOuterTarget.right = seamVis + hostShadow.right;
+            out.clientPrimaryOuter =
+                (clientVisible.right - (seamVis - kVerticalEdgeOverlapPx))
+                + clientShadow.left + clientShadow.right;
+            break;
+        }
+        case DockEdge::Left: {
+            int seamVis = clientVisible.right - kVerticalEdgeOverlapPx;
+            const int maxSeam = hostVisible.right - minHostPrimary;
+            if (seamVis > maxSeam) seamVis = maxSeam;
+            out.hostOuterTarget.left = seamVis - hostShadow.left;
+            out.clientPrimaryOuter =
+                ((seamVis + kVerticalEdgeOverlapPx) - clientVisible.left)
+                + clientShadow.left + clientShadow.right;
+            break;
+        }
+        }
+        return out;
+    }
+
+    // =====================================================================
     //  Magnetic snap + edge detection
     // =====================================================================
 

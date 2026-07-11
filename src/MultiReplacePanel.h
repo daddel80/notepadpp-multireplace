@@ -993,10 +993,11 @@ private:
     // drag-time magnet. INI persistence is under [Tandem] section.
     bool            _tandemEnabled = false; // feature switched on by user
     bool            _tandemDocked = false; // currently snapped to a host edge
-    bool            _tandemHasSnapshot = false; // pre-dock geometry captured below is valid
+    bool            _tandemSuspendedByHide = false; // docked state parked while MR is hidden
     TandemDockEdge  _tandemDockEdge = TandemDockEdge::Bottom;
     UINT_PTR        _tandemTimerId = 0;
     RECT            _tandemLastNppRect = {};
+    RECT            _tandemLastMrRect = {}; // MR rect after our last placement (external-move detect)
     bool            _tandemUserDragging = false; // true between MR's WM_ENTERSIZEMOVE / WM_EXITSIZEMOVE
 
     // Sticky-magnet state. While engaged, the on-screen rect is held
@@ -1006,10 +1007,10 @@ private:
     bool  _tandemMagnetEngaged = false;
     POINT _tandemMagnetOriginalCursorOffset = {};
 
-    // Pre-dock geometry snapshot (valid when _tandemHasSnapshot).
-    // Restored on menu-off; discarded when the user drags MR free.
-    RECT _tandemSavedNppRect = {};
-    RECT _tandemSavedMrRect = {};
+    // Drag context captured at WM_ENTERSIZEMOVE: axis-lock reference
+    // rect and the dock edge held when the drag began.
+    RECT           _tandemDragStartMrRect = {};
+    TandemDockEdge _tandemDragStartEdge = TandemDockEdge::Bottom;
 
     // User-desired OUTER size along the free axis of the current
     // dock (height for Bottom, width for Right/Left).
@@ -1018,6 +1019,10 @@ private:
 
     bool _tandemUserResize = false; // latch: one layout pass after WM_EXITSIZEMOVE keeps user size
     bool _tandemPendingShrinkNpp = false; // latch: mouse-down tick asked for host shrink; retry next tick
+
+    // Visible px tandem took from the host along _tandemDockEdge;
+    // returned by tandemReleaseHostStrip(). Edge switches settle first.
+    int _tandemHostShrinkPx = 0;
 
     std::wstring listFilePath = L"";
     const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ, used for hashing
@@ -1568,8 +1573,9 @@ private:
     void applyTandemLayout(const RECT& nppRect);
     void tandemHandleMoving(RECT* pTargetRect);     // WM_MOVING snap
     void tandemHandleExitSizeMove();                // WM_EXITSIZEMOVE state transition
-    void tandemDockToCurrentEdge();         // free -> docked (captures pre-dock snapshot)
-    void tandemUndockAndRestore();          // docked -> free (restores snapshot)
+    void tandemDockToCurrentEdge();         // free -> docked (captures desired sizes)
+    void tandemReleaseHostStrip(TandemDockEdge edge); // give the tracked strip back to the host
+    LRESULT tandemFilterHitTest(LRESULT hit) const;   // hide resize handles of the slaved axis
     void tandemPersistEdgeToIni() const;    // write last dock edge to INI cache
     bool tandemLoadEdgeFromIni();           // read last dock edge; false if no persisted value
     bool tandemRestoreFromIniIfEnabled();   // silent startup restore; returns whether state changed
