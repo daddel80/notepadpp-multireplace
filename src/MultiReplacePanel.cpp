@@ -16863,6 +16863,7 @@ void MultiReplace::tandemDockToCurrentEdge()
     _tandemDocked = true;
     _tandemPendingShrinkNpp = false;
     _tandemUserResize = false;
+    _tandemSeamFollow = false;
     _tandemHostShrinkPx = 0; // fresh dock owes the host nothing yet
     _tandemLastNppRect = {};
 
@@ -16994,6 +16995,50 @@ void MultiReplace::onTandemTick()
     if (!GetWindowRect(nppData._nppHandle, &r)) return;
 
     const bool rectChanged = !EqualRect(&r, &_tandemLastNppRect);
+
+    // Host seam-edge drag acts as a splitter: when only the shared
+    // edge moved while the button is down, hand the delta to MR so
+    // its far edge stays put - same feel as dragging MR's own seam.
+    // The latch keeps splitter mode for the final delta when the
+    // button is released between ticks.
+    if (rectChanged) {
+        const RECT& o = _tandemLastNppRect;
+        bool seamOnly = false;
+        int  delta = 0;
+        switch (_tandemDockEdge) {
+        case TandemDockEdge::Bottom:
+            seamOnly = r.left == o.left && r.top == o.top && r.right == o.right;
+            delta = r.bottom - o.bottom;
+            break;
+        case TandemDockEdge::Right:
+            seamOnly = r.left == o.left && r.top == o.top && r.bottom == o.bottom;
+            delta = r.right - o.right;
+            break;
+        case TandemDockEdge::Left:
+            seamOnly = r.top == o.top && r.right == o.right && r.bottom == o.bottom;
+            delta = o.left - r.left;
+            break;
+        }
+        if (seamOnly && (tandem_dock::mouseButtonDown() || _tandemSeamFollow)) {
+            const RECT minFrame = calculateMinWindowFrame(_hSelf);
+            const int minOuterH = minFrame.bottom;
+            const int minOuterW = minFrame.right;
+            if (_tandemDockEdge == TandemDockEdge::Bottom) {
+                _tandemDesiredMrHeight = (std::max)(_tandemDesiredMrHeight - delta, minOuterH);
+            }
+            else {
+                _tandemDesiredMrWidth = (std::max)(_tandemDesiredMrWidth - delta, minOuterW);
+            }
+            _tandemSeamFollow = tandem_dock::mouseButtonDown();
+        }
+        else {
+            _tandemSeamFollow = false;
+        }
+    }
+    else if (!tandem_dock::mouseButtonDown()) {
+        _tandemSeamFollow = false; // idle: drop stale latch
+    }
+
     if (!rectChanged && !mrMoved && !_tandemPendingShrinkNpp) return;
 
     applyTandemLayout(r);

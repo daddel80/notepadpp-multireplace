@@ -1024,6 +1024,7 @@ private:
 
     bool _tandemUserResize = false; // latch: one layout pass after WM_EXITSIZEMOVE keeps user size
     bool _tandemPendingShrinkNpp = false; // latch: mouse-down tick asked for host shrink; retry next tick
+    bool _tandemSeamFollow = false; // latch: user is dragging the host's seam edge (splitter follow)
 
     // Visible px tandem took from the host along _tandemDockEdge;
     // returned by tandemReleaseHostStrip(). Edge switches settle first.
