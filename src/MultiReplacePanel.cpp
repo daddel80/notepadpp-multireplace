@@ -265,7 +265,8 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
         if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'H'
             && (GetKeyState(VK_CONTROL) & 0x8000)
             && (GetKeyState(VK_SHIFT) & 0x8000)) {
-            if (instance->_hSelf) {
+            // Pickup only while the panel is visible; hidden -> let the key reach N++.
+            if (instance->_hSelf && IsWindowVisible(instance->_hSelf)) {
                 instance->pickupSelectionIntoFindEdit();
                 pMsg->message = WM_NULL;
                 return 1;
