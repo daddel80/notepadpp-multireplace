@@ -1578,6 +1578,7 @@ private:
     void onTandemFreeTick();                // free tick: re-engage when N++ approaches
     void applyTandemLayout(const RECT& nppRect);
     void tandemHandleMoving(RECT* pTargetRect);     // WM_MOVING snap
+    void tandemLiveSeamFollow(RECT* pSizingRect);   // WM_SIZING: host follows the seam live
     void tandemHandleExitSizeMove();                // WM_EXITSIZEMOVE state transition
     void tandemDockToCurrentEdge();         // free -> docked (captures desired sizes)
     bool tandemDockIfNearHost();            // dock only when MR sits at a host edge

@@ -5484,7 +5484,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         // Tandem: the secondary axis is slaved to the host. Pin it so
         // the border cannot be dragged at all (also covers keyboard
-        // sizing, which bypasses WM_NCHITTEST).
+        // sizing, which bypasses WM_NCHITTEST). Then let the host
+        // follow the seam live.
         if (_tandemEnabled && _tandemDocked && _tandemUserDragging) {
             RECT* r = reinterpret_cast<RECT*>(lParam);
             if (_tandemDockEdge == TandemDockEdge::Bottom) {
@@ -5495,6 +5496,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 r->top = _tandemDragStartMrRect.top;
                 r->bottom = _tandemDragStartMrRect.bottom;
             }
+            tandemLiveSeamFollow(r);
             return TRUE;
         }
         return FALSE;
@@ -17029,6 +17031,9 @@ void MultiReplace::onTandemTick()
             else {
                 _tandemDesiredMrWidth = (std::max)(_tandemDesiredMrWidth - delta, minOuterW);
             }
+            // N++ grew on its own border; it owes us that much less back.
+            _tandemHostShrinkPx -= delta;
+            if (_tandemHostShrinkPx < 0) _tandemHostShrinkPx = 0;
             _tandemSeamFollow = tandem_dock::mouseButtonDown();
         }
         else {
@@ -17359,6 +17364,66 @@ void MultiReplace::tandemHandleMoving(RECT* pTargetRect)
 // -------------------------------------------------------------------
 //  Drag-release decision (WM_EXITSIZEMOVE)
 // -------------------------------------------------------------------
+
+void MultiReplace::tandemLiveSeamFollow(RECT* pSizingRect)
+{
+    using namespace tandem_dock;
+    if (!IsWindow(nppData._nppHandle)) return;
+    if (IsZoomed(nppData._nppHandle) || IsIconic(nppData._nppHandle)) return;
+
+    RECT hostFull{};
+    if (!GetWindowRect(nppData._nppHandle, &hostFull)) return;
+
+    // Visual bounds of the PROPOSED rect (outer minus MR's shadow).
+    const ShadowOffsets mrSh = getShadowOffsets(_hSelf);
+    RECT mrVis = *pSizingRect;
+    mrVis.left += mrSh.left;
+    mrVis.top += mrSh.top;
+    mrVis.right -= mrSh.right;
+    mrVis.bottom -= mrSh.bottom;
+
+    // Same solver as the release pass; running it per WM_SIZING step
+    // makes the host yield live instead of jumping on mouse-up. The
+    // release pass then finds the host already in place (idempotent).
+    const SeamLayout seam = solveSeamDrag(
+        toLibEdge(_tandemDockEdge),
+        mrVis,
+        getVisualBounds(nppData._nppHandle),
+        hostFull,
+        getShadowOffsets(nppData._nppHandle),
+        mrSh);
+
+    if (!EqualRect(&seam.hostOuterTarget, &hostFull)) {
+        const bool vert = (_tandemDockEdge == TandemDockEdge::Bottom);
+        const int prevPrim = vert ? (hostFull.bottom - hostFull.top)
+            : (hostFull.right - hostFull.left);
+        const int newPrim = vert
+            ? (seam.hostOuterTarget.bottom - seam.hostOuterTarget.top)
+            : (seam.hostOuterTarget.right - seam.hostOuterTarget.left);
+        SetWindowPos(nppData._nppHandle, nullptr,
+            seam.hostOuterTarget.left,
+            seam.hostOuterTarget.top,
+            seam.hostOuterTarget.right - seam.hostOuterTarget.left,
+            seam.hostOuterTarget.bottom - seam.hostOuterTarget.top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+        _tandemHostShrinkPx += prevPrim - newPrim;
+        if (_tandemHostShrinkPx < 0) _tandemHostShrinkPx = 0;
+    }
+
+    // Clamp the drag rect to what the solver allowed: the seam stops
+    // live when the host reaches its minimum.
+    switch (_tandemDockEdge) {
+    case TandemDockEdge::Bottom:
+        pSizingRect->top = pSizingRect->bottom - seam.clientPrimaryOuter;
+        break;
+    case TandemDockEdge::Right:
+        pSizingRect->left = pSizingRect->right - seam.clientPrimaryOuter;
+        break;
+    case TandemDockEdge::Left:
+        pSizingRect->right = pSizingRect->left + seam.clientPrimaryOuter;
+        break;
+    }
+}
 
 void MultiReplace::tandemHandleExitSizeMove()
 {
