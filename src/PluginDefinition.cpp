@@ -145,8 +145,12 @@ void multiReplace()
     if (!_MultiReplace.isCreated())
     {
         _MultiReplace.create(IDD_REPLACE_DIALOG);
+        _MultiReplace.display();
+        return;
     }
-    _MultiReplace.display();
+    // Toggle: the same command (and its shortcut) opens MR when hidden
+    // and closes it when visible.
+    _MultiReplace.display(!_MultiReplace.isVisible());
 }
 
 void openHelpLink()

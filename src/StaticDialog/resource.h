@@ -267,6 +267,7 @@
 #define IDM_TAB_APPLY_LAYOUT_TO_ALL     5908
 #define IDM_TAB_RELOAD                  5909
 #define IDM_TAB_SAVE_A_COPY             5910
+#define IDM_TAB_ONE_PASS                5911
 
 // ===================================================================
 //  5950-5959 - Formula engine selector popup menu IDs

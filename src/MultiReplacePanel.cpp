@@ -7384,6 +7384,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDM_TAB_APPLY_LAYOUT_TO_ALL:
             onTabApplyLayoutToAll(_tabMenuTargetIndex);
             return TRUE;
+        case IDM_TAB_ONE_PASS:
+            onTabToggleOnePass(_tabMenuTargetIndex);
+            return TRUE;
         case IDM_TAB_CLOSE:
             onTabClose(_tabMenuTargetIndex);
             return TRUE;
@@ -7551,6 +7554,103 @@ void MultiReplace::replaceAllInOpenedDocs()
 
 }
 
+// One-pass Replace All: single sweep, the nearest match of any enabled
+// entry wins (tie: upper entry), the pass continues after the inserted
+// text - the Replace button semantics run in a loop.
+bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position fixedStart, int& totalReplaceCount)
+{
+    // --- Replace at matches ---
+    const bool useMatchList = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
+    std::unordered_set<int> matchSet;
+    if (useMatchList) {
+        std::wstring matchData = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
+        if (matchData.empty()) {
+            showStatusMessage(LM.get(L"status_missing_match_selection"), MessageStatus::Error);
+            return false;
+        }
+        std::vector<int> matchList = parseNumberRanges(matchData, LM.get(L"status_invalid_range_in_match_data"));
+        if (matchList.empty()) return false;
+        matchSet.insert(matchList.begin(), matchList.end());
+    }
+
+    // Compile formula entries up front like replaceAll: a syntax error
+    // aborts before any edit. Empty finds ran in preprocess.
+    for (size_t i = 0; i < replaceListData.size(); ++i) {
+        const ReplaceItemData& item = replaceListData[i];
+        if (!item.isEnabled || !item.formulaSupport || item.findText.empty()) continue;
+        auto* engine = getActiveEngine();
+        if (!engine) return false;
+        _currentRuleIndex = i;
+        const bool compileOk = engine->compile(Encoding::wstringToUtf8(item.replaceText));
+        _currentRuleIndex = SIZE_MAX;
+        if (!compileOk) return false;
+    }
+
+    SearchContext ctx = startCtx;
+    ctx.cachedCodepage = getCurrentDocCodePage();
+    ctx.retrieveFoundText = false;
+    ctx.highlightMatch = false;
+
+    const size_t n = replaceListData.size();
+    std::vector<int> findTotals(n, 0);
+    std::vector<int> replTotals(n, 0);
+
+    _bulkReplaceInProgress = true;
+
+    bool replaceSuccess = true;
+    Sci_Position pos = fixedStart;
+    size_t w = SIZE_MAX;
+
+    while (replaceSuccess) {
+        ctx.retrieveFoundText = false; // probing never needs the text
+        SearchResult sr = performListSearchForward(replaceListData, pos, w, ctx);
+        if (sr.pos < 0 || w >= n) break;
+
+        ++findTotals[w];
+        const bool replaceThisHit = !useMatchList || (matchSet.count(findTotals[w]) != 0);
+
+        if (replaceThisHit) {
+            const ReplaceItemData& item = replaceListData[w];
+            ctx.findText = convertAndExtendW(item.findText, item.extended);
+            ctx.searchFlags = buildSearchFlags(item.wholeWord, item.matchCase, item.regex,
+                /*dotMatchesNL=*/false, /*isReplaceAll=*/true);
+            ctx.retrieveFoundText = item.formulaSupport;
+            send(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+
+            SelectionInfo matchSel{ static_cast<Sci_Position>(sr.pos),
+                                    static_cast<Sci_Position>(sr.pos + sr.length),
+                                    static_cast<Sci_Position>(sr.length) };
+            SearchResult verify;
+            Sci_Position newPos = -1;
+            const bool replaced = replaceOne(item, matchSel, verify, newPos, w, ctx);
+
+            if (replaced) {
+                ++replTotals[w];
+                ++totalReplaceCount;
+                pos = newPos;
+                ctx.docLength = send(SCI_GETLENGTH, 0, 0);
+            }
+            else if (newPos > static_cast<Sci_Position>(sr.pos)) {
+                pos = newPos;                    // engine skip(): advanced, not replaced
+            }
+            else if (item.formulaSupport) {
+                replaceSuccess = false;          // engine error / debug stop: abort run
+            }
+            else {
+                pos = advanceAfterMatch(sr);     // verification mismatch: skip safely
+            }
+        }
+        else {
+            pos = advanceAfterMatch(sr);         // not in match list: count and move on
+        }
+
+        updateCountColumns(w, findTotals[w], replTotals[w]); // absolute totals override replaceOne's per-hit values
+    }
+
+    _bulkReplaceInProgress = false;
+    return replaceSuccess;
+}
+
 bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std::filesystem::path* explicitPath) {
 
     m_lastTotalReplaceCount = 0;
@@ -7606,6 +7706,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
 
     int totalReplaceCount = 0;
     bool replaceSuccess = true;
+    bool usedOnePass = false;
 
     if (useListEnabled)
     {
@@ -7645,47 +7746,58 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
             send(SCI_SETMODEVENTMASK, 0, 0);
 
             ScopedUndoAction undo(*this);
-            for (size_t i = 0; i < replaceListData.size(); ++i)
+
+            usedOnePass = (_activeTabIndex >= 0 &&
+                _activeTabIndex < static_cast<int>(_tabs.size()) &&
+                _tabs[_activeTabIndex]->onePass);
+
+            if (usedOnePass)
             {
-                if (replaceListData[i].isEnabled)
+                replaceSuccess = onePassReplaceAll(startCtx, fixedStart, totalReplaceCount);
+                refreshUIListView();
+            }
+            else
+                for (size_t i = 0; i < replaceListData.size(); ++i)
                 {
-                    if (!wrapAroundEnabled && allFromCursor)
+                    if (replaceListData[i].isEnabled)
                     {
-                        const Sci_Position docLenNow = send(SCI_GETLENGTH, 0, 0);
-                        auto clamp = [&](Sci_Position p) {
-                            return (p < 0) ? 0 : (p > docLenNow ? docLenNow : p);
-                            };
+                        if (!wrapAroundEnabled && allFromCursor)
+                        {
+                            const Sci_Position docLenNow = send(SCI_GETLENGTH, 0, 0);
+                            auto clamp = [&](Sci_Position p) {
+                                return (p < 0) ? 0 : (p > docLenNow ? docLenNow : p);
+                                };
 
-                        if (startCtx.isSelectionMode && !m_selectionScope.empty()) {
-                            Sci_Position s = clamp(static_cast<Sci_Position>(m_selectionScope.front().start));
-                            Sci_Position e = clamp(static_cast<Sci_Position>(m_selectionScope.back().end));
-                            if (e < s) std::swap(s, e);
-                            send(SCI_SETSEL, s, e);
+                            if (startCtx.isSelectionMode && !m_selectionScope.empty()) {
+                                Sci_Position s = clamp(static_cast<Sci_Position>(m_selectionScope.front().start));
+                                Sci_Position e = clamp(static_cast<Sci_Position>(m_selectionScope.back().end));
+                                if (e < s) std::swap(s, e);
+                                send(SCI_SETSEL, s, e);
+                            }
+                            else if (!startCtx.isSelectionMode) {
+                                const Sci_Position s = clamp(fixedStart);
+                                send(SCI_GOTOPOS, s, 0);
+                            }
                         }
-                        else if (!startCtx.isSelectionMode) {
-                            const Sci_Position s = clamp(fixedStart);
-                            send(SCI_GOTOPOS, s, 0);
+
+                        int findCount = 0;
+                        int replaceCount = 0;
+
+                        // Call replaceAll and break out if there is an error or a Debug Stop
+                        replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i);
+
+                        // Refresh ListView to show updated statistics
+                        refreshUIListView();
+
+                        // Accumulate total replacements
+                        totalReplaceCount += replaceCount;
+
+                        // cosmetic caret restore only for single-document run
+                        if (!replaceSuccess) {
+                            break;
                         }
-                    }
-
-                    int findCount = 0;
-                    int replaceCount = 0;
-
-                    // Call replaceAll and break out if there is an error or a Debug Stop
-                    replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i);
-
-                    // Refresh ListView to show updated statistics
-                    refreshUIListView();
-
-                    // Accumulate total replacements
-                    totalReplaceCount += replaceCount;
-
-                    // cosmetic caret restore only for single-document run
-                    if (!replaceSuccess) {
-                        break;
                     }
                 }
-            }
 
             send(SCI_SETMODEVENTMASK, savedEventMask, 0);
             _delimiterPositionsStale = true;
@@ -7742,7 +7854,9 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     // Status message: replacement count plus optional engine summary.
     // ExprTk also emits a notice dialog when the user picked "Skip all NaN".
     if (replaceSuccess && showCompletionMessage) {
-        std::wstring msg = LM.get(L"status_occurrences_replaced",
+        std::wstring msg = LM.get(usedOnePass
+            ? L"status_occurrences_replaced_one_pass"
+            : L"status_occurrences_replaced",
             { std::to_wstring(totalReplaceCount) });
         std::wstring noticeBody;
 
@@ -10544,6 +10658,9 @@ void MultiReplace::displayResultCentered(size_t posStart, size_t posEnd, bool is
 void MultiReplace::selectListItem(size_t matchIndex) {
     if (!highlightMatchEnabled) {
         return;
+    }
+    if (_bulkReplaceInProgress) {
+        return; // one-pass walk: no per-hit highlight
     }
 
     HWND hListView = GetDlgItem(_hSelf, IDC_REPLACE_LIST);
@@ -14840,6 +14957,7 @@ namespace {
         writeSettingsLineUtf8(out, L"WrapAround", tab.wrapAround);
         writeSettingsLineUtf8(out, L"ReplaceAtMatches", tab.replaceAtMatches);
         writeSettingsLineUtf8(out, L"ReplaceAtMatchesEdit", tab.replaceAtMatchesEdit);
+        writeSettingsLineUtf8(out, L"OnePass", tab.onePass);
 
         writeSettingsLineUtf8(out, L"Scope", tab.scope);
         writeSettingsLineUtf8(out, L"CSVCols", tab.csvCols);
@@ -14909,6 +15027,7 @@ namespace {
         tab.wrapAround = readMapBool(s, L"WrapAround", false);
         tab.replaceAtMatches = readMapBool(s, L"ReplaceAtMatches", false);
         tab.replaceAtMatchesEdit = readMapString(s, L"ReplaceAtMatchesEdit", L"1");
+        tab.onePass = readMapBool(s, L"OnePass", false);
 
         tab.scope = readMapInt(s, L"Scope", 0);
         tab.csvCols = readMapString(s, L"CSVCols", L"1-50");
@@ -16225,6 +16344,7 @@ void MultiReplace::writeTabsToConfig()
         CFG.writeBool(L"Tabs", prefix + L"_ListEnabled", t.listEnabled);
         CFG.writeBool(L"Tabs", prefix + L"_ReplaceAtMatches", t.replaceAtMatches);
         CFG.writeString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", t.replaceAtMatchesEdit);
+        CFG.writeBool(L"Tabs", prefix + L"_OnePass", t.onePass);
         CFG.writeString(L"Tabs", prefix + L"_Engine",
             MultiReplaceEngine::engineTypeToString(t.engine));
 
@@ -16366,6 +16486,7 @@ void MultiReplace::loadTabsFromConfig()
         tab->listEnabled = CFG.readBool(L"Tabs", prefix + L"_ListEnabled", true);
         tab->replaceAtMatches = CFG.readBool(L"Tabs", prefix + L"_ReplaceAtMatches", false);
         tab->replaceAtMatchesEdit = CFG.readString(L"Tabs", prefix + L"_ReplaceAtMatchesEdit", L"1");
+        tab->onePass = CFG.readBool(L"Tabs", prefix + L"_OnePass", false);
         {
             std::wstring engineStr = CFG.readString(L"Tabs", prefix + L"_Engine", L"Lua");
             tab->engine = MultiReplaceEngine::engineTypeFromString(engineStr);
@@ -17587,6 +17708,8 @@ void MultiReplace::addNewTab()
         tab->wrapAround = src.wrapAround;
         tab->replaceAtMatches = src.replaceAtMatches;
         tab->replaceAtMatchesEdit = src.replaceAtMatchesEdit;
+        // One-Pass deliberately NOT inherited: a fresh empty tab has
+        // no list nature yet. Duplicate and file load carry it.
         // Scope
         tab->scope = src.scope;
         tab->csvCols = src.csvCols;
@@ -17764,6 +17887,11 @@ void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
     const bool canApplyToAll = (_tabs.size() > 1);
     AppendMenu(hMenu, MF_STRING | (canApplyToAll ? 0 : MF_GRAYED),
         IDM_TAB_APPLY_LAYOUT_TO_ALL, LM.get(L"tab_menu_apply_layout_to_all").c_str());
+
+    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
+
+    AppendMenu(hMenu, MF_STRING | (tab.onePass ? MF_CHECKED : 0),
+        IDM_TAB_ONE_PASS, LM.get(L"tab_menu_replace_all_one_pass").c_str());
 
     // Remember which tab the click targeted. Menu commands below use
     // _tabMenuTargetIndex so the context is preserved across the
@@ -18034,6 +18162,41 @@ int MultiReplace::findTabByFilePath(const std::wstring& filePath) const
         }
     }
     return -1;
+}
+
+// Standard icons set at creation play the system sound; setting the
+// icon after creation shows it silently.
+static HRESULT CALLBACK SilentInfoIconProc(HWND hwnd, UINT msg, WPARAM, LPARAM, LONG_PTR)
+{
+    if (msg == TDN_CREATED) {
+        SendMessage(hwnd, TDM_UPDATE_ICON, TDIE_ICON_MAIN,
+            reinterpret_cast<LPARAM>(TD_INFORMATION_ICON));
+    }
+    return S_OK;
+}
+
+void MultiReplace::onTabToggleOnePass(int tabIndex)
+{
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return;
+
+    TabState& tab = *_tabs[tabIndex];
+    tab.onePass = !tab.onePass;
+
+    // One-time intro on first activation. The toggle does not dirty
+    // the tab; snapshot and next list save persist it.
+    if (tab.onePass && !CFG.readBool(L"Options", L"OnePassIntroShown", false)) {
+        const std::wstring title = LM.get(L"msgbox_title_one_pass_intro");
+        const std::wstring body = LM.get(L"msgbox_one_pass_intro_body");
+        TASKDIALOGCONFIG tdc = { sizeof(TASKDIALOGCONFIG) };
+        tdc.hwndParent = _hSelf;
+        tdc.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW | TDF_SIZE_TO_CONTENT;
+        tdc.pszWindowTitle = title.c_str();
+        tdc.pszContent = body.c_str();
+        tdc.pfCallback = SilentInfoIconProc;
+        tdc.dwCommonButtons = TDCBF_OK_BUTTON;
+        TaskDialogIndirect(&tdc, nullptr, nullptr, nullptr);
+        CFG.writeBool(L"Options", L"OnePassIntroShown", true);
+    }
 }
 
 void MultiReplace::onTabSave(int tabIndex)

@@ -215,6 +215,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_lines_deleted", L"$REPLACE_STRING lines deleted." },
 { L"status_layout_applied_to_tabs", L"Column layout applied to $REPLACE_STRING other tab(s)." },
 { L"status_occurrences_replaced", L"$REPLACE_STRING occurrences were replaced." },
+{ L"status_occurrences_replaced_one_pass", L"$REPLACE_STRING occurrences were replaced in one pass." },
 { L"status_no_matches_found_for", L"No matches found for '$REPLACE_STRING'." },
 { L"status_actual_position", L"Actual Position $REPLACE_STRING" },
 { L"status_items_loaded_from_csv", L"$REPLACE_STRING items loaded from CSV." },
@@ -442,6 +443,19 @@ const LangKV kEnglishPairs[] = {
 { L"tab_menu_close_others",        L"Close All BUT This" },
 { L"tab_menu_close_all",           L"Close All" },
 { L"tab_menu_apply_layout_to_all", L"Apply Column Layout to All Tabs" },
+{ L"tab_menu_replace_all_one_pass", L"Replace All in One Pass" },
+
+{ L"msgbox_title_one_pass_intro", L"Replace All in One Pass" },
+{ L"msgbox_one_pass_intro_body",
+    L"On:\n"
+    L"The text is walked once. Replacements happen during that single "
+    L"sweep, and replaced text is never touched again.\n\n"
+    L"Off:\n"
+    L"Each list entry is applied to the whole text in sequence. Text "
+    L"produced by one entry can be changed again by a later one.\n\n"
+    L"Example with dZ -> jh and h -> hh:\n"
+    L"On:  dZ -> jh\n"
+    L"Off: dZ -> jhh" },
 { L"tab_duplicate_suffix",         L"(copy)" },
 
 };

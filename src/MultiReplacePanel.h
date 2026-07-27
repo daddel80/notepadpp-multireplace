@@ -276,6 +276,7 @@ struct TabState {
     bool         listEnabled = true;
     bool         replaceAtMatches = false;
     std::wstring replaceAtMatchesEdit = L"1";
+    bool         onePass = false;
 
     // Formula engine choice for this tab. Default Lua for backward
     // compatibility. Persisted as a string ("Lua" / "ExprTk").
@@ -350,6 +351,7 @@ struct TabState {
         , listEnabled(other.listEnabled)
         , replaceAtMatches(other.replaceAtMatches)
         , replaceAtMatchesEdit(other.replaceAtMatchesEdit)
+        , onePass(other.onePass)
         , engine(other.engine)
         // engineInstance intentionally NOT copied; left default (null).
         , scope(other.scope)
@@ -1051,6 +1053,7 @@ private:
     inline static bool muteSounds = false;                // Status for Bell if String hasn't been found
     inline static bool doubleClickEditsEnabled = true;    // Double click to Edit List entries
     inline static bool highlightMatchEnabled = true;      // HighlightMatch during Find in List
+    bool _bulkReplaceInProgress = false;                  // one-pass walk: mute per-hit list highlight
     inline static bool isHoverTextEnabled = true;         // Important to set on false as TIMER will be triggered at startup.
     inline static int  editFieldSize = 5;                 // Size of the edit field for find/replace input
     inline static bool stayAfterReplaceEnabled = false;   // Status for keeping panel open after replace
@@ -1545,6 +1548,8 @@ private:
     void showTabContextMenu(int tabIndex, int screenX, int screenY);
     void onTabRename(int tabIndex);
     void onTabDuplicate(int tabIndex);
+    void onTabToggleOnePass(int tabIndex);
+    bool onePassReplaceAll(const SearchContext& startCtx, Sci_Position fixedStart, int& totalReplaceCount);
     void onTabClose(int tabIndex);
     void onTabCloseOthers(int keepTabIndex);
     void onTabCloseAll();
