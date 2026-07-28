@@ -453,9 +453,9 @@ const LangKV kEnglishPairs[] = {
     L"Off:\n"
     L"Each list entry is applied to the whole text in sequence. Text "
     L"produced by one entry can be changed again by a later one.\n\n"
-    L"Example with dZ -> jh and h -> hh:\n"
-    L"On:  dZ -> jh\n"
-    L"Off: dZ -> jhh" },
+    L"Example with cat -> dog and dog -> cat:\n"
+    L"On:  cat dog -> dog cat\n"
+    L"Off: cat dog -> cat cat" },
 { L"tab_duplicate_suffix",         L"(copy)" },
 
 };
