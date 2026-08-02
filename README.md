@@ -32,6 +32,7 @@ At its core, an optional **Formula Support** mode lets any replacement be enhanc
   - [Context Menu and Keyboard Shortcuts](#context-menu-and-keyboard-shortcuts)
   - [List Columns](#list-columns)
   - [List Toggling](#list-toggling)
+  - [Replace All in One Pass](#replace-all-in-one-pass)
   - [Column Locking](#column-locking)
   - [List Saving and Loading](#list-saving-and-loading)
 - [Plugin Menu](#plugin-menu)
@@ -321,6 +322,13 @@ The **"Use List"** button toggles between processing the entire list or just the
 - **Keep list always visible** — When this option is enabled in the Settings (List View and Layout), the list stays visible even while it is inactive. Instead of collapsing, inactive entries are visually dimmed so the list remains usable as a reference while you work with the single input fields.
 - **Ctrl+Shift bypass** — Hold **Ctrl+Shift** while clicking an action button (Find Next, Replace, Replace All, etc.) to momentarily flip the current list-vs-input mode: an active list is bypassed in favor of the input fields (and dims visually); a dimmed list (only possible with **Keep list always visible** enabled) is temporarily activated. Release the keys to return. Useful for quick one-off operations without toggling permanently.
 
+### Replace All in One Pass
+By default, **Replace All** applies each list entry to the whole text in sequence, so text produced by one entry can be changed again by a later one. The per-tab option **Replace All in One Pass** (right-click the list tab) changes this: the text is walked once, at every position the topmost matching entry wins, and replaced text is never touched again — the same behavior as stepping through matches with the **Replace** button.
+
+- **Example** — With the entries `cat` → `dog` and `dog` → `cat`, the text `cat dog` becomes `cat cat` in sequential mode, but `dog cat` in one pass. Swaps like this are only possible in one-pass mode.
+- **Per tab** — The option is stored per list tab, is saved in the list file, and survives restarts and tab duplication. New tabs start with it off.
+- **Notes** — A short intro explains the mode on first activation. **Replace at matches** numbers hits per entry as they occur during the pass. With many list entries a pass can take longer than the sequential mode.
+
 ### Column Locking
 
 You can lock specific column widths to prevent them from resizing automatically when the window layout changes. This is particularly useful for keeping key columns like **Find**, **Replace**, or **Comments** visible at a fixed size.
@@ -333,8 +341,8 @@ You can lock specific column widths to prevent them from resizing automatically 
 - **Save List / Load List** — Store and reload your search/replace entries. The Save dialog offers three formats: **MultiReplace List (*.mrl)** — the full-fidelity internal format with the settings preamble; **CSV (*.csv)** — the same escaped body without the preamble; and **CSV (Excel) (*.csv)** — plain CSV for interchange with spreadsheets and other tools. Older `.csv` list files from earlier plugin versions remain loadable without conversion.
 - **Copy & Paste** — Entries move in and out as text via the list's context menu or Ctrl+C/Ctrl+V. The clipboard uses the escaped dialect and accepts the same column-named input described under **Format**, so lists can also be generated externally and pasted straight in.
 - **Drag & Drop** — You can load lists by dragging `.mrl` or `.csv` files onto the plugin window.
-- **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (save as, load, duplicate, close). Dropping a list file on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
-- **Format** — Plain-text, line-based. The list body is a CSV-style table of entries; an `.mrl` file additionally starts with a `[MultiReplace-Settings]...[End]` preamble storing per-list options (search mode, scope, CSV column/delimiter/quote settings). MultiReplace supports two body dialects:
+- **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (save as, load, duplicate, close, Replace All in One Pass). Dropping a list file on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
+- **Format** — Plain-text, line-based. The list body is a CSV-style table of entries; an `.mrl` file additionally starts with a `[MultiReplace-Settings]...[End]` preamble storing per-list options (search mode, scope, one-pass mode, CSV column/delimiter/quote settings). MultiReplace supports two body dialects:
   - **Escaped (internal)** — used by `.mrl` and the plain `.csv` save. Fields are quoted and special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`. This keeps every entry on one physical line even when a field contains a real newline (e.g. a multi-line regex). It is the default and the format the clipboard copy/paste uses.
   - **Plain / "CSV (Excel)"** — standard RFC 4180 CSV. No backslash escaping (a `\` stays literal), fields are quoted only when they contain the delimiter, a quote, or a newline, embedded quotes are doubled (`""`), and real newlines are allowed inside quoted fields. This is what spreadsheets read and write, so you can build or edit lists in Excel (or any tool) and load them straight back. The field delimiter defaults to the Windows list separator (comma in most locales, semicolon in others such as German) and can be overridden with `[List] PlainCsvDelimiter` (`,` or `;`) in the INI; on load the delimiter is auto-detected from the header.
   - **Columns & header** — Both file loading and clipboard paste accept input whose first row is a column-name header. Known names: `Find`, `Replace`, `Selected`, `WholeWord`, `MatchCase`, `FormulaSupport`, `Extended`, `Regex`, `Comments` (case-insensitive; spaces, underscores, hyphens ignored). Columns can be in any order, unknown columns are ignored, and only `Find` is required — missing optional columns default to off / empty. The smallest valid input is two lines: `Find` followed by a search pattern.
