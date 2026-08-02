@@ -7594,6 +7594,9 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
     const size_t n = replaceListData.size();
     std::vector<int> findTotals(n, 0);
     std::vector<int> replTotals(n, 0);
+    std::vector<int> lineFind(n, 0);
+    std::vector<int> prevLine(n, -1);
+    std::vector<bool> exhausted(n, false);
 
     _bulkReplaceInProgress = true;
 
@@ -7602,11 +7605,19 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
     size_t w = SIZE_MAX;
 
     while (replaceSuccess) {
+        const Sci_Position liveLen = send(SCI_GETLENGTH, 0, 0);
+        if (liveLen != ctx.docLength) {
+            std::fill(exhausted.begin(), exhausted.end(), false); // external edit: proof void
+            ctx.docLength = liveLen;
+        }
         ctx.retrieveFoundText = false; // probing never needs the text
-        SearchResult sr = performListSearchForward(replaceListData, pos, w, ctx);
+        SearchResult sr = performListSearchForward(replaceListData, pos, w, ctx, &exhausted);
         if (sr.pos < 0 || w >= n) break;
 
         ++findTotals[w];
+        const int hitLine = static_cast<int>(send(SCI_LINEFROMPOSITION, sr.pos, 0));
+        if (hitLine != prevLine[w]) { lineFind[w] = 0; prevLine[w] = hitLine; }
+        ++lineFind[w];
         const bool replaceThisHit = !useMatchList || (matchSet.count(findTotals[w]) != 0);
 
         if (replaceThisHit) {
@@ -7622,7 +7633,7 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
                                     static_cast<Sci_Position>(sr.length) };
             SearchResult verify;
             Sci_Position newPos = -1;
-            const bool replaced = replaceOne(item, matchSel, verify, newPos, w, ctx);
+            const bool replaced = replaceOne(item, matchSel, verify, newPos, w, ctx, findTotals[w], lineFind[w]);
 
             if (replaced) {
                 ++replTotals[w];
@@ -8076,7 +8087,7 @@ void MultiReplace::handleReplaceButton() {
     WaitForDebugWindowClose(true);
 }
 
-bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context)
+bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt, int lcnt)
 {
     // Get the document's codepage once at the beginning.
     int documentCodepage = getCurrentDocCodePage();
@@ -8108,7 +8119,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
                 MultiReplaceEngine::FormulaVars vars;
                 fillFormulaVars(vars, searchResult.pos, searchResult.foundText,
-                    1, 1, context.isColumnMode, documentCodepage);
+                    cnt, lcnt, context.isColumnMode, documentCodepage);
                 if (itemData.regex) {
                     fillCapturesForEngine(vars, documentCodepage);
                 }
@@ -10566,7 +10577,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     return closestMatch;
 }
 
-SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context) {
+SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context, std::vector<bool>* exhausted) {
     SearchResult closestMatch;
     closestMatch.pos = -1;
     closestMatch.length = 0;
@@ -10576,6 +10587,9 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 
     for (size_t i = 0; i < list.size(); ++i) {
         if (!list[i].isEnabled) {
+            continue;
+        }
+        if (exhausted && (*exhausted)[i]) {
             continue;
         }
 
@@ -10598,6 +10612,10 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
                 closestMatch.length = result.length;
                 closestMatchIndex = i;
             }
+        }
+        else if (exhausted && !list[i].regex && !list[i].wholeWord &&
+            !context.isColumnMode && !context.isSelectionMode) {
+            (*exhausted)[i] = true; // literal, forward-only: empty stays empty
         }
     }
 

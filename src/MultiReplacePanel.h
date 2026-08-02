@@ -1283,7 +1283,7 @@ private:
     void replaceAllInOpenedDocs();
     bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
-    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context);
+    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1);
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
@@ -1366,7 +1366,7 @@ private:
     SearchResult performSearchBackward(const SearchContext& context, LRESULT start);
     SearchResult performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward);
     SearchResult performSearchSelection(const SearchContext& context, LRESULT start, bool isBackward);
-    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
+    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context, std::vector<bool>* exhausted = nullptr); // exhausted: one-pass only (forward-only proof, never with wrap)
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     void selectListItem(size_t matchIndex);
