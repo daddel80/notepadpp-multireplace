@@ -180,7 +180,7 @@ namespace MultiReplaceEngine {
         return true;
     }
 
-    bool LuaEngine::compile(const std::string& scriptUtf8)
+    bool LuaEngine::compile(const std::string& scriptUtf8, std::size_t /*ruleIndex*/)
     {
         return ensureCompiled(scriptUtf8);
     }

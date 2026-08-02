@@ -7581,7 +7581,7 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
         auto* engine = getActiveEngine();
         if (!engine) return false;
         _currentRuleIndex = i;
-        const bool compileOk = engine->compile(Encoding::wstringToUtf8(item.replaceText));
+        const bool compileOk = engine->compile(Encoding::wstringToUtf8(item.replaceText), i);
         _currentRuleIndex = SIZE_MAX;
         if (!compileOk) return false;
     }
@@ -8120,6 +8120,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 MultiReplaceEngine::FormulaVars vars;
                 fillFormulaVars(vars, searchResult.pos, searchResult.foundText,
                     cnt, lcnt, context.isColumnMode, documentCodepage);
+                vars.RULE = itemIndex;
                 if (itemData.regex) {
                     fillCapturesForEngine(vars, documentCodepage);
                 }
@@ -8238,7 +8239,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
             return false;
         }
         _currentRuleIndex = itemIndex;
-        const bool compileOk = engine->compile(luaTemplateUtf8);
+        const bool compileOk = engine->compile(luaTemplateUtf8, itemIndex);
         _currentRuleIndex = SIZE_MAX;
         if (!compileOk) {
             return false;
@@ -8281,6 +8282,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                     MultiReplaceEngine::FormulaVars vars;
                     fillFormulaVars(vars, searchResult.pos, searchResult.foundText,
                         findCount, lineFindCount, context.isColumnMode, documentCodepage);
+                    vars.RULE = itemIndex;
                     if (itemData.regex) {
                         fillCapturesForEngine(vars, documentCodepage);
                     }
@@ -8411,7 +8413,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                         return false;
                     }
                     _currentRuleIndex = i;
-                    if (!engine->compile(localReplaceTextUtf8)) {
+                    if (!engine->compile(localReplaceTextUtf8, i)) {
                         _currentRuleIndex = SIZE_MAX;
                         return false;
                     }
@@ -8425,6 +8427,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                         vars.FPATH = cachedFilePath;
                     }
                     vars.FNAME = cachedFileName;
+                    vars.RULE = i;
 
                     MultiReplaceEngine::FormulaResult res = engine->execute(
                         localReplaceTextUtf8, vars, replaceListData[i].regex, -1);

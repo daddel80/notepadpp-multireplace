@@ -90,7 +90,7 @@ namespace MultiReplaceEngine {
         // is cheap. Returns false on a syntax error; the caller can fetch
         // details via the next execute() (which will also fail), or via
         // dedicated diagnostics if added later.
-        virtual bool compile(const std::string& scriptUtf8) = 0;
+        virtual bool compile(const std::string& scriptUtf8, std::size_t ruleIndex = static_cast<std::size_t>(-1)) = 0;
 
         // ----- Per-match execution ----------------------------------------
 

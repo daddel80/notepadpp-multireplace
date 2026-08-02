@@ -423,6 +423,11 @@ namespace MultiReplaceEngine {
         // _history.size() == 0, so numprev() / numout() bootstrap with
         // their v fallback (0 for numprev arity-0, NaN otherwise).
         _history.clear();
+        _historyShelf.clear();
+        _activeHistRule = kNoRule;
+        _slotHistLookback = 0;
+        _slotHistCaps = 0;
+        _slotHistBlocks = 0;
         _currentBlockIndex = 0;
         // _currentBlockOutputs and _captureSlotsForHistory keep their
         // capacity; their content is overwritten on the next match.
@@ -457,13 +462,44 @@ namespace MultiReplaceEngine {
     // Compile
     // ---------------------------------------------------------------------
 
-    bool ExprTkEngine::compile(const std::string& scriptUtf8)
+    bool ExprTkEngine::compile(const std::string& scriptUtf8, std::size_t ruleIndex)
     {
+        // Per-rule history: shelve the previous rule's ring and restore
+        // this one's, so interleaved runs keep numprev/numout per entry.
+        if (ruleIndex != _activeHistRule) {
+            auto& prev = _historyShelf[_activeHistRule];
+            prev.ring = std::move(_history);
+            prev.capCap = _historyCaptureCap;
+            auto it = _historyShelf.find(ruleIndex);
+            if (it != _historyShelf.end()) {
+                _history = std::move(it->second.ring);
+                _historyCaptureCap = it->second.capCap;
+            }
+            else {
+                _history = MatchHistory{};
+                _historyCaptureCap = 0;
+            }
+            _activeHistRule = ruleIndex;
+        }
+
         // Cache hit: the same template was compiled last time, nothing to
-        // do. Mirrors the behaviour of LuaEngine::ensureCompiled.
+        // do. Mirrors the behaviour of LuaEngine::ensureCompiled. A ring
+        // restored fresh for a rule sharing the slot's script is sized
+        // from the stored dims so its history works too.
         if (_haveCompiled && scriptUtf8 == _lastCompiledScript) {
+            if (_history.depth() == 0 && _slotHistLookback > 0) {
+                _history = MatchHistory(_slotHistLookback, _slotHistCaps, _slotHistBlocks);
+                _historyCaptureCap = _slotHistCaps;
+            }
+            _historyShelf[_activeHistRule].script = scriptUtf8;
             return true;
         }
+
+        // Keep the restored ring when this rule's script is unchanged;
+        // same text means identical analyzer dimensions.
+        const bool keepRing = (_history.depth() > 0) &&
+            (_historyShelf.count(_activeHistRule) != 0) &&
+            (_historyShelf[_activeHistRule].script == scriptUtf8);
 
         // Drop any previous state before we attempt a new compile, so a
         // failed compile leaves the engine in a clean "no compile yet"
@@ -480,8 +516,10 @@ namespace MultiReplaceEngine {
         _parsedTemplate = ExprTkPatternParser::ParseResult();
         _lastCompiledScript.clear();
         _haveCompiled = false;
-        _history = MatchHistory{};
-        _historyCaptureCap = 0;
+        if (!keepRing) {
+            _history = MatchHistory{};
+            _historyCaptureCap = 0;
+        }
         _currentBlockOutputs.clear();
         _captureSlotsForHistory.clear();
 
@@ -633,8 +671,13 @@ namespace MultiReplaceEngine {
             // from analyzeHistory which counts only Expression segments.
             const std::size_t blockCount = ha.blockCount;
             const std::size_t captureSlots = ha.maxCaptureIndex + 1;
-            _history = MatchHistory(ha.maxLookback, captureSlots, blockCount);
-            _historyCaptureCap = captureSlots;
+            _slotHistLookback = ha.maxLookback;
+            _slotHistCaps = captureSlots;
+            _slotHistBlocks = blockCount;
+            if (!keepRing) {
+                _history = MatchHistory(ha.maxLookback, captureSlots, blockCount);
+                _historyCaptureCap = captureSlots;
+            }
 
             // Size the per-match block-output vector to match the
             // expression count - one slot per (?=...) in the template.
@@ -648,6 +691,7 @@ namespace MultiReplaceEngine {
         _parsedTemplate = std::move(parseRes);
         _lastCompiledScript = scriptUtf8;
         _haveCompiled = true;
+        _historyShelf[_activeHistRule].script = scriptUtf8;
         return true;
     }
 
@@ -672,12 +716,10 @@ namespace MultiReplaceEngine {
         // the replace template and have them expand normally.
         const bool escapeOutput = isRegexMatch;
 
-        // Lazy compile: if compile() was never called, or the script has
-        // changed since the last compile, run it now. compile() has
-        // already shown any error dialog; we just propagate the failure
-        // through the FormulaResult so the pipeline can stop the run.
-        if (!_haveCompiled || scriptUtf8 != _lastCompiledScript) {
-            if (!compile(scriptUtf8)) {
+        // compile() is a cheap cache hit when unchanged and also owns
+        // the per-rule history switch, so route every call through it.
+        {
+            if (!compile(scriptUtf8, vars.RULE)) {
                 result.success = false;
                 // Internal diagnostic only - the user-visible dialog was
                 // already raised by compile() via reportError().

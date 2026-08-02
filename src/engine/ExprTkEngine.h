@@ -84,6 +84,7 @@
 #include "../exprtk/third_party/exprtk.hpp"
 
 #include <memory>
+#include <unordered_map>
 #include <random>
 #include <string>
 #include <vector>
@@ -111,7 +112,7 @@ namespace MultiReplaceEngine {
         // _errorSkipCount / _skipAllErrors are still reset by the base.
         void beginRun() override;
 
-        bool compile(const std::string& scriptUtf8) override;
+        bool compile(const std::string& scriptUtf8, std::size_t ruleIndex = static_cast<std::size_t>(-1)) override;
 
         FormulaResult execute(
             const std::string& scriptUtf8,
@@ -1187,6 +1188,16 @@ namespace MultiReplaceEngine {
         // so numprev / txtprev know their implicit n.
         // -----------------------------------------------------------------
         MatchHistory                _history;
+
+        // Per-rule history shelf: rings survive script switches in
+        // interleaved runs (one-pass / step). Keyed by FormulaVars.RULE.
+        static constexpr std::size_t kNoRule = static_cast<std::size_t>(-1);
+        struct ShelvedHistory { std::string script; MatchHistory ring; std::size_t capCap = 0; };
+        std::unordered_map<std::size_t, ShelvedHistory> _historyShelf;
+        std::size_t _activeHistRule = kNoRule;
+        std::size_t _slotHistLookback = 0;   // dims of the slot's compiled script
+        std::size_t _slotHistCaps = 0;
+        std::size_t _slotHistBlocks = 0;
         std::vector<BlockOutput>    _currentBlockOutputs;
         std::size_t                 _currentBlockIndex = 0;
 

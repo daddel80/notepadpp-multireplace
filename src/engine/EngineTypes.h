@@ -40,6 +40,7 @@ namespace MultiReplaceEngine {
         int LPOS = 0;   // Column position within the line (UTF-8 bytes)
         int APOS = 0;   // Absolute byte position in the document
         int COL = 0;   // CSV column index (CSV mode), 0 otherwise
+        std::size_t RULE = static_cast<std::size_t>(-1); // list rule index (per-rule history)
 
         // Match metadata
         std::string MATCH;   // The matched text (UTF-8)

@@ -50,7 +50,7 @@ namespace MultiReplaceEngine {
         // functions from the global namespace.
         void beginRun() override;
 
-        bool compile(const std::string& scriptUtf8) override;
+        bool compile(const std::string& scriptUtf8, std::size_t ruleIndex = static_cast<std::size_t>(-1)) override;
 
         FormulaResult execute(
             const std::string& scriptUtf8,
