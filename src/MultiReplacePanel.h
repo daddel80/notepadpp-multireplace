@@ -561,6 +561,8 @@ public:
 
     inline static MultiReplace* instance = nullptr; // Static instance of the class
     static HHOOK _hMsgFilterHook;                   // Thread-local hook for Alt+Up/Down
+    static HHOOK _hTandemSnapKeyHook;               // LL keyboard hook: Win+Arrow addresses the pair
+    static LRESULT CALLBACK TandemSnapKeyHookProc(int code, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK MsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam);
 
     // Helper functions for scaling

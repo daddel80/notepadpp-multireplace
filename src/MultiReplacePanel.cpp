@@ -204,11 +204,13 @@ static std::unordered_set<BufferId> g_padBufs;
 
 // Static member: thread-local message filter hook for Alt+Up/Down
 HHOOK MultiReplace::_hMsgFilterHook = nullptr;
+HHOOK MultiReplace::_hTandemSnapKeyHook = nullptr;
 
 // FlowTab container-undo statics. Token tags our own SCI_ADDUNDOACTION marker
 // in SC_MOD_CONTAINER so undo/redo can drive the toggle.
 static constexpr int FLOWTAB_UNDO_TOKEN = 0x4D52464C; // 'MRFL'
 static constexpr UINT WM_FLOWTAB_UNDO = WM_APP + 4;   // notify -> deferred toggle
+static constexpr UINT WM_TANDEM_SNAP = WM_APP + 5;    // LL hook -> snap the pair
 bool MultiReplace::_containerUndoAvailable = false;
 bool MultiReplace::_flowTabUndoPending = false;
 HHOOK MultiReplace::_hGetMsgHook = nullptr;
@@ -5388,6 +5390,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         if (!_hGetMsgHook) {
             _hGetMsgHook = SetWindowsHookEx(WH_GETMESSAGE, GetMsgHookProc, nullptr, GetCurrentThreadId());
         }
+
         ensureContainerUndoNotify();
 
         return TRUE;
@@ -5457,6 +5460,43 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
         return FALSE;
+    }
+
+    case WM_SYSCOMMAND:
+    {
+        // Tandem: maximize/minimize shortcuts address the pair, not the
+        // panel. Replay the exact stimulus on the host.
+        if (_tandemEnabled && _tandemDocked) {
+            const WPARAM sc = wParam & 0xFFF0;
+            if (sc == SC_MAXIMIZE || sc == SC_MINIMIZE) {
+                PostMessage(nppData._nppHandle, WM_SYSCOMMAND, wParam, lParam);
+                return TRUE;
+            }
+        }
+        return FALSE;
+    }
+
+    case WM_TANDEM_SNAP:
+    {
+        // Snap the pair to the requested work-area half of the host's
+        // monitor; the layout call glues MR back under the host.
+        if (_tandemEnabled && _tandemDocked) {
+            HMONITOR mon = MonitorFromWindow(nppData._nppHandle, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO mi{ sizeof(MONITORINFO) };
+            if (GetMonitorInfo(mon, &mi)) {
+                const RECT& wa = mi.rcWork;
+                const int halfW = (wa.right - wa.left) / 2;
+                RECT snap = wa;
+                if (wParam == 0) snap.right = wa.left + halfW;
+                else             snap.left = wa.right - halfW;
+                SetWindowPos(nppData._nppHandle, nullptr,
+                    snap.left, snap.top,
+                    snap.right - snap.left, snap.bottom - snap.top,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+                applyTandemLayout(snap);
+            }
+        }
+        return TRUE;
     }
 
     case WM_ENTERSIZEMOVE:
@@ -5549,6 +5589,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_ACTIVATE:
     {
+        // The LL snap hook is system-wide; keep it alive only while
+        // the panel is foreground so MR never adds latency (or risks
+        // the OS timeout-unhook) while busy in the background.
+        if (LOWORD(wParam) != WA_INACTIVE) {
+            if (_tandemEnabled && !_hTandemSnapKeyHook) {
+                _hTandemSnapKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL, TandemSnapKeyHookProc, GetModuleHandle(nullptr), 0);
+            }
+        }
+        else if (_hTandemSnapKeyHook) {
+            UnhookWindowsHookEx(_hTandemSnapKeyHook);
+            _hTandemSnapKeyHook = nullptr;
+        }
+
         if (_keepOnTopDuringBatch) {
             // Force foreground alpha during batch
             SetWindowTransparency(_hSelf, foregroundTransparency);
@@ -5585,6 +5638,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         // Remove Alt+Up/Down message filter hook
         if (_hMsgFilterHook) {
             UnhookWindowsHookEx(_hMsgFilterHook);
+            if (_hTandemSnapKeyHook) { UnhookWindowsHookEx(_hTandemSnapKeyHook); _hTandemSnapKeyHook = nullptr; }
             _hMsgFilterHook = nullptr;
         }
 
@@ -17105,6 +17159,34 @@ bool MultiReplace::tandemLoadEdgeFromIni()
 // -------------------------------------------------------------------
 //  Timer-driven follow
 // -------------------------------------------------------------------
+
+// Win+Left/Right with the docked panel focused addresses the pair.
+// The key is swallowed before the shell sees it (no snap animation on
+// the panel, no shell snap state), and the pair is snapped by MR.
+LRESULT CALLBACK MultiReplace::TandemSnapKeyHookProc(int code, WPARAM wParam, LPARAM lParam)
+{
+    if (code == HC_ACTION && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN)) {
+        const KBDLLHOOKSTRUCT* k = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+        if ((k->vkCode == VK_LEFT || k->vkCode == VK_RIGHT) &&
+            ((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) &&
+            !(GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
+            instance && instance->_tandemEnabled && instance->_tandemDocked &&
+            GetForegroundWindow() == instance->_hSelf) {
+            // A swallowed arrow must not leave a lone Win press behind,
+            // or releasing Win would open the Start menu.
+            INPUT dummy{};
+            dummy.type = INPUT_KEYBOARD;
+            dummy.ki.wVk = 0xFF;
+            SendInput(1, &dummy, sizeof(INPUT));
+            dummy.ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(1, &dummy, sizeof(INPUT));
+            PostMessage(instance->_hSelf, WM_TANDEM_SNAP,
+                (k->vkCode == VK_LEFT) ? 0 : 1, 0);
+            return 1;
+        }
+    }
+    return CallNextHookEx(nullptr, code, wParam, lParam);
+}
 
 void MultiReplace::onTandemTick()
 {
