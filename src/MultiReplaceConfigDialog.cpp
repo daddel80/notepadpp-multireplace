@@ -873,7 +873,7 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
     if (!_hAppearancePanel) return;
 
     const int left = 70;
-    const int top = 15;
+    const int top = 20;
     const int groupW = 460;
 
     const int groupH_Interface = 175;
