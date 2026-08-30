@@ -445,6 +445,22 @@ namespace StringUtils {
         return str.substr(first, last - first + 1);
     }
 
+    std::vector<std::wstring> splitFilterPatterns(const std::wstring& filter)
+    {
+        std::vector<std::wstring> out;
+        size_t pos = 0;
+        while (pos <= filter.size()) {
+            const size_t sep = filter.find(L';', pos);
+            const size_t end = (sep == std::wstring::npos) ? filter.size() : sep;
+            std::wstring pattern = trim(filter.substr(pos, end - pos));
+            if (!pattern.empty())
+                out.push_back(std::move(pattern));
+            if (sep == std::wstring::npos) break;
+            pos = sep + 1;
+        }
+        return out;
+    }
+
     // ----------------------------------------------------------------------------
     // Escape control characters for debug display (makes \n, \r, \t visible)
     // ----------------------------------------------------------------------------

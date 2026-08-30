@@ -26,6 +26,7 @@
 #include <sstream>
 #include <cstring>             // For std::memchr
 #include "Encoding.h"
+#include "StringUtils.h"       // For splitFilterPatterns
 #include "Notepad_plus_msgs.h" // For NPPM_*
 #include "Scintilla.h"         // For SCI_*
 #pragma comment(lib, "shlwapi.lib")
@@ -145,9 +146,9 @@ public:
         exclude_folders.clear();
         exclude_folders_recursive.clear();
 
-        std::wstringstream ss(filterString);
-        std::wstring tok;
-        while (ss >> tok) {
+        // Semicolon is the only separator - splitting on whitespace would make
+        // a pattern containing a space ("my report.txt") impossible to express.
+        for (const std::wstring& tok : StringUtils::splitFilterPatterns(filterString)) {
             if (tok.rfind(L"!+", 0) == 0) {
                 exclude_folders_recursive.push_back(tok.substr(2));
             }

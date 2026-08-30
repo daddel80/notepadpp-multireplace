@@ -1236,20 +1236,7 @@ bool MultiReplace::matchesDocFilter(const std::wstring& fileName, const std::wst
     bool hasPositivePattern = false;
     bool matchedPositive = false;
 
-    std::wstring remaining = filter;
-    while (!remaining.empty()) {
-        size_t sep = remaining.find(L';');
-        std::wstring pattern = (sep == std::wstring::npos)
-            ? remaining : remaining.substr(0, sep);
-        remaining = (sep == std::wstring::npos) ? L"" : remaining.substr(sep + 1);
-
-        // Trim whitespace
-        size_t s = pattern.find_first_not_of(L" \t");
-        if (s == std::wstring::npos) continue;
-        size_t e = pattern.find_last_not_of(L" \t");
-        pattern = pattern.substr(s, e - s + 1);
-        if (pattern.empty()) continue;
-
+    for (const std::wstring& pattern : StringUtils::splitFilterPatterns(filter)) {
         if (pattern[0] == L'!') {
             std::wstring excl = pattern.substr(1);
             if (!excl.empty() && PathMatchSpecW(fileName.c_str(), excl.c_str()))
@@ -9188,11 +9175,7 @@ void MultiReplace::handleReplaceInFiles() {
     if (!validateDelimiterData()) return;
 
     // parse filter after UI/defaults/checks
-    // Normalize filter: semicolons -> spaces for guard compatibility
-    // (UI shows semicolon syntax; guard.parseFilter expects spaces)
-    std::wstring guardFilter = wFilter;
-    std::replace(guardFilter.begin(), guardFilter.end(), L';', L' ');
-    guard.parseFilter(guardFilter);
+    guard.parseFilter(wFilter);
     guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
     guard.setMaxFileSizeMB(maxFileSizeMB);
     guard.setSkipBinaryEnabled(skipBinaryFilesEnabled);
@@ -9881,11 +9864,7 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
     if (!validateDelimiterData()) return;
-    // Normalize filter: semicolons -> spaces for guard compatibility
-    // (UI shows semicolon syntax; guard.parseFilter expects spaces)
-    std::wstring guardFilter = wFilter;
-    std::replace(guardFilter.begin(), guardFilter.end(), L';', L' ');
-    guard.parseFilter(guardFilter);
+    guard.parseFilter(wFilter);
     guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
     guard.setMaxFileSizeMB(maxFileSizeMB);
     guard.setSkipBinaryEnabled(skipBinaryFilesEnabled);

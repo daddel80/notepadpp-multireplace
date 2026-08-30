@@ -84,6 +84,15 @@ namespace StringUtils {
 
     std::wstring trim(const std::wstring& str);
 
+    // Split a file filter into its patterns. Semicolon is the ONLY separator,
+    // so a pattern may contain spaces ("my report.txt"); spaces around a
+    // separator are trimmed and empty patterns are dropped. Shared by the
+    // Find/Replace in Files filter (HiddenSciGuard::parseFilter) and the
+    // open-documents filter (MultiReplace::matchesDocFilter) so both dialects
+    // stay identical - splitting on whitespace instead would make any pattern
+    // containing a space impossible to express.
+    std::vector<std::wstring> splitFilterPatterns(const std::wstring& filter);
+
     // Escape control characters for debug display (makes \n, \r, \t visible)
     std::string escapeControlChars(const std::string& input);
 
