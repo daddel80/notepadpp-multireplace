@@ -14570,7 +14570,9 @@ std::wstring MultiReplace::buildProgressStatus(const std::wstring& prefix, const
     GetTextExtentPoint32W(hdc, prefix.c_str(), static_cast<int>(prefix.length()), &sz);
     RECT rc{};
     GetClientRect(hStatus, &rc);
-    const int avail = (std::max)(0, (rc.right - rc.left) - static_cast<int>(sz.cx));
+    // Both operands must be int: RECT/SIZE members are LONG, and mixing the two
+    // leaves std::max's template parameter ambiguous.
+    const int avail = (std::max)(0, static_cast<int>(rc.right - rc.left) - static_cast<int>(sz.cx));
 
     std::wstring shortPath = getShortenedFilePath(path, avail, hdc);
 
