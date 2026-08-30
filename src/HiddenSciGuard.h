@@ -18,12 +18,14 @@
 
 #include <windows.h>
 #include <shlwapi.h>           // For PathMatchSpecW
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <cstring>             // For std::memchr
+#include "Encoding.h"
 #include "Notepad_plus_msgs.h" // For NPPM_*
 #include "Scintilla.h"         // For SCI_*
 #pragma comment(lib, "shlwapi.lib")
@@ -42,6 +44,12 @@ public:
     // Default max file size in MB (0 = unlimited, same as N++)
     static constexpr size_t DEFAULT_MAX_FILE_SIZE_MB = 0;
 
+    // How a loaded file should be fed into the hidden buffer
+    enum class LoadKind { Text, RawBytes };
+
+    // Why a file was not loaded (None = loaded successfully)
+    enum class SkipReason { None, Binary, TooLarge, Unreadable, Undecodable };
+
     // ========================================================================
     // Configuration setters/getters (for INI/Config Panel)
     // ========================================================================
@@ -53,6 +61,14 @@ public:
     // Set max file size in MB (only applies if limit is enabled)
     void setMaxFileSizeMB(size_t sizeMB) { _maxFileSizeMB = sizeMB; }
     size_t getMaxFileSizeMB() const { return _maxFileSizeMB; }
+
+    // Enable/disable skipping of binary files (default: enabled)
+    void setSkipBinaryEnabled(bool enabled) { _skipBinaryFiles = enabled; }
+    bool isSkipBinaryEnabled() const { return _skipBinaryFiles; }
+
+    // Enable/disable lossless-roundtrip verification after decode (Replace in Files)
+    void setVerifyRoundtrip(bool enabled) { _verifyRoundtrip = enabled; }
+    bool isVerifyRoundtrip() const { return _verifyRoundtrip; }
 
     // Get effective max size in bytes (0 if unlimited)
     size_t getEffectiveMaxFileSize() const {
@@ -114,9 +130,7 @@ public:
             fn(pData, SCI_CLEARALL, 0, 0);
         }
 
-        // Reset skip counters
-        _skippedBinaryCount = 0;
-        _skippedLargeCount = 0;
+        resetSkipCounters();
 
         return fn && pData;
     }
@@ -161,19 +175,14 @@ public:
     // 2) Test a path against the filter
     // ========================================================================
 
-    bool matchPath(const std::filesystem::path& path, bool includeHidden) const
+    // Pattern-only match; hidden-folder handling lives in the directory
+    // enumeration (N++ semantics: prune hidden folders, keep hidden files).
+    bool matchPath(const std::filesystem::path& path) const
     {
-        // 1) Hidden attribute
-        if (!includeHidden) {
-            const DWORD a = GetFileAttributesW(path.c_str());
-            if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_HIDDEN))
-                return false;
-        }
-
         const std::wstring fname = path.filename().wstring();
         const std::filesystem::path parentPath = path.parent_path();
 
-        // 2) Non-recursive folder excludes (!) – only the *direct* parent folder
+        // 1) Non-recursive folder excludes (!) – only the *direct* parent folder
         if (!parentPath.empty()) {
             const std::wstring parentName = parentPath.filename().wstring();
             for (const auto& pat : exclude_folders)
@@ -181,7 +190,7 @@ public:
                     return false;
         }
 
-        // 3) Recursive folder excludes (!+) – walk every ancestor folder
+        // 2) Recursive folder excludes (!+) – walk every ancestor folder
         for (auto dir = parentPath; !dir.empty() && dir != dir.root_path(); dir = dir.parent_path()) {
             const std::wstring dirName = dir.filename().wstring();
 
@@ -195,12 +204,12 @@ public:
             }
         }
 
-        // 4) File-level excludes (!*.log)
+        // 3) File-level excludes (!*.log)
         for (const auto& pat : exclude_patterns)
             if (PathMatchSpecW(fname.c_str(), pat.c_str()))
                 return false;
 
-        // 5) File-level includes (*.cpp…)
+        // 4) File-level includes (*.cpp…)
         if (include_patterns.empty())
             return true;
 
@@ -246,105 +255,139 @@ public:
         return std::memchr(data, '\0', checkLen) != nullptr;
     }
 
-    // Combined check: returns true if file should be skipped as binary
+    // UTF-16 LE without BOM: same pre-checks and probe as N++ and Encoding::detectEncoding
+    bool isUtf16NoBomLE(const char* data, size_t len) const
+    {
+        const unsigned char* u = reinterpret_cast<const unsigned char*>(data);
+        if (!(len > 1 && (len % 2) == 0 && u[0] != 0 && u[1] == 0))
+            return false;
+        INT uniTest = IS_TEXT_UNICODE_STATISTICS;
+        return ::IsTextUnicode(data, static_cast<int>(len), &uniTest) != FALSE;
+    }
+
+    // Combined check: returns true if content is binary (no BOM, not UTF-16, NUL bytes)
     bool shouldSkipAsBinary(const char* data, size_t len) const
     {
-        // 1. Files with BOM are definitely text files
         if (hasBOM(data, len))
             return false;
 
-        // 2. Check for NULL bytes (binary indicator)
+        if (isUtf16NoBomLE(data, len))
+            return false;
+
         return hasNullBytes(data, len);
     }
 
     // ========================================================================
-    // 4) File Loading with Binary Detection
+    // 4) File Loading Pipeline (shared by Find in Files and Replace in Files)
     // ========================================================================
 
-    // Load file with automatic binary detection
-    // Returns true on success, false on any failure (including binary skip)
-    bool loadFile(const std::filesystem::path& fp, std::string& out)
+    // Loads a file and decides ONCE how it is to be searched:
+    // header -> BOM/UTF-16 detection -> binary check -> full read -> decode.
+    // Text: content holds UTF-8, enc describes the source encoding.
+    // RawBytes: content holds the raw file bytes (binary skip disabled).
+    SkipReason loadTextFile(const std::filesystem::path& fp, std::string& content,
+        Encoding::EncodingInfo& enc, LoadKind& kind)
     {
-        out.clear();
+        content.clear();
+        enc = Encoding::EncodingInfo{};
+        kind = LoadKind::Text;
 
         try {
-            // Get file size
             std::error_code ec;
-            auto fileSize = std::filesystem::file_size(fp, ec);
-            if (ec) return false;
+            const auto fileSize = std::filesystem::file_size(fp, ec);
+            if (ec) return fail(SkipReason::Unreadable);
 
-            // Check file size limit (if enabled)
-            size_t maxSize = getEffectiveMaxFileSize();
-            if (maxSize > 0 && fileSize > maxSize)
-            {
-                ++_skippedLargeCount;
-                return false;
-            }
+            const size_t maxSize = getEffectiveMaxFileSize();
+            if (maxSize > 0 && fileSize > maxSize) return fail(SkipReason::TooLarge);
 
             std::ifstream in(fp, std::ios::binary);
-            if (!in) return false;
+            if (!in) return fail(SkipReason::Unreadable);
 
-            // Determine how much to read for binary check
+            // Read header for the binary/encoding decision
             const size_t headerSize = (fileSize < BINARY_CHECK_SIZE)
                 ? static_cast<size_t>(fileSize)
                 : BINARY_CHECK_SIZE;
-
-            // Read header directly into output buffer
-            out.resize(headerSize);
-            in.read(out.data(), headerSize);
+            std::string raw(headerSize, '\0');
+            in.read(raw.data(), static_cast<std::streamsize>(headerSize));
             const std::streamsize headerLen = in.gcount();
+            if (headerLen <= 0 && fileSize > 0) return fail(SkipReason::Unreadable);
+            raw.resize(static_cast<size_t>((std::max)(headerLen, std::streamsize(0))));
 
-            if (headerLen <= 0) {
-                out.clear();
-                return false;
+            const bool binary = shouldSkipAsBinary(raw.data(), raw.size());
+            if (binary && _skipBinaryFiles) return fail(SkipReason::Binary);
+
+            // Append remainder
+            if (fileSize > headerSize) {
+                const size_t offset = raw.size();
+                raw.resize(offset + (static_cast<size_t>(fileSize) - headerSize));
+                in.read(raw.data() + offset, static_cast<std::streamsize>(raw.size() - offset));
+                raw.resize(offset + static_cast<size_t>((std::max)(in.gcount(), std::streamsize(0))));
             }
 
-            // Check if binary using the data already in out
-            if (shouldSkipAsBinary(out.data(), static_cast<size_t>(headerLen)))
-            {
-                out.clear();
-                ++_skippedBinaryCount;
-                return false;
+            if (binary) {
+                // Skip disabled: search the bytes as-is (N++ behavior)
+                content = std::move(raw);
+                kind = LoadKind::RawBytes;
+                return SkipReason::None;
             }
 
-            // Not binary - append remainder if file is larger than header
-            if (fileSize > headerSize)
-            {
-                const size_t remaining = static_cast<size_t>(fileSize) - headerSize;
-                const size_t currentSize = static_cast<size_t>(headerLen);
-                out.resize(currentSize + remaining);
-                in.read(out.data() + currentSize, remaining);
-            }
+            enc = Encoding::detectEncoding(raw.data(), raw.size());
+            std::string u8;
+            if (!Encoding::convertBufferToUtf8(raw.data(), raw.size(), enc, u8))
+                return fail(SkipReason::Undecodable);
 
-            return true;
+            // Replace path: refuse files whose decode would not write back losslessly
+            if (_verifyRoundtrip && !Encoding::verifyLosslessDecode(raw.data(), raw.size(), enc, u8))
+                return fail(SkipReason::Undecodable);
+
+            content = std::move(u8);
+            return SkipReason::None;
         }
         catch (...) {
-            out.clear();
-            return false;
+            content.clear();
+            return fail(SkipReason::Unreadable);
         }
     }
 
-    // Get count of skipped binary files (for status messages)
-    size_t getSkippedBinaryCount() const { return _skippedBinaryCount; }
+    // Skip counters (surfaced in the search summary)
+    size_t getSkippedBinaryCount() const      { return _skippedBinaryCount; }
+    size_t getSkippedLargeCount() const       { return _skippedLargeCount; }
+    size_t getSkippedUnreadableCount() const  { return _skippedUnreadableCount; }
+    size_t getSkippedUndecodableCount() const { return _skippedUndecodableCount; }
+    size_t getSkippedTotalCount() const {
+        return _skippedBinaryCount + _skippedLargeCount
+             + _skippedUnreadableCount + _skippedUndecodableCount;
+    }
 
-    // Get count of skipped large files (for status messages)
-    size_t getSkippedLargeCount() const { return _skippedLargeCount; }
-
-    // Reset the skip counters
     void resetSkipCounters() {
         _skippedBinaryCount = 0;
         _skippedLargeCount = 0;
+        _skippedUnreadableCount = 0;
+        _skippedUndecodableCount = 0;
     }
 
     // ========================================================================
-    // 5) Write file to disk
+    // 5) Write file to disk (atomic: temp file + replace)
     // ========================================================================
 
     bool writeFile(const std::filesystem::path& fp, const std::string& data) const {
-        std::ofstream o(fp, std::ios::binary | std::ios::trunc);
-        if (!o) return false;
-        o.write(data.data(), data.size());
-        return o.good();
+        const std::filesystem::path tmp = fp.wstring() + L".mr_tmp";
+        {
+            std::ofstream o(tmp, std::ios::binary | std::ios::trunc);
+            if (!o) return false;
+            o.write(data.data(), data.size());
+            if (!o.good()) { o.close(); std::error_code ec; std::filesystem::remove(tmp, ec); return false; }
+        }
+
+        // ReplaceFileW keeps attributes/ACLs of the target; MoveFileExW covers new files
+        if (::ReplaceFileW(fp.c_str(), tmp.c_str(), nullptr, 0, nullptr, nullptr))
+            return true;
+        if (::MoveFileExW(tmp.c_str(), fp.c_str(), MOVEFILE_REPLACE_EXISTING))
+            return true;
+
+        std::error_code ec;
+        std::filesystem::remove(tmp, ec);
+        return false;
     }
 
     // ========================================================================
@@ -436,8 +479,10 @@ public:
         }
 
         dbg << L"\n--- Skip Statistics ---\n";
-        dbg << L"  Binary Files: " << _skippedBinaryCount << L"\n";
-        dbg << L"  Large Files:  " << _skippedLargeCount << L"\n";
+        dbg << L"  Binary Files:      " << _skippedBinaryCount << L"\n";
+        dbg << L"  Large Files:       " << _skippedLargeCount << L"\n";
+        dbg << L"  Unreadable Files:  " << _skippedUnreadableCount << L"\n";
+        dbg << L"  Undecodable Files: " << _skippedUndecodableCount << L"\n";
 
         return dbg.str();
     }
@@ -451,18 +496,32 @@ public:
     sptr_t      pData = 0;
 
 private:
+    // Counts the skip and hands the reason back to the caller
+    SkipReason fail(SkipReason reason) {
+        switch (reason) {
+        case SkipReason::Binary:      ++_skippedBinaryCount;      break;
+        case SkipReason::TooLarge:    ++_skippedLargeCount;       break;
+        case SkipReason::Unreadable:  ++_skippedUnreadableCount;  break;
+        case SkipReason::Undecodable: ++_skippedUndecodableCount; break;
+        case SkipReason::None:        break;
+        }
+        return reason;
+    }
+
     std::vector<std::wstring> include_patterns;
     std::vector<std::wstring> exclude_patterns;
     std::vector<std::wstring> exclude_folders;
     std::vector<std::wstring> exclude_folders_recursive;
 
-    // Counter for skipped binary files
+    // Skip counters (per operation; reset in create())
     size_t _skippedBinaryCount = 0;
-
-    // Counter for skipped large files (when limit enabled)
     size_t _skippedLargeCount = 0;
+    size_t _skippedUnreadableCount = 0;
+    size_t _skippedUndecodableCount = 0;
 
-    // Configurable max file size (0 = unlimited)
+    // Configuration
     size_t _maxFileSizeMB = DEFAULT_MAX_FILE_SIZE_MB;
-    bool _limitFileSize = false;  // false = unlimited (default)
+    bool _limitFileSize = false;    // false = unlimited (default)
+    bool _skipBinaryFiles = true;   // true = grep-style binary skip (default)
+    bool _verifyRoundtrip = false;  // true = refuse lossy decodes (Replace in Files)
 };

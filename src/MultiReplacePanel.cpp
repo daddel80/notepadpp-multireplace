@@ -6310,14 +6310,21 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
 
         if (pdis->CtlID == IDC_STATUS_MESSAGE) {
-            wchar_t buffer[256];
-            GetWindowTextW(pdis->hwndItem, buffer, 256);
+            // Read the full text. A fixed buffer would cut mid-word, without an
+            // ellipsis, before DT_END_ELLIPSIS ever gets to fit the text to the
+            // control's current width.
+            const int len = GetWindowTextLengthW(pdis->hwndItem);
+            std::vector<wchar_t> text(static_cast<size_t>((std::max)(len, 0)) + 1, L'\0');
+            if (len > 0) {
+                GetWindowTextW(pdis->hwndItem, text.data(), len + 1);
+            }
 
             SetTextColor(pdis->hDC, _statusMessageColor);
             SetBkMode(pdis->hDC, TRANSPARENT);
 
             RECT textRect = pdis->rcItem;
-            DrawTextW(pdis->hDC, buffer, -1, &textRect, DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            DrawTextW(pdis->hDC, text.data(), -1, &textRect,
+                DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
             return TRUE;
         }
@@ -7769,6 +7776,9 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
     // Read Filename and Path for the formula engine
     updateFilePathCache(explicitPath);
 
+    // File scope (Replace in Files): editor cursor and selection must not leak in
+    const bool fileScope = (explicitPath != nullptr);
+
     int totalReplaceCount = 0;
     bool replaceSuccess = true;
     bool usedOnePass = false;
@@ -7792,12 +7802,12 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
 
         // snapshot a stable start and current selection (only computed once)
         const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-        const bool allFromCursor = allFromCursorEnabled;
+        const bool allFromCursor = !fileScope && allFromCursorEnabled;
 
         SearchContext startCtx{};
         startCtx.docLength = send(SCI_GETLENGTH, 0, 0);
         startCtx.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
-        startCtx.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        startCtx.isSelectionMode = !fileScope && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
         startCtx.useStoredSelections = startCtx.isSelectionMode;
         startCtx.retrieveFoundText = false;
         startCtx.highlightMatch = false;
@@ -7849,7 +7859,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
                         int replaceCount = 0;
 
                         // Call replaceAll and break out if there is an error or a Debug Stop
-                        replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i);
+                        replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i, fileScope);
 
                         // Refresh ListView to show updated statistics
                         refreshUIListView();
@@ -7889,7 +7899,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
 
             ScopedUndoAction undo(*this);
             int findCount = 0;
-            replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount);
+            replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount, SIZE_MAX, fileScope);
 
             send(SCI_SETMODEVENTMASK, savedEventMask, 0);
             _delimiterPositionsStale = true;
@@ -8238,7 +8248,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     return false; // No replacement was made.
 }
 
-bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex)
+bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex, bool fileScope)
 {
     if (itemData.findText.empty() && !itemData.formulaSupport) {
         findCount = replaceCount = 0;
@@ -8256,7 +8266,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.cachedCodepage = documentCodepage;
     context.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
-    context.isSelectionMode = IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED;
+    context.isSelectionMode = !fileScope && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
     context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = itemData.formulaSupport;
     context.highlightMatch = false;
@@ -8265,7 +8275,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
-    Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, allFromCursorEnabled);
+    Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, !fileScope && allFromCursorEnabled);
 
     SearchResult searchResult = performSearchForward(context, startPos);
 
@@ -9033,6 +9043,100 @@ bool MultiReplace::handleBrowseDirectoryButton()
     return true;  // always return TRUE so the dialog proc knows we handled it
 }
 
+// Enumerates candidate files with N++ semantics: hidden FOLDERS are pruned
+// unless includeHidden is set, hidden files are always kept.
+// Returns false when the user canceled or the panel is shutting down.
+bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool includeHidden,
+    HiddenSciGuard& guard, std::vector<std::filesystem::path>& files)
+{
+    namespace fs = std::filesystem;
+    files.clear();
+
+    auto isHiddenDir = [](const fs::path& p) -> bool {
+        const DWORD a = GetFileAttributesW(p.c_str());
+        return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_HIDDEN);
+        };
+
+    auto keepAlive = [this](size_t count) -> bool {
+        MSG m;
+        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
+        if (_isShuttingDown || _isCancelRequested) return false;
+        if ((count & 0x3FF) == 0)
+            showStatusMessage(LM.get(L"status_discovering_files", { std::to_wstring(count) }), MessageStatus::Info);
+        return true;
+        };
+
+    try {
+        size_t seen = 0;
+        if (recurse) {
+            auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
+            for (auto end = fs::recursive_directory_iterator(); it != end; ++it) {
+                if (!keepAlive(++seen)) { showStatusMessage(LM.get(L"status_canceled"), MessageStatus::Info); return false; }
+                if (it->is_directory() && !includeHidden && isHiddenDir(it->path())) {
+                    it.disable_recursion_pending();
+                    continue;
+                }
+                if (it->is_regular_file() && guard.matchPath(it->path())) files.push_back(it->path());
+            }
+        }
+        else {
+            for (auto& e : fs::directory_iterator(dir, fs::directory_options::skip_permission_denied)) {
+                if (!keepAlive(++seen)) { showStatusMessage(LM.get(L"status_canceled"), MessageStatus::Info); return false; }
+                if (e.is_regular_file() && guard.matchPath(e.path())) files.push_back(e.path());
+            }
+        }
+    }
+    catch (const std::exception& ex) {
+        showStatusMessage(LM.get(L"status_error_scanning_directory", { Encoding::utf8ToWString(ex.what()) }), MessageStatus::Error);
+        return false;
+    }
+    catch (...) { return false; }
+
+    return true;
+}
+
+// "38 binary, 2 too large, 1 unreadable" - empty when nothing was skipped.
+std::wstring MultiReplace::buildSkipBreakdown(const HiddenSciGuard& guard) const
+{
+    std::wstring breakdown;
+    auto add = [&](size_t n, const wchar_t* key) {
+        if (n == 0) return;
+        if (!breakdown.empty()) breakdown += L", ";
+        breakdown += std::to_wstring(n) + L" " + LM.get(key);
+        };
+    add(guard.getSkippedBinaryCount(),      L"dock_skip_binary");
+    add(guard.getSkippedLargeCount(),       L"dock_skip_large");
+    add(guard.getSkippedUnreadableCount(),  L"dock_skip_unreadable");
+    add(guard.getSkippedUndecodableCount(), L"dock_skip_undecodable");
+    return breakdown;
+}
+
+// Dock header suffix, appended after "(N hits in M file(s))":
+//   " [7 file(s) searched]"
+//   " [1731 file(s) searched, 41 skipped: 38 binary, 2 too large, 1 unreadable]"
+// searchedCount must already exclude skipped files - they were never searched.
+std::wstring MultiReplace::buildScanSuffix(const HiddenSciGuard& guard, size_t searchedCount) const
+{
+    const size_t skipped = guard.getSkippedTotalCount();
+    std::wstring skipClause;
+    if (skipped > 0) {
+        skipClause = LM.get(L"dock_scan_skipped",
+            { std::to_wstring(skipped), buildSkipBreakdown(guard) });
+    }
+    return LM.get(L"dock_scan_suffix", { std::to_wstring(searchedCount), skipClause });
+}
+
+// Standalone sentence for the status line, appended after the replace summary:
+//   "" when nothing was skipped
+//   " 41 file(s) skipped: 38 binary, 2 too large, 1 unreadable."
+std::wstring MultiReplace::buildSkipSentence(const HiddenSciGuard& guard) const
+{
+    const size_t skipped = guard.getSkippedTotalCount();
+    if (skipped == 0) return std::wstring();
+    return LM.get(L"status_scan_skipped",
+        { std::to_wstring(skipped), buildSkipBreakdown(guard) });
+}
+
 void MultiReplace::handleReplaceInFiles() {
     HiddenSciGuard guard;
     if (!guard.create()) {
@@ -9089,32 +9193,14 @@ void MultiReplace::handleReplaceInFiles() {
     std::wstring guardFilter = wFilter;
     std::replace(guardFilter.begin(), guardFilter.end(), L';', L' ');
     guard.parseFilter(guardFilter);
-
-    // Apply file size limit settings
     guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
     guard.setMaxFileSizeMB(maxFileSizeMB);
+    guard.setSkipBinaryEnabled(skipBinaryFilesEnabled);
+    guard.setVerifyRoundtrip(true);
 
+    _isCancelRequested = false;
     std::vector<std::filesystem::path> files;
-    try {
-        namespace fs = std::filesystem;
-        if (recurse) {
-            for (auto& e : fs::recursive_directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
-                if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
-            }
-        }
-        else {
-            for (auto& e : fs::directory_iterator(wDir, fs::directory_options::skip_permission_denied)) {
-                if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) { files.push_back(e.path()); }
-            }
-        }
-    }
-    catch (const std::exception& ex) {
-        std::wstring wideReason = Encoding::utf8ToWString(ex.what());
-        showStatusMessage(LM.get(L"status_error_scanning_directory", { wideReason }), MessageStatus::Error);
-        return;
-    }
+    if (!collectScanFiles(wDir, recurse, hide, guard, files)) return;
 
     if (files.empty()) {
         MessageBox(_hSelf, LM.getW(L"msgbox_no_files"), LM.getW(L"msgbox_title_confirm"), MB_OK);
@@ -9149,6 +9235,7 @@ void MultiReplace::handleReplaceInFiles() {
     }
 
     int total = static_cast<int>(files.size()), idx = 0, changed = 0;
+    size_t readOnlySkipped = 0;
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
     // Per-file binding guard
@@ -9180,36 +9267,26 @@ void MultiReplace::handleReplaceInFiles() {
         ++idx;
 
         int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
-        std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
-        HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
-        HDC hdc = GetDC(hStatus);
-        HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hStatus, WM_GETFONT, 0, 0));
-        SelectObject(hdc, hFont);
-        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), static_cast<int>(prefix.length()), &sz);
-        RECT rc{}; GetClientRect(hStatus, &rc);
-        int avail = (rc.right - rc.left) - sz.cx;
-        std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
-        ReleaseDC(hStatus, hdc);
-        showStatusMessage(prefix + shortPath, MessageStatus::Info);
-
-        std::string original;
-        if (!guard.loadFile(fp, original)) { continue; }
+        showStatusMessage(buildProgressStatus(
+            L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
+            MessageStatus::Info);
 
         DWORD attrs = GetFileAttributesW(fp.c_str());
-        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { continue; }
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { ++readOnlySkipped; continue; }
 
-        Encoding::DetectOptions dopts;
-        const Encoding::EncodingInfo enc = Encoding::detectEncoding(original.data(), original.size(), dopts);
         std::string u8in;
-        if (!Encoding::convertBufferToUtf8(original.data(), original.size(), enc, u8in)) { continue; }
+        Encoding::EncodingInfo enc;
+        HiddenSciGuard::LoadKind loadKind;
+        if (guard.loadTextFile(fp, u8in, enc, loadKind) != HiddenSciGuard::SkipReason::None) { continue; }
 
         // Bind hidden buffer for the file scope
         {
             SciBindingGuard bind(this, guard);
 
             send(SCI_CLEARALL, 0, 0);
-            send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+            send(SCI_SETCODEPAGE, (loadKind == HiddenSciGuard::LoadKind::RawBytes) ? 0 : SC_CP_UTF8, 0);
             send(SCI_ADDTEXT, (WPARAM)u8in.length(), reinterpret_cast<sptr_t>(u8in.data()));
+            send(SCI_GOTOPOS, 0, 0); // SCI_ADDTEXT leaves the caret at the end; define the scan start
 
             handleDelimiterPositions(DelimiterOperation::LoadAll);
 
@@ -9226,13 +9303,16 @@ void MultiReplace::handleReplaceInFiles() {
                 }
             }
 
-            // Write back only if content changed
+            // Write back only if content changed; RawBytes goes out verbatim
             std::string u8out = guard.getText();
             if (u8out != u8in) {
-                std::string outBytes;
-                if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes)) {
-                    if (guard.writeFile(fp, outBytes)) {
-                        ++changed;
+                if (loadKind == HiddenSciGuard::LoadKind::RawBytes) {
+                    if (guard.writeFile(fp, u8out)) ++changed;
+                }
+                else {
+                    std::string outBytes;
+                    if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes)) {
+                        if (guard.writeFile(fp, outBytes)) ++changed;
                     }
                 }
             }
@@ -9253,8 +9333,19 @@ void MultiReplace::handleReplaceInFiles() {
     if (!_isShuttingDown) {
         const bool wasCanceled = (_isCancelRequested || aborted);
 
+        // The summary's denominator is what was actually searched: every file the
+        // loop reached (idx, which falls short of files.size() when canceled),
+        // minus the read-only files skipped before loading and the guard's skips.
+        const size_t reachedFiles = static_cast<size_t>((std::max)(idx, 0));
+        const size_t notSearched = readOnlySkipped + guard.getSkippedTotalCount();
+        const size_t searchedFiles = (reachedFiles > notSearched) ? (reachedFiles - notSearched) : 0;
+
         std::wstring msg = LM.get(L"status_replace_summary",
-            { std::to_wstring(changed), std::to_wstring(files.size()) });
+            { std::to_wstring(changed), std::to_wstring(searchedFiles) });
+        msg += buildSkipSentence(guard);
+        if (readOnlySkipped > 0) {
+            msg += LM.get(L"status_readonly_skipped", { std::to_wstring(readOnlySkipped) });
+        }
         if (wasCanceled) {
             msg += L" - " + LM.get(L"status_canceled");
         }
@@ -9424,11 +9515,9 @@ void MultiReplace::handleFindAllButton()
                 h.docLine = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, r.pos, 0));
                 h.searchFlags = context.searchFlags;
                 this->trimHitToFirstLine(sciSend, h);
-                if (h.length > 0) {
-                    h.findTextW = item.findText;
-                    h.colorIndex = slotIndex;
-                    rawHits.push_back(std::move(h));
-                }
+                h.findTextW = item.findText;
+                h.colorIndex = slotIndex;
+                rawHits.push_back(std::move(h));
             }
 
             const int hitCnt = static_cast<int>(rawHits.size());
@@ -9476,11 +9565,9 @@ void MultiReplace::handleFindAllButton()
             h.docLine = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, r.pos, 0));
             h.searchFlags = context.searchFlags;
             this->trimHitToFirstLine(sciSend, h);
-            if (h.length > 0) {
-                h.findTextW = findW;
-                h.colorIndex = 0;
-                rawHits.push_back(std::move(h));
-            }
+            h.findTextW = findW;
+            h.colorIndex = 0;
+            rawHits.push_back(std::move(h));
         }
 
         if (!rawHits.empty()) {
@@ -9618,16 +9705,14 @@ void MultiReplace::handleFindAllInDocsButton()
                 h.docLine = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, r.pos, 0));
                 h.searchFlags = ctx.searchFlags;
                 this->trimHitToFirstLine(sciSend, h);
-                if (h.length > 0) {
-                    h.findTextW = replaceListData[critIdx].findText;
-                    if (useListEnabled) {
-                        int slot = static_cast<int>(critIdx);
-                        if (slot >= maxListSlots) slot = maxListSlots - 1;
-                        h.colorIndex = slot;
-                    }
-                    else { h.colorIndex = 0; }
-                    raw.push_back(std::move(h));
+                h.findTextW = patt;
+                if (useListEnabled) {
+                    int slot = static_cast<int>(critIdx);
+                    if (slot >= maxListSlots) slot = maxListSlots - 1;
+                    h.colorIndex = slot;
                 }
+                else { h.colorIndex = 0; }
+                raw.push_back(std::move(h));
             }
             const int hitCnt = static_cast<int>(raw.size());
             if (useListEnabled && critIdx < listHitTotals.size())
@@ -9640,6 +9725,7 @@ void MultiReplace::handleFindAllInDocsButton()
             agg.crits.push_back({ sanitizeSearchPattern(patt), std::move(raw) });
             hitsInFile += hitCnt;
             };
+        // collect() expects the raw find text; labels are sanitized inside.
 
         if (useListEnabled) {
             // Optimized: Re-use clean vector
@@ -9669,7 +9755,7 @@ void MultiReplace::handleFindAllInDocsButton()
                     IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
                     /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
                 sciSend(SCI_SETSEARCHFLAGS, ctx.searchFlags);
-                collect(0, sanitizeSearchPattern(findW), ctx);
+                collect(0, findW, ctx);
             }
         }
 
@@ -9802,25 +9888,11 @@ void MultiReplace::handleFindInFiles() {
     guard.parseFilter(guardFilter);
     guard.setFileSizeLimitEnabled(limitFileSizeEnabled);
     guard.setMaxFileSizeMB(maxFileSizeMB);
+    guard.setSkipBinaryEnabled(skipBinaryFilesEnabled);
 
+    _isCancelRequested = false;
     std::vector<std::filesystem::path> files;
-    try {
-        namespace fs = std::filesystem;
-        auto iterOpts = fs::directory_options::skip_permission_denied;
-        if (recurse) {
-            for (auto& e : fs::recursive_directory_iterator(wDir, iterOpts)) {
-                if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
-            }
-        }
-        else {
-            for (auto& e : fs::directory_iterator(wDir, iterOpts)) {
-                if (_isShuttingDown) return;
-                if (e.is_regular_file() && guard.matchPath(e.path(), hide)) files.push_back(e.path());
-            }
-        }
-    }
-    catch (...) { return; }
+    if (!collectScanFiles(wDir, recurse, hide, guard, files)) return;
 
     if (files.empty()) {
         MessageBox(_hSelf, LM.getW(L"msgbox_no_files"), LM.getW(L"msgbox_title_confirm"), MB_OK);
@@ -9889,43 +9961,19 @@ void MultiReplace::handleFindInFiles() {
         ++idx;
 
         const int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
-        const std::wstring prefix = L"Progress: [" + std::to_wstring(percent) + L"%] ";
-        HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
-        HDC hdc = GetDC(hStatus);
-        HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hStatus, WM_GETFONT, 0, 0));
-        SelectObject(hdc, hFont);
-        SIZE sz{}; GetTextExtentPoint32W(hdc, prefix.c_str(), static_cast<int>(prefix.length()), &sz);
-        RECT rc{}; GetClientRect(hStatus, &rc);
-        const int avail = (rc.right - rc.left) - sz.cx;
-        std::wstring shortPath = getShortenedFilePath(fp.wstring(), avail, hdc);
-        ReleaseDC(hStatus, hdc);
-        showStatusMessage(prefix + shortPath, MessageStatus::Info);
+        showStatusMessage(buildProgressStatus(
+            L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
+            MessageStatus::Info);
 
-        std::string original;
-        if (!guard.loadFile(fp, original)) continue;
-
-        auto isLikelyBinary = [](const std::string& s) -> bool {
-            if (s.find('\0') != std::string::npos) return true;
-            size_t ctrl = 0;
-            for (unsigned char c : s) if ((c < 0x20 && c != '\r' && c != '\n' && c != '\t') || c == 0x7F) ++ctrl;
-            return (s.size() >= 1024 && ctrl > s.size() / 16);
-            };
+        std::string content;
+        Encoding::EncodingInfo enc;
+        HiddenSciGuard::LoadKind loadKind;
+        if (guard.loadTextFile(fp, content, enc, loadKind) != HiddenSciGuard::SkipReason::None) continue;
 
         SciBindingGuard bind(this, guard);
         send(SCI_CLEARALL, 0, 0);
-
-        if (isLikelyBinary(original)) {
-            send(SCI_SETCODEPAGE, 0, 0); // ANSI
-            send(SCI_ADDTEXT, (WPARAM)original.size(), reinterpret_cast<sptr_t>(original.data()));
-        }
-        else {
-            Encoding::DetectOptions dopts;
-            const Encoding::EncodingInfo enc = Encoding::detectEncoding(original.data(), original.size(), dopts);
-            std::string u8;
-            if (!Encoding::convertBufferToUtf8(original.data(), original.size(), enc, u8)) continue;
-            send(SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-            send(SCI_ADDTEXT, (WPARAM)u8.length(), reinterpret_cast<sptr_t>(u8.data()));
-        }
+        send(SCI_SETCODEPAGE, (loadKind == HiddenSciGuard::LoadKind::RawBytes) ? 0 : SC_CP_UTF8, 0);
+        send(SCI_ADDTEXT, (WPARAM)content.size(), reinterpret_cast<sptr_t>(content.data()));
 
         handleDelimiterPositions(DelimiterOperation::LoadAll);
 
@@ -9950,16 +9998,14 @@ void MultiReplace::handleFindInFiles() {
                 h.docLine = static_cast<int>(send(SCI_LINEFROMPOSITION, r.pos, 0));
                 h.searchFlags = ctx.searchFlags;
                 this->trimHitToFirstLine([this](UINT m, WPARAM w, LPARAM l)->LRESULT { return send(m, w, l); }, h);
-                if (h.length > 0) {
-                    h.findTextW = pattW;
-                    if (useListEnabled) {
-                        int slot = static_cast<int>(critIdx);
-                        if (slot >= maxListSlots) slot = maxListSlots - 1;
-                        h.colorIndex = slot;
-                    }
-                    else { h.colorIndex = 0; }
-                    raw.push_back(std::move(h));
+                h.findTextW = pattW;
+                if (useListEnabled) {
+                    int slot = static_cast<int>(critIdx);
+                    if (slot >= maxListSlots) slot = maxListSlots - 1;
+                    h.colorIndex = slot;
                 }
+                else { h.colorIndex = 0; }
+                raw.push_back(std::move(h));
             }
             const int n = static_cast<int>(raw.size());
             if (n == 0) return;
@@ -10017,7 +10063,13 @@ void MultiReplace::handleFindInFiles() {
     dock.ensureCreatedAndVisible(nppData);
     if (ResultDock::purgeEnabled()) dock.clear();
 
-    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
+    // Report what was actually searched: files the loop reached (idx falls short
+    // of files.size() when canceled), minus everything the guard skipped.
+    const size_t reachedFiles = static_cast<size_t>((std::max)(idx, 0));
+    const size_t skippedFiles = guard.getSkippedTotalCount();
+    const size_t searchedFiles = (reachedFiles > skippedFiles) ? (reachedFiles - skippedFiles) : 0;
+
+    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()), buildScanSuffix(guard, searchedFiles));
 
     if (useListEnabled) {
         for (size_t i = 0; i < listHitTotals.size(); ++i) {
@@ -14366,7 +14418,13 @@ std::wstring MultiReplace::buildListEnableStatus() const
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound, bool isTransient)
 {
-    const size_t MAX_DISPLAY_LENGTH = 150;
+    // No display-length limit here on purpose. The status control is owner-drawn
+    // with DT_END_ELLIPSIS, which fits the text to the control's *current* width
+    // on every repaint - and the control grows with the panel. Cutting by
+    // character count would throw away text the control could show once the user
+    // widens the panel, and the loss would be permanent. This bound is only a
+    // guard against a pathological string reaching the control at all.
+    const size_t MAX_MESSAGE_LENGTH = 4096;
 
     // Any non-transient status message disables "Actual Position" tracking
     // User must toggle Highlight off/on to re-enable position display
@@ -14382,8 +14440,8 @@ void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageSta
         }
     }
 
-    if (strMessage.size() > MAX_DISPLAY_LENGTH) {
-        strMessage = strMessage.substr(0, MAX_DISPLAY_LENGTH - 3) + L"...";
+    if (strMessage.size() > MAX_MESSAGE_LENGTH) {
+        strMessage.resize(MAX_MESSAGE_LENGTH);
     }
 
     // Store the TYPE of the message for later theme switches
@@ -14491,6 +14549,34 @@ void MultiReplace::refreshColumnStylesIfNeeded()
     if (isColumnHighlighted) {          // flag is managed by highlight/clear handlers
         initializeColumnStyles();
     }
+}
+
+// "Progress: [ 42%] C:\...\file.txt" for the status line during a file scan.
+// The path is shortened to the width the prefix leaves free in the status
+// control, measured with that control's own font. Shared by the Find in Files
+// and Replace in Files loops.
+std::wstring MultiReplace::buildProgressStatus(const std::wstring& prefix, const std::wstring& path)
+{
+    HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+    if (!hStatus) return prefix + path;
+
+    HDC hdc = GetDC(hStatus);
+    if (!hdc) return prefix + path;
+
+    HFONT hFont = reinterpret_cast<HFONT>(SendMessage(hStatus, WM_GETFONT, 0, 0));
+    HGDIOBJ oldFont = hFont ? SelectObject(hdc, hFont) : nullptr;
+
+    SIZE sz{};
+    GetTextExtentPoint32W(hdc, prefix.c_str(), static_cast<int>(prefix.length()), &sz);
+    RECT rc{};
+    GetClientRect(hStatus, &rc);
+    const int avail = (std::max)(0, (rc.right - rc.left) - static_cast<int>(sz.cx));
+
+    std::wstring shortPath = getShortenedFilePath(path, avail, hdc);
+
+    if (oldFont) SelectObject(hdc, oldFont);
+    ReleaseDC(hStatus, hdc);
+    return prefix + shortPath;
 }
 
 std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC) {
@@ -15970,6 +16056,7 @@ void MultiReplace::loadSettingsToPanelUI() {
 
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = static_cast<size_t>(CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100));
+    skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
 
     // --- Load "Open Documents" panel settings ---
     _docsFilter = CFG.readString(L"OpenDocs", L"Filter", L"*.*");
@@ -19199,6 +19286,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.tabMaxLength = std::clamp(CFG.readInt(optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
+    s.skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
     s.editFieldSize = CFG.readInt(optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     s.resultDockPerEntryColorsEnabled = CFG.readBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", true);
@@ -19227,6 +19315,7 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeInt(optSec(L"TabMaxLength"), L"TabMaxLength", s.tabMaxLength);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
+    CFG.writeBool(L"ReplaceInFiles", L"SkipBinaryFiles", s.skipBinaryFilesEnabled);
     CFG.writeInt(optSec(L"EditFieldSize"), L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
     CFG.writeBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled);
@@ -19399,6 +19488,7 @@ void MultiReplace::syncUIToCache()
     // Replace in Files - only settings-dialog keys remain global
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
+    CFG.writeBool(L"ReplaceInFiles", L"SkipBinaryFiles", skipBinaryFilesEnabled);
 
     // [File]/ListFilePath and [File]/OriginalListHash are no longer
     // written - per-tab equivalents are under [Tabs]. Legacy reads
@@ -19449,6 +19539,7 @@ void MultiReplace::applyConfigSettingsOnly()
     _formulaErrorDialogEnabled = CFG.readBool(L"Engines", L"ShowErrorDialogs", true);
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
+    skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
     pickupSelection = CFG.readBool(optSec(L"PickupSelection"), L"PickupSelection", true);
     autoEscapeForFindInput = CFG.readBool(optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", false);
 

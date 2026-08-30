@@ -130,7 +130,7 @@ public:
     // ------------------- Search Block API ---------------------
     void startSearchBlock(const std::wstring& header, bool  groupView, bool purge);
     void appendFileBlock(FileMap& fm, const SciSendFn& sciSend);
-    void closeSearchBlock(int totalHits, int totalFiles);
+    void closeSearchBlock(int totalHits, int totalFiles, const std::wstring& scanSuffix = L"");
 
     // Incremental insertion helpers (commit per-file immediately)
     void insertFileBlockNow(FileMap& fm, const SciSendFn& sciSend);

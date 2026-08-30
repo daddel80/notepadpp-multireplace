@@ -1,4 +1,4 @@
-// This file is part of the MultiReplace plugin for Notepad++.
+﻿// This file is part of the MultiReplace plugin for Notepad++.
 // Copyright (C) 2023 Thomas Knoefel
 //
 // This program is free software: you can redistribute it and/or modify
@@ -91,6 +91,7 @@ private:
     // Specific Panel Builders
     // -------------------------------------------------------------------------
     void createSearchReplacePanelControls();
+    void createFileSearchPanelControls();
     void createListViewLayoutPanelControls();
     void createAppearancePanelControls();
     void createCsvOptionsPanelControls();
@@ -105,6 +106,7 @@ private:
     HWND _hResetButton = nullptr;
 
     HWND _hSearchReplacePanel = nullptr;
+    HWND _hFileSearchPanel = nullptr;
     HWND _hListViewLayoutPanel = nullptr;
     HWND _hAppearancePanel = nullptr;
     HWND _hCsvFlowTabsPanel = nullptr;

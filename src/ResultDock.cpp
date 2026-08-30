@@ -462,7 +462,7 @@ void ResultDock::appendFileBlock(FileMap& fm, const SciSendFn& sciSend)
 // -----------------------------------------------------------
 //  3. finalise header, insert block, restyle
 // -----------------------------------------------------------
-void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
+void ResultDock::closeSearchBlock(int totalHits, int totalFiles, const std::wstring& scanSuffix)
 {
     if (!_blockOpen) return;
 
@@ -537,6 +537,16 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles)
         const ptrdiff_t newLen = static_cast<ptrdiff_t>(hitsStr.size());
         _pendingText.replace(p1Start, p1End - p1Start, hitsStr);
         deltaBytes += (newLen - oldLen);
+    }
+
+    // Append scan statistics AFTER the digit patching so the placeholder
+    // scan above never picks up numbers from the suffix.
+    if (!scanSuffix.empty()) {
+        const std::string sufU8 = Encoding::wstringToUtf8(scanSuffix);
+        const size_t hdrEnd = _pendingText.find("\r\n");
+        const size_t insertAt = (hdrEnd != std::string::npos) ? hdrEnd : _pendingText.size();
+        _pendingText.insert(insertAt, sufU8);
+        deltaBytes += static_cast<ptrdiff_t>(sufU8.size());
     }
 
     // Adjust hit offsets if the patched header changed length.

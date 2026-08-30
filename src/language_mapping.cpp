@@ -192,6 +192,9 @@ const LangKV kEnglishPairs[] = {
 { L"status_tandem_disabled", L"Tandem mode disabled." },
 { L"status_occurrences_found", L"$REPLACE_STRING occurrences found." },
 { L"status_canceled", L"Canceled" },
+{ L"status_discovering_files", L"Discovering files... ($REPLACE_STRING)" },
+{ L"status_readonly_skipped", L" $REPLACE_STRING read-only file(s) skipped." },
+{ L"status_scan_skipped", L" $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2." },
 { L"status_no_delimiters", L"No delimiters found." },
 { L"status_model_build_failed", L"Flow Tabs: model build failed." },
 { L"status_padding_insert_failed", L"Flow Tabs: insert failed." },
@@ -330,6 +333,12 @@ const LangKV kEnglishPairs[] = {
 
 { L"dock_list_header", L"Search in List ($REPLACE_STRING1 hits in $REPLACE_STRING2 file(s))" },
 { L"dock_single_header", L"Search \"$REPLACE_STRING1\" ($REPLACE_STRING2 hits in $REPLACE_STRING3 file(s))" },
+{ L"dock_scan_suffix", L" [$REPLACE_STRING1 file(s) searched$REPLACE_STRING2]" },
+{ L"dock_scan_skipped", L", $REPLACE_STRING1 skipped: $REPLACE_STRING2" },
+{ L"dock_skip_binary", L"binary" },
+{ L"dock_skip_large", L"too large" },
+{ L"dock_skip_unreadable", L"unreadable" },
+{ L"dock_skip_undecodable", L"not decodable" },
 { L"dock_crit_header",L"Search \"$REPLACE_STRING1\" ($REPLACE_STRING2 hits)" },
 { L"dock_hits_suffix", L"($REPLACE_STRING hits)" },
 { L"dock_line", L"Line" },
@@ -353,7 +362,10 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_show_formula_errors", L"Show formula error dialogs" },
 
 // File size limit
-{ L"config_chk_limit_filesize", L"File Search: Skip files larger than" },
+{ L"config_chk_limit_filesize", L"Skip files larger than" },
+{ L"config_chk_skip_binary", L"Skip binary files" },
+{ L"config_cat_file_search", L"File Search" },
+{ L"config_grp_file_handling", L"File handling" },
 { L"config_lbl_max_filesize_mb", L"MB" },
 
 // Find Input from Selection

@@ -16,8 +16,10 @@
 
 #include "Encoding.h"
 #include <algorithm>
+#include <climits>
 #include <cstring>
 #include <windows.h>
+#pragma comment(lib, "Advapi32.lib") // IsTextUnicode
 
 namespace Encoding {
 
@@ -201,6 +203,18 @@ namespace Encoding {
             return ei;
         }
 
+        // UTF-16 LE without BOM: same pre-checks and probe as N++ (Utf8_16_Read::determineEncoding).
+        // BE without BOM is deliberately not detected, matching N++.
+        if (opt.enableUtf16NoBomLE && len > 1 && (len % 2) == 0 && p[0] != 0 && p[1] == 0) {
+            INT uniTest = IS_TEXT_UNICODE_STATISTICS;
+            const int probeLen = static_cast<int>((std::min)(len, static_cast<size_t>(64 * 1024)));
+            if (::IsTextUnicode(data, probeLen, &uniTest)) {
+                ei.kind = Kind::UTF16LE;
+                ei.withBOM = false; ei.bomBytes = 0;
+                return ei;
+            }
+        }
+
         // UTF-8 (no BOM)
         if (opt.preferUtf8NoBOM && isValidUtf8(data, len)) {
             ei.kind = Kind::UTF8;
@@ -299,6 +313,7 @@ namespace Encoding {
     bool convertBufferToUtf8(const char* data, size_t len, const EncodingInfo& src, std::string& outUtf8) {
         outUtf8.clear();
         if (!data || len == 0) return true;
+        if (len > static_cast<size_t>(INT_MAX)) return false; // Win32 converters take int lengths
 
         // Skip BOM bytes if present
         if (src.bomBytes > 0 && static_cast<size_t>(src.bomBytes) <= len) {
@@ -381,6 +396,12 @@ namespace Encoding {
             outBytes.append(mbs);
             return true;
         }
+    }
+
+    bool verifyLosslessDecode(const char* data, size_t len, const EncodingInfo& src, const std::string& u8) {
+        std::string back;
+        if (!convertUtf8ToOriginal(u8, src, back)) return false;
+        return back.size() == len && std::memcmp(back.data(), data, len) == 0;
     }
 
 } // namespace Encoding

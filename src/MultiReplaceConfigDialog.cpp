@@ -69,10 +69,13 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_STAY_AFTER_REPLACE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, stayAfterReplaceEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_ALL_FROM_CURSOR, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, allFromCursorEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_MUTE_SOUNDS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, muteSounds), 0, 0 });
-    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, limitFileSizeEnabled), 0, 0 });
-    _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, maxFileSizeMB), 1, 10000 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_PICKUP_SELECTION, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, pickupSelection), 0, 0 });
     _bindings.push_back(Binding{ &_hSearchReplacePanel, IDC_CFG_AUTO_ESCAPE_FIND, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, autoEscapeForFindInput), 0, 0 });
+
+    // File Search
+    _bindings.push_back(Binding{ &_hFileSearchPanel, IDC_CFG_LIMIT_FILESIZE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, limitFileSizeEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hFileSearchPanel, IDC_CFG_MAX_FILESIZE_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, maxFileSizeMB), 1, 10000 });
+    _bindings.push_back(Binding{ &_hFileSearchPanel, IDC_CFG_SKIP_BINARY, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, skipBinaryFilesEnabled), 0, 0 });
 }
 
 void MultiReplaceConfigDialog::applyBindingsToUI_Generic(void* settingsPtr)
@@ -167,6 +170,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         int currentSel = static_cast<int>(SendMessage(_hCategoryList, LB_GETCURSEL, 0, 0));
         SendMessage(_hCategoryList, LB_RESETCONTENT, 0, 0);
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_search_replace")));
+        SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_file_search")));
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_list_view")));
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_csv")));
         SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_report")));
@@ -193,12 +197,16 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_ALL_FROM_CURSOR,         L"config_chk_all_from_cursor",     386, 18 },
         { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds",         386, 18 },
         { IDC_CFG_SHOW_FORMULA_ERRORS,     L"config_chk_show_formula_errors", 386, 18 },
-        { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
 
         // Find Input from Selection group
         { IDC_CFG_GRP_FIND_INPUT,          L"config_grp_find_input",            0,  0 },
         { IDC_CFG_PICKUP_SELECTION,        L"config_chk_pickup_selection",    416, 18 },
         { IDC_CFG_AUTO_ESCAPE_FIND,        L"config_chk_auto_escape_find",    416, 18 },
+
+        // File Search Panel: groupW=460, innerWidth=460-34=426
+        { IDC_CFG_GRP_FILE_SEARCH,         L"config_grp_file_handling",       0, 0 },
+        { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
+        { IDC_CFG_SKIP_BINARY,             L"config_chk_skip_binary",         386, 18 },
 
         // List View Panel - List Behavior: groupW=460, innerWidth=460-44=416
         { IDC_CFG_GRP_LIST_BEHAVIOR,       L"config_grp_list_behavior",       0, 0 },
@@ -236,7 +244,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
     };
 
     // Update all panel controls
-    HWND panels[] = { _hSearchReplacePanel, _hListViewLayoutPanel, _hCsvFlowTabsPanel, _hAppearancePanel, _hReportPanel };
+    HWND panels[] = { _hSearchReplacePanel, _hFileSearchPanel, _hListViewLayoutPanel, _hCsvFlowTabsPanel, _hAppearancePanel, _hReportPanel };
 
     for (const auto& mapping : kConfigMappings) {
         for (HWND panel : panels) {
@@ -339,6 +347,7 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hFileSearchPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
@@ -489,10 +498,11 @@ void MultiReplaceConfigDialog::showCategory(int index) {
     if (index < 0 || index > 4) return;
     _currentCategory = index;
     ShowWindow(_hSearchReplacePanel, index == 0 ? SW_SHOW : SW_HIDE);
-    ShowWindow(_hListViewLayoutPanel, index == 1 ? SW_SHOW : SW_HIDE);
-    ShowWindow(_hCsvFlowTabsPanel, index == 2 ? SW_SHOW : SW_HIDE);
-    ShowWindow(_hReportPanel, index == 3 ? SW_SHOW : SW_HIDE);
-    ShowWindow(_hAppearancePanel, index == 4 ? SW_SHOW : SW_HIDE);
+    ShowWindow(_hFileSearchPanel, index == 1 ? SW_SHOW : SW_HIDE);
+    ShowWindow(_hListViewLayoutPanel, index == 2 ? SW_SHOW : SW_HIDE);
+    ShowWindow(_hCsvFlowTabsPanel, index == 3 ? SW_SHOW : SW_HIDE);
+    ShowWindow(_hReportPanel, index == 4 ? SW_SHOW : SW_HIDE);
+    ShowWindow(_hAppearancePanel, index == 5 ? SW_SHOW : SW_HIDE);
 }
 
 void MultiReplaceConfigDialog::createUI() {
@@ -500,12 +510,14 @@ void MultiReplaceConfigDialog::createUI() {
     _hCloseButton = ::CreateWindowEx(0, WC_BUTTON, LM.getLPCW(L"config_btn_close"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 0, 0, _hSelf, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDCANCEL)), _hInst, nullptr);
     _hResetButton = ::CreateWindowEx(0, WC_BUTTON, LM.getLPCW(L"config_btn_reset"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 0, 0, _hSelf, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BTN_RESET)), _hInst, nullptr);
     _hSearchReplacePanel = createPanel();
+    _hFileSearchPanel = createPanel();
     _hListViewLayoutPanel = createPanel();
     _hCsvFlowTabsPanel = createPanel();
     _hAppearancePanel = createPanel();
     _hReportPanel = createPanel();
 
     createSearchReplacePanelControls();
+    createFileSearchPanelControls();
     createListViewLayoutPanelControls();
     createCsvOptionsPanelControls();
     createAppearancePanelControls();
@@ -514,6 +526,7 @@ void MultiReplaceConfigDialog::createUI() {
 
 void MultiReplaceConfigDialog::initUI() {
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_search_replace")));
+    SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_file_search")));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_list_view")));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_csv")));
     SendMessage(_hCategoryList, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getLPCW(L"config_cat_report")));
@@ -630,6 +643,7 @@ void MultiReplaceConfigDialog::resizeUI() {
     MoveWindow(_hResetButton, resetX, buttonY, resetButtonWidth, buttonHeight, TRUE);
 
     MoveWindow(_hSearchReplacePanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
+    MoveWindow(_hFileSearchPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hListViewLayoutPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hCsvFlowTabsPanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
     MoveWindow(_hAppearancePanel, panelLeft, contentTop, panelWidth, panelHeight, TRUE);
@@ -747,7 +761,7 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     const int left = 70;
     int y = 20;
 
-    createGroupBox(_hSearchReplacePanel, left, y, groupW, 186, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
+    createGroupBox(_hSearchReplacePanel, left, y, groupW, 160, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
 
     int innerLeft = left + 22;
     int innerTop = y + 35;
@@ -759,20 +773,8 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     lb.AddCheckbox(IDC_CFG_MUTE_SOUNDS, LM.getLPCW(L"config_chk_mute_sounds"));
     lb.AddCheckbox(IDC_CFG_SHOW_FORMULA_ERRORS, LM.getLPCW(L"config_chk_show_formula_errors"));
 
-    // File size limit: Checkbox + Edit + "MB" label
-    HWND hChkLimit = createCheckBox(_hSearchReplacePanel, innerLeft, lb.y, 260, IDC_CFG_LIMIT_FILESIZE, LM.getLPCW(L"config_chk_limit_filesize"));
-    lb.y += lb.stepY;
-
-    // Subclass the checkbox to notify dialog on click
-    if (hChkLimit) {
-        ::SetWindowSubclass(hChkLimit, CheckboxSubclassProc, 0, reinterpret_cast<DWORD_PTR>(_hSelf));
-    }
-
-    lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 45, 20);
-    createStaticText(_hSearchReplacePanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, LM.getLPCW(L"config_lbl_max_filesize_mb"));
-
     // Second group: Find input from selection
-    const int findInputY = y + 186 + 14;
+    const int findInputY = y + 160 + 14;
     const int findInputH = 94;
     createGroupBox(_hSearchReplacePanel, left, findInputY, groupW, findInputH,
         IDC_CFG_GRP_FIND_INPUT, LM.getLPCW(L"config_grp_find_input"));
@@ -784,6 +786,34 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
         fi.AddCheckbox(IDC_CFG_PICKUP_SELECTION, LM.getLPCW(L"config_chk_pickup_selection"));
         fi.AddCheckbox(IDC_CFG_AUTO_ESCAPE_FIND, LM.getLPCW(L"config_chk_auto_escape_find"));
     }
+}
+
+void MultiReplaceConfigDialog::createFileSearchPanelControls() {
+    if (!_hFileSearchPanel) return;
+    const int groupW = 460;
+    const int left = 70;
+    int y = 20;
+
+    createGroupBox(_hFileSearchPanel, left, y, groupW, 120, IDC_CFG_GRP_FILE_SEARCH, LM.getLPCW(L"config_grp_file_handling"));
+
+    int innerLeft = left + 22;
+    int innerTop = y + 35;
+    int innerWidth = groupW - 34;
+
+    LayoutBuilder lb(this, _hFileSearchPanel, innerLeft, innerTop, innerWidth, 26);
+
+    // File size limit: Checkbox + Edit + "MB" label
+    HWND hChkLimit = createCheckBox(_hFileSearchPanel, innerLeft, lb.y, 260, IDC_CFG_LIMIT_FILESIZE, LM.getLPCW(L"config_chk_limit_filesize"));
+    lb.y += lb.stepY;
+
+    // Subclass the checkbox to notify dialog on click
+    if (hChkLimit) {
+        ::SetWindowSubclass(hChkLimit, CheckboxSubclassProc, 0, reinterpret_cast<DWORD_PTR>(_hSelf));
+    }
+
+    lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 45, 20);
+    createStaticText(_hFileSearchPanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, LM.getLPCW(L"config_lbl_max_filesize_mb"));
+    lb.AddCheckbox(IDC_CFG_SKIP_BINARY, LM.getLPCW(L"config_chk_skip_binary"));
 }
 
 HWND MultiReplaceConfigDialog::createPanel() {
@@ -1005,6 +1035,7 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.keepListVisible = CFG.readBool(MultiReplace::optSec(L"KeepListVisible"), L"KeepListVisible", false);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
+    s.skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
     s.editFieldSize = CFG.readInt(MultiReplace::optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     s.tabMaxLength = std::clamp(CFG.readInt(MultiReplace::optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
@@ -1051,8 +1082,8 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
 
     // Enable/Disable file size edit based on checkbox state
     if (_hSearchReplacePanel) {
-        BOOL checked = (::IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
-        ::EnableWindow(::GetDlgItem(_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
+        BOOL checked = (::IsDlgButtonChecked(_hFileSearchPanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
+        ::EnableWindow(::GetDlgItem(_hFileSearchPanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
 
         // Engine-level toggles live outside the Settings struct (analog to
         // _luaSafeModeEnabled), so they're read directly from the cache.
@@ -1175,6 +1206,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hFileSearchPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
@@ -1204,6 +1236,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.muteSounds = false;
     def.limitFileSizeEnabled = false;
     def.maxFileSizeMB = 100;
+    def.skipBinaryFilesEnabled = true;
     def.highlightMatchEnabled = true;
     def.doubleClickEditsEnabled = true;
     def.isHoverTextEnabled = true;
@@ -1273,10 +1306,11 @@ void MultiReplaceConfigDialog::resetToDefaults()
         createFonts();
         applyFonts();
         resizeUI();
-
+        
         WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+        SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hFileSearchPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
         SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
@@ -1356,8 +1390,8 @@ void MultiReplaceConfigDialog::onThemeChanged() {
     }
 
     if (_hSearchReplacePanel) {
-        BOOL checked = (::IsDlgButtonChecked(_hSearchReplacePanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
-        ::EnableWindow(::GetDlgItem(_hSearchReplacePanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
+        BOOL checked = (::IsDlgButtonChecked(_hFileSearchPanel, IDC_CFG_LIMIT_FILESIZE) == BST_CHECKED);
+        ::EnableWindow(::GetDlgItem(_hFileSearchPanel, IDC_CFG_MAX_FILESIZE_EDIT), checked);
 
         CheckDlgButton(_hSearchReplacePanel, IDC_CFG_SHOW_FORMULA_ERRORS,
             savedShowFormulaErrors ? BST_CHECKED : BST_UNCHECKED);
@@ -1369,6 +1403,7 @@ void MultiReplaceConfigDialog::onThemeChanged() {
     WPARAM mode = static_cast<WPARAM>(NppDarkMode::dmfInit);
     SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSelf));
     SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hSearchReplacePanel));
+    SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hFileSearchPanel));
     SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hListViewLayoutPanel));
     SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hAppearancePanel));
     SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, mode, reinterpret_cast<LPARAM>(_hCsvFlowTabsPanel));
@@ -1384,6 +1419,7 @@ void MultiReplaceConfigDialog::applyInternalTheme() {
 
     HWND panels[] = {
         _hSearchReplacePanel,
+        _hFileSearchPanel,
         _hListViewLayoutPanel,
         _hCsvFlowTabsPanel,
         _hAppearancePanel,

@@ -59,6 +59,8 @@
 // Windows
 #include <commctrl.h>
 
+class HiddenSciGuard;
+
 extern NppData nppData;
 
 enum class DelimiterOperation { LoadAll, Update };
@@ -667,6 +669,7 @@ public:
         int  tabMaxLength;
         bool limitFileSizeEnabled;
         int  maxFileSizeMB;
+        bool skipBinaryFilesEnabled;
         int  editFieldSize;
         int  csvHeaderLinesCount;
         bool resultDockPerEntryColorsEnabled;
@@ -1076,6 +1079,7 @@ private:
     inline static bool flowTabsIntroDontShowEnabled = false;
     inline static bool flowTabsNumericAlignEnabled = true;
     inline static bool limitFileSizeEnabled = false;
+    inline static bool skipBinaryFilesEnabled = true;
     inline static bool resultDockPerEntryColorsEnabled = true;  // Per-entry background colors in ResultDock
     inline static bool useListColorsForMarking = true;          // Use different colors per list entry when marking
     inline static size_t maxFileSizeMB = 100;
@@ -1286,7 +1290,7 @@ private:
     bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1);
-    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX);
+    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX, bool fileScope = false);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     void updateLineDelimiterAfterReplace(Sci_Position pos);
@@ -1347,6 +1351,13 @@ private:
     bool selectDirectoryDialog(HWND owner, std::wstring& outPath);
     bool handleBrowseDirectoryButton();
     void handleReplaceInFiles();
+    bool collectScanFiles(const std::wstring& dir, bool recurse, bool includeHidden,
+        HiddenSciGuard& guard, std::vector<std::filesystem::path>& files);
+    // Scan reporting. "searched" always means files whose content was actually
+    // loaded and searched - skipped files are never counted as searched.
+    std::wstring buildSkipBreakdown(const HiddenSciGuard& guard) const;
+    std::wstring buildScanSuffix(const HiddenSciGuard& guard, size_t searchedCount) const;
+    std::wstring buildSkipSentence(const HiddenSciGuard& guard) const;
 
 #pragma endregion
 
@@ -1472,6 +1483,7 @@ private:
     void applyThemePalette();
     void refreshColumnStylesIfNeeded();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
+    std::wstring buildProgressStatus(const std::wstring& prefix, const std::wstring& path);
     std::wstring getSelectedText();
     std::wstring escapeForExtendedMode(const std::wstring& s);
     std::wstring escapeForRegexMode(const std::wstring& s);

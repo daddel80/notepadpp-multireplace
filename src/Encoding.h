@@ -40,6 +40,7 @@ namespace Encoding {
 
     struct DetectOptions {
         bool  preferUtf8NoBOM = true;       // treat valid UTF-8 (no BOM) as UTF-8
+        bool  enableUtf16NoBomLE = true;    // detect UTF-16 LE without BOM (N++ heuristic)
         bool  enableAutoCJK = true;      // probe CJK codepages on ANSI fallback
         std::vector<UINT> extraAnsiCandidates{}; // user-provided extra candidates (e.g., 1250)
         double asciiQuickPathThreshold = 0.98;   // skip probing if mostly ASCII
@@ -75,5 +76,8 @@ namespace Encoding {
     // ---------- Buffer conversions with BOM handling ----------
     bool convertBufferToUtf8(const char* data, size_t len, const EncodingInfo& src, std::string& outUtf8);
     bool convertUtf8ToOriginal(const std::string& u8, const EncodingInfo& dst, std::string& outBytes);
+
+    // True when re-encoding u8 reproduces the original bytes exactly (no best-fit/U+FFFD loss).
+    bool verifyLosslessDecode(const char* data, size_t len, const EncodingInfo& src, const std::string& u8);
 
 } // namespace Encoding

@@ -370,14 +370,20 @@ Control the behavior of search operations and cursor movement.
 - **Replace: Don't move to the following occurrence** — If checked, the cursor remains on the current match after clicking "Replace". If unchecked, it automatically jumps to the next match (standard behavior).
 - **Find: Search from cursor position** — If checked,  "Find All", "Replace All", and "Mark" start from the current cursor position. If unchecked, operations always process the entire defined scope.
 - **Mute all sounds** — Disables the notification sound (beep) when a search yields no results. The window will still flash visually to indicate "not found".
-- **File Search: Skip files larger than** — Defines a maximum size (in MB) for **Find/Replace in Files**. Skips larger files to ensure responsiveness and prevent high memory usage.
-
 **Find input from selection** — Controls how the editor selection is brought into the **Find what** field. See [Filling the Find Field from Selection](#filling-the-find-field-from-selection) for the full workflow.
 
 - **Fill Find field with selected text on activation** — When enabled, the current Scintilla selection is copied into the **Find what** field when MultiReplace becomes visible, and whenever the **Ctrl+Shift+H** hotkey is pressed (regardless of focus).
 - **Auto-escape special characters for active search mode** — When enabled, the picked-up text is automatically escaped to match the active search mode literally. In **Regex** mode, metacharacters like `(`, `)`, `.`, `+`, `?` are prefixed with `\`, tabs become `\t`, and any line ending (CR, LF, or CRLF) becomes `\R` (matches any newline sequence). In **Extended** mode, line breaks and tabs are converted to `\n`, `\r`, `\t`. In **Normal** mode no transformation is applied.
 
-### 2. List View and Layout
+### 2. File Search
+Settings for **Find/Replace in Files**.
+
+- **Skip files larger than** — Defines a maximum size (in MB). Skips larger files to ensure responsiveness and prevent high memory usage.
+- **Skip binary files** — Enabled by default: files containing NUL bytes in their first 8 KB (and no text signature) are skipped, the same approach ripgrep and VS Code use. Disable it to search every file as raw bytes, matching the behavior of the native Notepad++ *Find in Files*. Either way the outcome is reported, and skipped files never count as searched: *Find in Files* appends `[1731 file(s) searched, 41 skipped: 38 binary, 2 too large, 1 unreadable]` to the result header, and *Replace in Files* states it in the status line as `3 of 1731 file(s) modified. 41 file(s) skipped: 38 binary, 2 too large, 1 unreadable.` so counts are always accountable.
+
+**Notes** — *Find/Replace in Files* detects UTF-8 (with/without BOM), UTF-16 LE/BE with BOM and UTF-16 LE without BOM (same heuristic as Notepad++); the filter and hidden-folder handling follow Notepad++ semantics: patterns match like the native *Find in Files* filter, hidden **folders** are only entered when "In hidden folders" is checked, while hidden files inside scanned folders are always included. Scans always run over the whole file, independent of the cursor-related options above. *Replace in Files* additionally verifies that a file's encoding round-trips losslessly before touching it and writes results atomically (temp file + replace), so a canceled run or full disk never leaves a half-written file.
+
+### 3. List View and Layout
 Manage the visual elements and behavior of the replacement list to save screen space or increase information density.
 
 - **Visible Columns:**
@@ -396,7 +402,7 @@ Manage the visual elements and behavior of the replacement list to save screen s
   - **Expanded edit height (lines)** — Defines how many lines the in-place edit box expands to when modifying multiline text (Range: 2–20).
   - **Keep list always visible** — When enabled, toggling the list off no longer collapses it. The list stays visible and is dimmed instead, so you can keep using it as a reference while working with the single input fields. See [List Toggling](#list-toggling) for details.
 
-### 3. CSV Options
+### 4. CSV Options
 Settings specific to the CSV column manipulation and alignment features.
 
 - **Flow Tabs: Right-align numeric columns** — When using the **Flow Tabs** feature (Column Alignment), numeric values will be right-aligned within their columns for better readability. Text remains left-aligned.
@@ -404,7 +410,7 @@ Settings specific to the CSV column manipulation and alignment features.
 - **CSV: Header lines to exclude** — Number of header rows protected from sort, duplicate detection, and find/replace. Set to `0` to disable.
 - **Mark duplicate rows with bookmarks** — Places Notepad++ bookmarks on duplicate lines for navigation (F2 / Shift+F2). Clears existing bookmarks when active.
 
-### 4. Copy Report
+### 5. Copy Report
 Copies a report of the whole list to the clipboard via **Copy Report** from the context menu. The report always covers the entire list (selection is ignored) and is meant for spreadsheets; to copy entries back into MultiReplace use **Copy** instead.
 
 - **Template** — Defines the output format using placeholders. Available placeholders:
@@ -422,7 +428,7 @@ Copies a report of the whole list to the clipboard via **Copy Report** from the 
 
 Fields are always quoted in Excel-compatible CSV style (embedded `"` doubled, real newlines kept inside the quoted field), so the report pastes straight into a spreadsheet. This is a one-way report for spreadsheets; to copy entries back into MultiReplace use the context-menu **Copy** instead.
 
-### 5. Appearance
+### 6. Appearance
 Customize the look and feel of the plugin window.
 
 - **Interface:**
