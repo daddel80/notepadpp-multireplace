@@ -51,20 +51,14 @@ namespace StringUtils {
     // is returned verbatim. No backslash handling.
     std::wstring rfcUnquote(const std::wstring& value);
 
-    // Newline convention bridge for the plain "CSV (Excel)" dialect. MR
-    // keeps real line breaks internally as CRLF; plain CSV stores them as
-    // a bare LF (Excel convention). These two convert between the worlds
-    // at the file edge and are exact inverses for the CRLF case:
-    //
-    //   toCrlf  (on read):  bare \n -> \r\n ; \r\n stays ; lone \r stays
-    //   forPlainCsv (write): \r\n -> bare \n ; lone \n -> literal "\n"
-    //                        text ; lone \r stays
-    //
-    // A lone \n only exists in the model when pasted in directly (never
-    // from an Excel load, which produces \r\n), so on write it is treated
-    // as foreign content and literalized so it cannot split a CSV row.
-    // A lone \r is silent in both Excel and Scintilla and is passed
-    // through untouched. Tabs and other control characters need no rule.
+    // Newline bridge for the plain "CSV (Excel)" dialect. MR keeps line
+    // breaks as CRLF internally; plain CSV stores bare LF (Excel). Exact
+    // inverses for the CRLF case:
+    //   toCrlf  (read):      bare \n -> \r\n ; \r\n stays ; lone \r stays
+    //   forPlainCsv (write): \r\n -> bare \n ; lone \n -> literal "\n" ;
+    //                        lone \r stays
+    // A lone \n can only enter by direct paste (never from an Excel load),
+    // so on write it is literalized so it cannot split a CSV row.
     std::wstring newlinesToCrlf(const std::wstring& value);
     std::wstring newlinesForPlainCsv(const std::wstring& value);
 
@@ -84,13 +78,11 @@ namespace StringUtils {
 
     std::wstring trim(const std::wstring& str);
 
-    // Split a file filter into its patterns. Semicolon is the ONLY separator,
-    // so a pattern may contain spaces ("my report.txt"); spaces around a
-    // separator are trimmed and empty patterns are dropped. Shared by the
-    // Find/Replace in Files filter (HiddenSciGuard::parseFilter) and the
-    // open-documents filter (MultiReplace::matchesDocFilter) so both dialects
-    // stay identical - splitting on whitespace instead would make any pattern
-    // containing a space impossible to express.
+    // Split a file filter into patterns. Semicolon is the ONLY separator,
+    // so patterns may contain spaces ("my report.txt"); whitespace around
+    // separators is trimmed, empty patterns dropped. Shared by the Files
+    // filter (HiddenSciGuard::parseFilter) and the open-docs filter
+    // (MultiReplace::matchesDocFilter) so both dialects stay identical.
     std::vector<std::wstring> splitFilterPatterns(const std::wstring& filter);
 
     // Escape control characters for debug display (makes \n, \r, \t visible)

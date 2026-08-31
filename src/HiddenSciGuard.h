@@ -326,34 +326,16 @@ public:
             }
 
             if (binary) {
-                // Skip disabled: search the bytes as-is (N++ behavior). The
-                // content itself is NEVER decoded or transformed here - this
-                // only decides which codepage the caller binds the hidden
-                // buffer to, for correctly encoding the search/replace text
-                // and rendering dock hit lines.
-                //
-                // isValidUtf8 is a strict structural parser (overlong
-                // encodings, surrogate halves, >U+10FFFF, truncated
-                // continuation bytes all rejected) - not a statistical guess
-                // like IsTextUnicode. Run over the FULL content (already
-                // fully read at this point, no extra I/O), so a text header
-                // with a genuinely non-UTF8 tail cannot pass. Real binary
-                // content (executables, archives, images) essentially never
-                // validates end-to-end: a single stray high byte outside a
-                // legal continuation pattern anywhere in the file is enough
-                // to fail it, and high-entropy binary data is thick with
-                // those. A false "yes" changes only which codepage a search
-                // pattern is encoded in and how dock lines render - it can
-                // never corrupt the bytes on screen or on disk, since the
-                // buffer content and the write-back path (guard.getText()
-                // written verbatim) are untouched by this classification.
-                //
-                // This deliberately does NOT call detectEncoding: that
-                // detector's CJK autodetection and UTF-16 statistical probe
-                // are tuned for "text file, unusual encoding", not for
-                // content already flagged as binary-like. Feeding it noisy,
-                // partly-binary input risks a confidently wrong codepage
-                // instead of today's honest "unknown, use system default".
+                // Skip disabled: search the bytes as-is (N++ behavior).
+                // This only picks the codepage the hidden buffer is bound
+                // to (pattern encoding + dock rendering); the content is
+                // never decoded or transformed. isValidUtf8 is a strict
+                // structural parser over the FULL content - genuine binary
+                // essentially never validates, and a false "yes" could only
+                // mis-encode the search pattern, never corrupt buffer or
+                // disk (write-back stays verbatim). Deliberately NOT
+                // detectEncoding: its CJK/UTF-16 heuristics are tuned for
+                // text files and would guess confidently wrong here.
                 if (Encoding::isValidUtf8(raw.data(), raw.size())) {
                     enc.kind = Encoding::Kind::UTF8;
                     enc.withBOM = false;

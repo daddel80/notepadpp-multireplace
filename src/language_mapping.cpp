@@ -194,6 +194,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_canceled", L"Canceled" },
 { L"status_discovering_files", L"Discovering files... ($REPLACE_STRING)" },
 { L"status_readonly_skipped", L" $REPLACE_STRING read-only file(s) skipped." },
+{ L"status_open_unsaved_skipped", L" $REPLACE_STRING file(s) skipped: open in Notepad++ with unsaved changes." },
 { L"status_scan_skipped", L" $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2." },
 { L"status_docs_filtered", L" $REPLACE_STRING1 document(s) searched, $REPLACE_STRING2 excluded by filter." },
 { L"status_no_delimiters", L"No delimiters found." },

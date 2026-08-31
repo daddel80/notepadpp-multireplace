@@ -48,14 +48,9 @@ public:
 
         // For robust line-based navigation (FlowTabs-proof)
         int          docLine{ -1 };      // 0-based line number
-        int          searchFlags{ 0 };   // Full Scintilla search flags as set
-        // by MultiReplace::buildSearchFlags():
-        // user options (WHOLEWORD, MATCHCASE,
-        // REGEXP) plus regex execution flags
-        // (POSIX, SKIPCRLFASONE, EMPTYMATCH_*).
-        // Stored verbatim so re-search on
-        // click reproduces the original
-        // match semantics.
+        int          searchFlags{ 0 };   // Full flags as built by
+        // MultiReplace::buildSearchFlags() (user options + regex execution
+        // flags), stored verbatim so re-search reproduces match semantics.
 
         std::wstring findTextW;
 

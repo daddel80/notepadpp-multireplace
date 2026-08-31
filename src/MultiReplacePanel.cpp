@@ -553,9 +553,7 @@ RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
 
 void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 {
-    // Helper functions sx() and sy() are used to scale values for DPI awareness.
-    // sx(value): scales the x-axis value based on DPI settings.
-    // sy(value): scales the y-axis value based on DPI settings.
+    // sx()/sy() scale x/y values for DPI awareness.
 
     // DPI Aware System Metrics for Checkboxes and Radio Buttons
     UINT dpi = dpiMgr->getDPIX(); // Get the DPI from DPIManager
@@ -624,12 +622,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_FORMULA_SUPPORT_CHECKBOX] = { sx(16), sy(126), sx(108), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_formula_support"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    // Formula-engine selector: small clickable static rendered owner-drawn so it can
-    // appear in link-blue. Text reflects the active engine ("(L)" / "(E)") and is
-    // refreshed by syncEngineSelectorLabel() whenever the tab's engine changes.
-    // Tooltip is registered with a non-empty placeholder ("..." would do); the
-    // first call to syncEngineSelectorLabel replaces it with the real engine
-    // name via TTM_UPDATETIPTEXT.
+    // Formula-engine selector: small clickable static, owner-drawn so it can
+    // render link-blue. The "(L)"/"(E)" label and the tooltip (registered
+    // with a placeholder) are both refreshed by syncEngineSelectorLabel()
+    // whenever the tab's engine changes.
     ctrlMap[IDC_FORMULA_SUPPORT_ENGINE] = { sx(130), sy(126), sx(18), sy(20), WC_STATIC, L"(L)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, L"...", true, FontRole::Standard };
     ctrlMap[IDC_FORMULA_SUPPORT_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
@@ -697,9 +693,6 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     // "+ Bookmarks" checkbox: when ticked, Mark Matches additionally
     // adds a bookmark on every match line (handled inside markString).
-    // Placed in the same column as the 2-Buttons-Mode checkbox above,
-    // visually aligned with the Mark Matches button row. Persistent
-    // across sessions via INI, like the other UI option toggles.
     ctrlMap[IDC_BOOKMARK_MATCHES_CHECKBOX] = { checkbox2X, sy(149), sx(20), sy(20), WC_BUTTON, L"", BS_AUTOCHECKBOX | WS_TABSTOP, LM.getLPCW(L"tooltip_bookmark_matches"), false, FontRole::Standard };
 
     // Copy Marked -> Normal4
@@ -714,14 +707,9 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_STATUS_MESSAGE] = { statusStartX, statusRowY + sy(2), statusWidth, sy(19), WC_STATIC, L"", WS_VISIBLE | SS_LEFT | SS_ENDELLIPSIS | SS_NOPREFIX | SS_OWNERDRAW, nullptr, false, FontRole::Normal1 };
 
     // --- Toolbar buttons in status row: [➕][📂][💾▾]  [▲][▼] ---
-    // Status row layout: file-ops on the left, item-ops on the right,
-    // visual gap in between. The "New List" button (IDC_NEW_LIST_BUTTON)
-    // moved out of this row down to the tab bar, where the Excel/Browser
-    // convention puts it right next to the existing tabs. The button is
-    // re-positioned in the tab-bar block below.
-    // Load/Save are slightly wider than before (32 / 40 px) to fill the
-    // void left by the removed "+" without crowding the right-aligned
-    // Up/Down pair.
+    // File-ops on the left, item-ops on the right, visual gap in between.
+    // The New-List button lives in the tab bar (Excel/Browser convention)
+    // and is positioned in the tab-bar block below.
     ctrlMap[IDC_LOAD_FROM_CSV_BUTTON] = { buttonX, statusRowY, sx(32), sy(24), WC_BUTTON, L"📂", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"panel_load_list"), false, FontRole::Standard };
     ctrlMap[IDC_SAVE_TO_CSV_BUTTON] = { buttonX + sx(36), statusRowY, sx(40), sy(24), WC_BUTTON, L"💾", BS_SPLITBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_save"), false, FontRole::Normal3 };
     ctrlMap[IDC_UP_BUTTON] = { buttonX + sx(86), statusRowY, sx(20), sy(24), WC_BUTTON, L"▲", BS_PUSHBUTTON | WS_TABSTOP | BS_CENTER, LM.getLPCW(L"tooltip_move_up"), false, FontRole::Standard };
@@ -741,26 +729,19 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_LIST_SEARCH_BUTTON] = { sx(14) + searchComboWidth + sx(2), searchBarY, sx(24), sy(22), WC_BUTTON, L"▶", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_LIST_SEARCH_CLOSE] = { sx(14) + searchComboWidth + sx(28), searchBarY, sx(24), sy(22), WC_BUTTON, L"×", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Tab bar for multi-tab lists. Lives below the list view.
-    // X is offset by -2 px so the first tab's visible left edge lines
-    // up with the list's border. Windows inserts a small internal
-    // offset before the first tab lug that we compensate for here.
-    // Width reserves slots on the right edge for both the New-List
-    // button (Excel/Browser-style "+" next to the tabs) and the
-    // existing Use-List toggle. The new "+" sits closest to the tabs
-    // so it reads as "add a tab", consistent with the convention.
+    // Tab bar for multi-tab lists, below the list view. X is offset -2 px
+    // to compensate Windows' internal offset before the first tab lug, so
+    // the first tab's visible edge lines up with the list border. Width
+    // reserves right-edge slots for the New-List "+" (closest to the tabs,
+    // so it reads as "add a tab") and the Use-List toggle.
     int pathWidth = (useListEnabled || keepListVisible) ? (listWidth - sx(52)) : listWidth;
     ctrlMap[IDC_LIST_TABS] = { sx(14) - sx(2), tabBarY, pathWidth, tabBarHeight, WC_TABCONTROL, L"",
         TCS_BOTTOM | TCS_SINGLELINE | TCS_FOCUSNEVER | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
-    // New-List "+" button - sits in the tab-bar row immediately to the
-    // right of the tab control, vertically centered like the UseList
-    // toggle on the same row. Implemented as a STATIC with
-    // SS_OWNERDRAW + SS_NOTIFY rather than a real button so it renders
-    // flat and borderless against the tab bar, the way Excel and modern
-    // browsers render their "new tab" affordance. Clicks come in as
-    // STN_CLICKED notifications and are routed to addNewTab() in the
-    // WM_COMMAND handler.
+    // New-List "+" button, in the tab-bar row right of the tab control.
+    // A STATIC with SS_OWNERDRAW + SS_NOTIFY instead of a real button so
+    // it renders flat and borderless against the tab bar. Clicks arrive
+    // as STN_CLICKED and are routed to addNewTab() in WM_COMMAND.
     int newListBtnX = sx(14) + pathWidth + sx(2);
     int newListBtnY = (useListEnabled || keepListVisible)
         ? (tabBarY + (bottomZoneHeight - sy(22)) / 2)
@@ -1129,14 +1110,10 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
     if (anyLayoutChanged) {
     }
 
-    // The New-List "+" sits in the tab bar but its real position is
-    // computed dynamically from the last tab's right edge. Running it
-    // at the end of every layout pass keeps the button anchored next
-    // to the last tab regardless of which caller triggered the pass:
-    // resize, visibility toggle, search bar show/hide, scale change.
-    // Without this trailing call, the button would be left at its
-    // ctrlMap baseline (which is just the right edge of the tab
-    // control) after each moveAndResize.
+    // The New-List "+" anchors to the last tab's right edge, computed
+    // dynamically. Running this at the end of every layout pass keeps it
+    // anchored regardless of which caller triggered the pass (resize,
+    // visibility toggle, search bar show/hide, scale change).
     repositionNewTabButton();
 }
 
@@ -1592,13 +1569,10 @@ void MultiReplace::updateUseListState(bool isUpdate)
         SetDlgItemText(_hSelf, IDC_USE_LIST_BUTTON, useListEnabled ? L"\u02C4" : L"\u02C5");
     }
 
-    // Status messaging is intentionally NOT done here. This function is
-    // a UI-state refresher and gets invoked from many code paths
-    // (init, add-to-list, settings reload, theme change, etc.) where a
-    // "List mode enabled" toast would either be wrong or would step on
-    // a more relevant message that just appeared. Toast announcements
-    // for the user-facing toggle live at the toggle sites themselves,
-    // see IDC_USE_LIST_BUTTON in WM_COMMAND.
+    // No status messaging here on purpose: this UI-state refresher runs
+    // from many paths (init, add-to-list, settings reload, theme change)
+    // where a "List mode enabled" toast would be wrong or would step on a
+    // fresher message. Toasts live at the toggle sites (IDC_USE_LIST_BUTTON).
 
     // Return early if tooltips are disabled
     if (!tooltipsEnabled) {
@@ -3828,16 +3802,12 @@ void MultiReplace::syncEngineSelectorLabel()
             TTM_UPDATETIPTEXT, 0, reinterpret_cast<LPARAM>(&ti));
     }
 
-    // Force a synchronous repaint. Owner-drawn statics route their
-    // paint through the parent's WM_DRAWITEM handler. Some Windows
-    // builds coalesce away invalidations on the static itself when
-    // the bounding rect hasn't changed, leaving the previous text
-    // frozen on screen even though SetWindowTextW already updated
-    // the stored string. Invalidating the marker's screen area on
-    // the PARENT dialog (with RDW_ALLCHILDREN) sidesteps that path:
-    // the dialog repaints, the static dispatches WM_DRAWITEM up,
-    // and the new text appears. RDW_UPDATENOW makes it synchronous
-    // so we don't return with stale pixels.
+    // Force a synchronous repaint. Owner-drawn statics paint via the
+    // parent's WM_DRAWITEM, and some Windows builds coalesce away
+    // invalidations on the static itself when the bounding rect is
+    // unchanged - the old text stays frozen although SetWindowTextW
+    // already updated the string. Invalidate the marker area on the
+    // PARENT (RDW_ALLCHILDREN) and flush synchronously (RDW_UPDATENOW).
     RECT rcMarker;
     GetWindowRect(hMarker, &rcMarker);
     MapWindowPoints(HWND_DESKTOP, _hSelf,
@@ -4608,12 +4578,9 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
                 reinterpret_cast<UINT_PTR>(hClearMenu), LM.get(L"ctxmenu_clear_options").c_str());
         }
 
-        // Clear List as the very last entry: ultimate destructive
-        // list-wide action, isolated by its own separator from the
-        // "Clear Options >" submenu directly above. The submenu arrow
-        // on Clear Options visually distinguishes it from the flat
-        // Clear List entry, breaking the "Clear..." cluster despite
-        // adjacency.
+        // Clear List last: the ultimate destructive list-wide action,
+        // isolated by its own separator from the "Clear Options >"
+        // submenu above.
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_CLEAR_LIST, LM.get(L"ctxmenu_clear_list").c_str());
 
@@ -6376,15 +6343,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                          cx + barHalfW + 1, barTop + barH };
             FillRect(pdis->hDC, &bar, hFill);
 
-            // Triangle below: 5 stacked horizontal scanlines, each
-            // 1 px shorter per side than the row above. Produces a
-            // perfect symmetric 45-degree taper from a 9 px base
-            // down to a 1 px apex pixel.
-            //   row 0: 9 px (cx-4 .. cx+4)
-            //   row 1: 7 px
-            //   row 2: 5 px
-            //   row 3: 3 px
-            //   row 4: 1 px (apex)
+            // Triangle below: 5 stacked horizontal scanlines, each 1 px
+            // shorter per side than the row above (9 px base down to a
+            // 1 px apex) - a symmetric 45-degree taper with pixel-exact
+            // edges.
             for (int r = 0; r < triH; ++r) {
                 const int rowHalfW = triHalfW - r;
                 if (rowHalfW < 0) break;
@@ -7490,7 +7452,8 @@ void MultiReplace::replaceAllInOpenedDocs()
     std::vector<int> listReplaceTotals(replaceListData.size(), 0);
     int grandTotalReplace = 0;
 
-    // How many docs are open in each view?
+    // How many docs are open in each view? The only place in this function
+    // that takes PRIMARY_VIEW/SECOND_VIEW, not MAIN_VIEW/SUB_VIEW (tests/replace_safety_qa.cpp).
     LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
     LRESULT docCountSecondary = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
 
@@ -7499,7 +7462,8 @@ void MultiReplace::replaceAllInOpenedDocs()
 
     // Remember which doc was active in each view, and which view had focus
     LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SECOND_VIEW);
+    // lParam must be MAIN_VIEW(0)/SUB_VIEW(1); SECOND_VIEW(2) would read the MAIN index.
+    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
     int savedView = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
 
@@ -7507,7 +7471,7 @@ void MultiReplace::replaceAllInOpenedDocs()
     // Cannot use pointerToScintilla() here because NPPM_GETCURRENTSCINTILLA
     // returns the *focused* view, not the one we just activated via NPPM_ACTIVATEDOC.
     auto bindToView = [&](int view) {
-        _hScintilla = (view == PRIMARY_VIEW)
+        _hScintilla = (view == MAIN_VIEW)
             ? nppData._scintillaMainHandle
             : nppData._scintillaSecondHandle;
         s_hScintilla = _hScintilla;
@@ -7528,9 +7492,7 @@ void MultiReplace::replaceAllInOpenedDocs()
         if (docFilter.empty()) docFilter = L"*.*";
     }
 
-    // Transparency counters, mirroring the Find in Docs header: when the doc
-    // filter excluded documents, the summary says how many were searched and
-    // how many were excluded - a filtered doc must never vanish silently.
+    // Summary counters: filtered-out docs are reported, never silently dropped.
     size_t docsSearched = 0;
     size_t docsFilteredOut = 0;
 
@@ -7569,24 +7531,24 @@ void MultiReplace::replaceAllInOpenedDocs()
     // Iterate main view
     if (visibleMain) {
         for (LRESULT i = 0; i < docCountMain; ++i) {
-            if (!processOneDoc(PRIMARY_VIEW, i)) break;
+            if (!processOneDoc(MAIN_VIEW, i)) break;
         }
     }
     // Iterate secondary view
     if (visibleSecond) {
         for (LRESULT i = 0; i < docCountSecondary; ++i) {
-            if (!processOneDoc(SECOND_VIEW, i)) break;
+            if (!processOneDoc(SUB_VIEW, i)) break;
         }
     }
 
     // Restore the originally active document in each view
     if (visibleMain)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, PRIMARY_VIEW, savedMainIdx);
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
     if (visibleSecond)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SECOND_VIEW, savedSubIdx);
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
 
     // Restore focus to the view that was originally active
-    int restoreView = (savedView == 0) ? PRIMARY_VIEW : SECOND_VIEW;
+    int restoreView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
     LRESULT restoreIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
     ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, restoreView, restoreIdx);
     bindToView(restoreView);
@@ -8975,9 +8937,7 @@ int luaSafeLoadFileSandbox_impl(lua_State* L)
 
 #pragma endregion
 
-// Formula Debug Window functions (ShowDebugWindow, DebugWindowProc,
-// CopyListViewToClipboard, CloseDebugWindow, SetDebugComplete,
-// WaitForDebugWindowClose) live in MultiReplacePanel_FormulaDebug.cpp.
+// Formula Debug Window functions live in MultiReplacePanel_FormulaDebug.cpp.
 
 #pragma region Replace in Files
 
@@ -9138,20 +9098,12 @@ std::wstring MultiReplace::buildSkipSentence(const HiddenSciGuard& guard) const
         { std::to_wstring(skipped), buildSkipBreakdown(guard) });
 }
 
-// Codepage to bind the hidden buffer to for one loaded file. Text-kind files
-// are always decoded to UTF-8 by loadTextFile, so SC_CP_UTF8 is correct as
-// before. RawBytes-kind files (binary-flagged, skip disabled) are pushed in
-// completely undecoded - but loadTextFile now also runs a strict structural
-// UTF-8 validity check over that same undecoded content, and reports it via
-// enc.kind. When it validates, the raw bytes ARE well-formed UTF-8 (this is
-// common: literal C0/control bytes embedded in otherwise-UTF-8 text, as in
-// guy038's Mark_Style.txt, are valid single-byte UTF-8 code points and don't
-// break validity), so binding UTF-8 here makes non-ASCII search/replace
-// patterns match correctly and dock hit lines render correctly, instead of
-// the fixed ANSI/system-codepage binding used previously for every RawBytes
-// file regardless of its actual content. When it does not validate (genuine
-// binary, or non-UTF8 ANSI text with a stray NUL), this returns codepage 0
-// exactly as before - unchanged, not worse.
+// Codepage to bind the hidden buffer to for one loaded file. Text-kind
+// content is always UTF-8 (loadTextFile decodes it). RawBytes-kind files
+// are pushed in undecoded, but loadTextFile also reports whether the raw
+// bytes are structurally valid UTF-8 (common: control bytes embedded in
+// UTF-8 text, as in guy038's Mark_Style.txt) - then bind UTF-8 so non-ASCII
+// patterns match and dock lines render; otherwise codepage 0 as before.
 static int codepageForLoadedFile(HiddenSciGuard::LoadKind loadKind, const Encoding::EncodingInfo& enc)
 {
     if (loadKind != HiddenSciGuard::LoadKind::RawBytes) return SC_CP_UTF8;
@@ -9253,6 +9205,81 @@ void MultiReplace::handleReplaceInFiles() {
 
     int total = static_cast<int>(files.size()), idx = 0, changed = 0;
     size_t readOnlySkipped = 0;
+    size_t openUnsavedSkipped = 0;
+
+    // Safety net: skip files that are open in N++ with unsaved changes. A
+    // disk write under such a buffer forks the file: reloading discards the
+    // user's edits, a later save undoes this replace. The plugin API has no
+    // dirty query for foreign buffers, so replacing inside the live buffer
+    // like native N++ (Notepad_plus::replaceInFilelist) is not an option -
+    // skip and report instead. Clean open files keep the disk write; N++'s
+    // file-status auto-detection picks it up. SCI_GETMODIFY answers only for
+    // the active doc, so the probe activates each intersecting open doc once
+    // and restores the previous tabs afterwards.
+    std::unordered_set<std::wstring> dirtyOpenPaths;
+    {
+        auto pathKey = [](std::wstring s) {
+            for (auto& c : s) c = towlower(c);
+            return s;
+            };
+
+        std::unordered_set<std::wstring> scanSet;
+        scanSet.reserve(files.size());
+        for (const auto& f : files) scanSet.insert(pathKey(f.wstring()));
+
+        struct OpenDocRef { int view; LRESULT index; std::wstring key; };
+        std::vector<OpenDocRef> toProbe;
+        const std::pair<int, int> views[] = {
+            { PRIMARY_VIEW, MAIN_VIEW },   // NPPM_GETNBOPENFILES id, MAIN/SUB id
+            { SECOND_VIEW,  SUB_VIEW },
+        };
+        for (const auto& [nbView, docView] : views) {
+            const LRESULT nb = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, nbView);
+            for (LRESULT i = 0; i < nb; ++i) {
+                const LRESULT bufId = ::SendMessage(nppData._nppHandle, NPPM_GETBUFFERIDFROMPOS, i, docView);
+                if (bufId == 0) continue;
+                // NPPM_GETFULLPATHFROMBUFFERID has no size parameter and copies
+                // unchecked - query the length first, then size the buffer exactly.
+                const LRESULT pathLen = ::SendMessage(nppData._nppHandle,
+                    NPPM_GETFULLPATHFROMBUFFERID, bufId, 0);
+                if (pathLen <= 0) continue;
+                std::wstring pathBuf(static_cast<size_t>(pathLen) + 1, L'\0');
+                if (::SendMessage(nppData._nppHandle, NPPM_GETFULLPATHFROMBUFFERID,
+                    bufId, reinterpret_cast<LPARAM>(pathBuf.data())) <= 0) continue;
+                pathBuf.resize(wcslen(pathBuf.c_str()));
+                std::wstring key = pathKey(std::move(pathBuf));
+                if (!key.empty() && scanSet.count(key) != 0)
+                    toProbe.push_back({ docView, i, std::move(key) });
+            }
+        }
+
+        if (!toProbe.empty()) {
+            const LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+            const LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
+            int savedView = -1;
+            ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
+
+            for (const auto& d : toProbe) {
+                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, d.view, d.index);
+                HWND hSci = (d.view == MAIN_VIEW)
+                    ? nppData._scintillaMainHandle
+                    : nppData._scintillaSecondHandle;
+                if (hSci && ::SendMessage(hSci, SCI_GETMODIFY, 0, 0) != 0)
+                    dirtyOpenPaths.insert(d.key);
+            }
+
+            // Restore the previously active document in each view, focused view last
+            if (savedMainIdx >= 0)
+                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
+            if (savedSubIdx >= 0)
+                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
+            const int focusView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
+            const LRESULT focusIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
+            if (focusIdx >= 0)
+                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
+        }
+    }
+
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
     // Per-file binding guard
@@ -9287,6 +9314,12 @@ void MultiReplace::handleReplaceInFiles() {
         showStatusMessage(buildProgressStatus(
             L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
             MessageStatus::Info);
+
+        if (!dirtyOpenPaths.empty()) {
+            std::wstring key = fp.wstring();
+            for (auto& c : key) c = towlower(c);
+            if (dirtyOpenPaths.count(key) != 0) { ++openUnsavedSkipped; continue; }
+        }
 
         DWORD attrs = GetFileAttributesW(fp.c_str());
         if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { ++readOnlySkipped; continue; }
@@ -9352,9 +9385,9 @@ void MultiReplace::handleReplaceInFiles() {
 
         // The summary's denominator is what was actually searched: every file the
         // loop reached (idx, which falls short of files.size() when canceled),
-        // minus the read-only files skipped before loading and the guard's skips.
+        // minus the read-only/open-unsaved skips before loading and the guard's skips.
         const size_t reachedFiles = static_cast<size_t>((std::max)(idx, 0));
-        const size_t notSearched = readOnlySkipped + guard.getSkippedTotalCount();
+        const size_t notSearched = readOnlySkipped + openUnsavedSkipped + guard.getSkippedTotalCount();
         const size_t searchedFiles = (reachedFiles > notSearched) ? (reachedFiles - notSearched) : 0;
 
         std::wstring msg = LM.get(L"status_replace_summary",
@@ -9362,6 +9395,9 @@ void MultiReplace::handleReplaceInFiles() {
         msg += buildSkipSentence(guard);
         if (readOnlySkipped > 0) {
             msg += LM.get(L"status_readonly_skipped", { std::to_wstring(readOnlySkipped) });
+        }
+        if (openUnsavedSkipped > 0) {
+            msg += LM.get(L"status_open_unsaved_skipped", { std::to_wstring(openUnsavedSkipped) });
         }
         if (wasCanceled) {
             msg += L" - " + LM.get(L"status_canceled");
@@ -9784,7 +9820,8 @@ void MultiReplace::handleFindAllInDocsButton()
         };
 
     LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SECOND_VIEW);
+    // lParam must be MAIN_VIEW(0)/SUB_VIEW(1); SECOND_VIEW(2) would read the MAIN index.
+    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
     int savedView = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
     const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
@@ -9799,13 +9836,11 @@ void MultiReplace::handleFindAllInDocsButton()
         if (docFilter.empty()) docFilter = L"*.*";
     }
 
-    // Header transparency, mirroring the Files path: report how many open
-    // documents were actually searched and how many the doc filter excluded.
-    // Note: "Skip binary files" deliberately does NOT apply here - open docs
-    // are a hand-picked set already loaded/decoded by N++, and native N++
-    // searches every open doc too. The count makes that visible.
-    // A document cloned into both views is counted once per view ("searched"
-    // means searched), so the header may show 2 searched for 1 unique file.
+    // Header transparency, mirroring the Files path: how many open docs
+    // were searched and how many the doc filter excluded. "Skip binary
+    // files" deliberately does NOT apply here - open docs are a hand-picked
+    // set, and native N++ searches all of them too. A doc cloned into both
+    // views counts once per view ("searched" means searched).
     size_t docsSearched = 0;
     size_t docsFilteredOut = 0;
 
@@ -10936,6 +10971,15 @@ std::wstring MultiReplace::getSelectionScopeSuffix() {
 
 #pragma region Mark
 
+// N++'s bookmark marker id via NPPM_GETBOOKMARKID (8.4.1+); the guarded
+// fallback to 20 mirrors MARK_BOOKMARK for versions without the message.
+static int resolveBookmarkMarkerId()
+{
+    constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
+    const LRESULT id = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
+    return (id > 0 && id < 32) ? static_cast<int>(id) : 20;
+}
+
 void MultiReplace::handleMarkMatchesButton() {
     ensureIndicatorContext();
     if (!validateDelimiterData()) return;
@@ -10964,19 +11008,12 @@ void MultiReplace::handleMarkMatchesButton() {
 
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
-    // Bookmark companion mode. When the "+ Bookmarks" checkbox is on,
-    // resolve N++'s bookmark marker id once and forward it to every
-    // markString call so each match line is bookmarked alongside the
-    // visual indicator. Older N++ versions return 0 from
-    // NPPM_GETBOOKMARKID; the guarded fallback to marker 20 mirrors
-    // what the duplicate-detection feature already does. A negative
-    // markerId disables bookmarking inside markString.
+    // Bookmark companion mode: when "+ Bookmarks" is ticked, resolve N++'s
+    // bookmark marker id once and forward it to every markString call so
+    // match lines are bookmarked too. Negative markerId = bookmarking off.
     int bookmarkMarkerId = -1;
     if (IsDlgButtonChecked(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX) == BST_CHECKED) {
-        constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
-        const LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
-        bookmarkMarkerId = (nppBookmarkId > 0 && nppBookmarkId < 32)
-            ? static_cast<int>(nppBookmarkId) : 20;
+        bookmarkMarkerId = resolveBookmarkMarkerId();
     }
 
     if (useListEnabled) {
@@ -11188,6 +11225,17 @@ void MultiReplace::handleClearTextMarksButton()
                 ::SendMessage(hSci, SCI_SETINDICATORCURRENT, id, 0);
                 ::SendMessage(hSci, SCI_INDICATORCLEARRANGE, 0, docLen);
             }
+        }
+    }
+
+    // N++ parity (FindReplaceDlg::clearMarks): with the bookmark option
+    // checked, bookmarks are cleared too - all of them, N++ has one shared
+    // bookmark marker. Both views, matching the indicator clearing above.
+    if (IsDlgButtonChecked(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX) == BST_CHECKED) {
+        const int markerId = resolveBookmarkMarkerId();
+        for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+            if (!hSci) continue;
+            ::SendMessage(hSci, SCI_MARKERDELETEALL, markerId, 0);
         }
     }
 
@@ -12301,10 +12349,7 @@ void MultiReplace::applyDuplicateMarks()
     send(SCI_INDICSETUNDER, indicId, TRUE);
     send(SCI_SETINDICATORCURRENT, indicId, 0);
 
-    // Get bookmark marker ID from N++ (falls back to 20 for newer versions)
-    constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
-    LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
-    int markerId = (nppBookmarkId > 0 && nppBookmarkId < 32) ? static_cast<int>(nppBookmarkId) : 20;
+    int markerId = resolveBookmarkMarkerId();
 
     // If bookmarks enabled: clear ALL bookmarks first, then set new ones on duplicates
     if (_duplicateBookmarksEnabled) {
@@ -12355,10 +12400,7 @@ void MultiReplace::clearDuplicateMarks()
 
     // If bookmark feature was enabled during scan, clear ALL bookmarks
     if (_duplicateBookmarksEnabled) {
-        constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
-        LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
-        int markerId = (nppBookmarkId > 0 && nppBookmarkId < 32) ? static_cast<int>(nppBookmarkId) : 20;
-        send(SCI_MARKERDELETEALL, markerId, 0);
+        send(SCI_MARKERDELETEALL, resolveBookmarkMarkerId(), 0);
     }
 
     _markedDuplicateLines.clear();
@@ -12492,10 +12534,7 @@ void MultiReplace::deleteDuplicateLines()
 
     // Clear all bookmarks if bookmark feature was enabled
     if (_duplicateBookmarksEnabled) {
-        constexpr UINT LOCAL_NPPM_GETBOOKMARKID = (WM_USER + 1000) + 113;
-        LRESULT nppBookmarkId = ::SendMessage(nppData._nppHandle, LOCAL_NPPM_GETBOOKMARKID, 0, 0);
-        int markerId = (nppBookmarkId > 0 && nppBookmarkId < 32) ? static_cast<int>(nppBookmarkId) : 20;
-        send(SCI_MARKERDELETEALL, markerId, 0);
+        send(SCI_MARKERDELETEALL, resolveBookmarkMarkerId(), 0);
     }
 
     // Clear state
@@ -14758,16 +14797,11 @@ void MultiReplace::pickupSelectionIntoFindEdit()
     HWND hFind = GetDlgItem(_hSelf, IDC_FIND_EDIT);
     SetWindowTextW(hFind, sel.c_str());
 
-    // After pickup, bring the panel to the foreground and hand focus to
-    // the Find edit, with its full contents selected, so the user can
-    // immediately type to replace, hit Tab to move on, or press Enter
-    // to search - mirroring Notepad++'s own S&R dialog and the Windows
-    // convention for pre-filled inputs.
-    //
-    // SetForegroundWindow is needed for the Ctrl+Shift+H hotkey path:
-    // the user has just selected text in the editor, so the editor (not
-    // MR) owns the foreground. Without this, SetFocus would only move
-    // the focus within MR's thread, leaving keyboard input flowing
+    // After pickup: panel to the foreground, focus in the Find edit with
+    // its content selected - type to replace, Tab to move on, Enter to
+    // search (mirrors N++'s own S&R dialog). SetForegroundWindow matters
+    // for the Ctrl+Shift+H path: the editor owns the foreground at that
+    // moment, and a bare SetFocus would leave keyboard input flowing
     // into the editor.
     ::SetForegroundWindow(_hSelf);
     ::SetFocus(hFind);
@@ -16910,11 +16944,7 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
     }
 }
 
-// FlowTabs tab-strip functions (truncateTabName, buildTabLabel,
-// rebuildTabControl, repositionNewTabButton, ensureTabVisible,
-// scrollTabStrip, showTabListPopup, markActiveTabDirty, clearTabDirty,
-// setBottomRowVisible, updateTabTooltip, switchToTab) live in
-// MultiReplacePanel_FlowTabs.cpp.
+// FlowTabs tab-strip functions live in MultiReplacePanel_FlowTabs.cpp.
 
 // Reset per-tab column state (widths, visibility, locks, order) to
 // DPI-scaled defaults. Used by bootstrap paths creating the primary tab.
@@ -20044,21 +20074,13 @@ void MultiReplace::onThemeChanged()
 }
 
 void MultiReplace::signalShutdown() {
-    // Called from beNotified on NPPN_SHUTDOWN. Captures whether the
-    // panel was open at the time of shutdown so the next session can
-    // auto-reopen it (guarded by the ReopenOnStartup user preference).
-    //
-    // If the panel is open, WM_DESTROY and saveSettings() will follow
-    // and CFG.save() will persist the cache for us. If the panel is
-    // closed we have to save explicitly - no WM_DESTROY to drive it.
-    //
-    // For the panel-closed branch we forceReload the INI from disk
-    // before the save. The in-memory cache is a snapshot taken at
-    // plugin start (loadConfigOnce) and would clobber any direct INI
-    // edits the user made during this session if we wrote it back as-
-    // is. The reload pulls those edits into the cache so the
-    // subsequent save preserves them while still updating
-    // PanelWasVisible to reflect the current state.
+    // Called on NPPN_SHUTDOWN: capture whether the panel was open so the
+    // next session can auto-reopen it (guarded by ReopenOnStartup). Panel
+    // open: WM_DESTROY + saveSettings() persist the cache. Panel closed:
+    // save explicitly - and forceReload the INI first, because the cache
+    // is a startup snapshot and would clobber direct INI edits the user
+    // made during this session; the reload pulls those in before
+    // PanelWasVisible is updated and saved.
     const bool panelVisible = instance && IsWindowVisible(instance->_hSelf);
 
     if (panelVisible) {

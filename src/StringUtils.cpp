@@ -489,12 +489,8 @@ namespace StringUtils {
     }
 
     // ----------------------------------------------------------------------------
-    // Unicode-aware lowercase conversion using Windows API
-    // Correctly handles all Unicode characters including:
-    // - German: Ä→ä, Ö→ö, Ü→ü, ẞ→ß
-    // - French: É→é, È→è, Ê→ê
-    // - Turkish: İ→i, I→ı (with correct locale)
-    // - Greek, Cyrillic, etc.
+    // Unicode-aware lowercase via the Windows API - handles non-ASCII
+    // (umlauts, accents, locale rules) correctly, unlike tolower().
     // ----------------------------------------------------------------------------
     std::string toLowerUtf8(const std::string& utf8Str)
     {
@@ -525,11 +521,8 @@ namespace StringUtils {
     }
 
     // ----------------------------------------------------------------------------
-    // Locale-aware number formatting with thousand separators
-    // Uses Windows user locale settings:
-    // - US/UK: 1,234,567
-    // - DE/AT/CH: 1.234.567
-    // - FR: 1 234 567 (with narrow no-break space)
+    // Locale-aware thousand separators via the Windows user locale
+    // (US: 1,234,567 / DE: 1.234.567).
     // ----------------------------------------------------------------------------
     std::wstring formatNumber(size_t number)
     {
