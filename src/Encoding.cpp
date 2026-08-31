@@ -204,7 +204,37 @@ namespace Encoding {
         }
 
         // UTF-16 LE without BOM: same pre-checks and probe as N++ (Utf8_16_Read::determineEncoding).
-        // BE without BOM is deliberately not detected, matching N++.
+        //
+        // BE without BOM is deliberately NOT detected - not for parity's sake, but
+        // because the mirrored probe is a measurably worse bet than the LE one:
+        //
+        //   Gate. The LE gate needs p[0] != 0: the file starts with a real character,
+        //   a weak but honest text signal. The BE mirror would need p[0] == 0, and a
+        //   leading NUL is one of the most reliable BINARY signatures there is (BE
+        //   length/version headers, OpenType tables, TIFF-BE, class files, protocol
+        //   dumps). The same probe would draw its candidates from a mostly-binary
+        //   population instead of a mostly-text one.
+        //
+        //   Probe. IsTextUnicode is documented for little-endian; BE only via the
+        //   REVERSE_* flags MS itself calls unreliable. IS_TEXT_UNICODE_STATISTICS is
+        //   already a statistical guess on the LE side (see the "Bush hid the facts"
+        //   false positive) - leaning harder on it for the rarer case buys coverage
+        //   with accuracy we do not have.
+        //
+        //   Cost. A miss costs hits in one rare file, and the skip is now visible in
+        //   the search summary and searchable with "Skip binary files" off. A false
+        //   positive decodes binary content as text: noise in Find, and in Replace in
+        //   Files a decode/re-encode round trip over a binary file.
+        //
+        //   Base rate. Windows-native UTF-16 is LE everywhere (Notepad, PowerShell
+        //   redirects, .NET Encoding.Unicode, registry exports). BOM-less BE is an
+        //   interchange artifact whose producers normally do write a BOM.
+        //
+        // N++ reached the same conclusion from the same fact (its BE branch is commented
+        // out citing weak detection), so parity corroborates this - it is not the reason.
+        // Should a real BE-without-BOM case ever surface, the answer is NOT to mirror
+        // this probe but a strict structural test (even length, ~all even-indexed bytes
+        // NUL, odd-indexed bytes printable, no binary magic), with no IsTextUnicode.
         if (opt.enableUtf16NoBomLE && len > 1 && (len % 2) == 0 && p[0] != 0 && p[1] == 0) {
             INT uniTest = IS_TEXT_UNICODE_STATISTICS;
             const int probeLen = static_cast<int>((std::min)(len, static_cast<size_t>(64 * 1024)));

@@ -7528,6 +7528,12 @@ void MultiReplace::replaceAllInOpenedDocs()
         if (docFilter.empty()) docFilter = L"*.*";
     }
 
+    // Transparency counters, mirroring the Find in Docs header: when the doc
+    // filter excluded documents, the summary says how many were searched and
+    // how many were excluded - a filtered doc must never vanish silently.
+    size_t docsSearched = 0;
+    size_t docsFilteredOut = 0;
+
     // Local lambda to process one document
     auto processOneDoc = [&](int view, LRESULT idx) -> bool {
         ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, view, idx);
@@ -7537,9 +7543,12 @@ void MultiReplace::replaceAllInOpenedDocs()
             wchar_t fnBuf[MAX_PATH]{};
             ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
                 reinterpret_cast<LPARAM>(fnBuf));
-            if (!matchesDocFilter(fnBuf, docFilter))
+            if (!matchesDocFilter(fnBuf, docFilter)) {
+                ++docsFilteredOut;
                 return true;  // skip this doc, continue with next
+            }
         }
+        ++docsSearched;
 
         bindToView(view);  // rebind _hScintilla to the activated view
         handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -7590,9 +7599,14 @@ void MultiReplace::replaceAllInOpenedDocs()
     }
     refreshUIListView();
 
-    // Show summary: total replacements across all documents
-    showStatusMessage(LM.get(L"status_replace_in_docs_summary",
-        { std::to_wstring(grandTotalReplace) }), MessageStatus::Success);
+    // Show summary: total replacements across all documents. When the doc
+    // filter excluded documents, append how many were searched vs. excluded.
+    std::wstring docsSummary = LM.get(L"status_replace_in_docs_summary",
+        { std::to_wstring(grandTotalReplace) });
+    if (docsFilteredOut > 0)
+        docsSummary += LM.get(L"status_docs_filtered",
+            { std::to_wstring(docsSearched), std::to_wstring(docsFilteredOut) });
+    showStatusMessage(docsSummary, MessageStatus::Success);
 
     // Refresh column highlighting on the active doc (suppressed during bulk replace)
     if (isColumnHighlighted) {
@@ -9124,6 +9138,26 @@ std::wstring MultiReplace::buildSkipSentence(const HiddenSciGuard& guard) const
         { std::to_wstring(skipped), buildSkipBreakdown(guard) });
 }
 
+// Codepage to bind the hidden buffer to for one loaded file. Text-kind files
+// are always decoded to UTF-8 by loadTextFile, so SC_CP_UTF8 is correct as
+// before. RawBytes-kind files (binary-flagged, skip disabled) are pushed in
+// completely undecoded - but loadTextFile now also runs a strict structural
+// UTF-8 validity check over that same undecoded content, and reports it via
+// enc.kind. When it validates, the raw bytes ARE well-formed UTF-8 (this is
+// common: literal C0/control bytes embedded in otherwise-UTF-8 text, as in
+// guy038's Mark_Style.txt, are valid single-byte UTF-8 code points and don't
+// break validity), so binding UTF-8 here makes non-ASCII search/replace
+// patterns match correctly and dock hit lines render correctly, instead of
+// the fixed ANSI/system-codepage binding used previously for every RawBytes
+// file regardless of its actual content. When it does not validate (genuine
+// binary, or non-UTF8 ANSI text with a stray NUL), this returns codepage 0
+// exactly as before - unchanged, not worse.
+static int codepageForLoadedFile(HiddenSciGuard::LoadKind loadKind, const Encoding::EncodingInfo& enc)
+{
+    if (loadKind != HiddenSciGuard::LoadKind::RawBytes) return SC_CP_UTF8;
+    return (enc.kind == Encoding::Kind::UTF8) ? SC_CP_UTF8 : 0;
+}
+
 void MultiReplace::handleReplaceInFiles() {
     HiddenSciGuard guard;
     if (!guard.create()) {
@@ -9267,7 +9301,7 @@ void MultiReplace::handleReplaceInFiles() {
             SciBindingGuard bind(this, guard);
 
             send(SCI_CLEARALL, 0, 0);
-            send(SCI_SETCODEPAGE, (loadKind == HiddenSciGuard::LoadKind::RawBytes) ? 0 : SC_CP_UTF8, 0);
+            send(SCI_SETCODEPAGE, codepageForLoadedFile(loadKind, enc), 0);
             send(SCI_ADDTEXT, (WPARAM)u8in.length(), reinterpret_cast<sptr_t>(u8in.data()));
             send(SCI_GOTOPOS, 0, 0); // SCI_ADDTEXT leaves the caret at the end; define the scan start
 
@@ -9765,6 +9799,16 @@ void MultiReplace::handleFindAllInDocsButton()
         if (docFilter.empty()) docFilter = L"*.*";
     }
 
+    // Header transparency, mirroring the Files path: report how many open
+    // documents were actually searched and how many the doc filter excluded.
+    // Note: "Skip binary files" deliberately does NOT apply here - open docs
+    // are a hand-picked set already loaded/decoded by N++, and native N++
+    // searches every open doc too. The count makes that visible.
+    // A document cloned into both views is counted once per view ("searched"
+    // means searched), so the header may show 2 searched for 1 unique file.
+    size_t docsSearched = 0;
+    size_t docsFilteredOut = 0;
+
     if (mainVis) {
         LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
         for (LRESULT i = 0; i < nbMain; ++i) {
@@ -9773,10 +9817,11 @@ void MultiReplace::handleFindAllInDocsButton()
                 wchar_t fnBuf[MAX_PATH]{};
                 ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
                     reinterpret_cast<LPARAM>(fnBuf));
-                if (!matchesDocFilter(fnBuf, docFilter)) continue;
+                if (!matchesDocFilter(fnBuf, docFilter)) { ++docsFilteredOut; continue; }
             }
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             processCurrentBuffer(MAIN_VIEW);
+            ++docsSearched;
         }
     }
     if (subVis) {
@@ -9787,10 +9832,11 @@ void MultiReplace::handleFindAllInDocsButton()
                 wchar_t fnBuf[MAX_PATH]{};
                 ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
                     reinterpret_cast<LPARAM>(fnBuf));
-                if (!matchesDocFilter(fnBuf, docFilter)) continue;
+                if (!matchesDocFilter(fnBuf, docFilter)) { ++docsFilteredOut; continue; }
             }
             handleDelimiterPositions(DelimiterOperation::LoadAll);
             processCurrentBuffer(SUB_VIEW);
+            ++docsSearched;
         }
     }
     // Restore the originally active document in each view
@@ -9819,7 +9865,14 @@ void MultiReplace::handleFindAllInDocsButton()
     dock.ensureCreatedAndVisible(nppData);
     if (ResultDock::purgeEnabled()) dock.clear();
 
-    dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()));
+    {
+        // " [7 document(s) searched]" / " [3 document(s) searched, 4 excluded by filter]"
+        std::wstring filterClause;
+        if (docsFilteredOut > 0)
+            filterClause = LM.get(L"dock_docs_filtered", { std::to_wstring(docsFilteredOut) });
+        dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()),
+            LM.get(L"dock_docs_scan_suffix", { std::to_wstring(docsSearched), filterClause }));
+    }
 
     showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
@@ -9951,7 +10004,7 @@ void MultiReplace::handleFindInFiles() {
 
         SciBindingGuard bind(this, guard);
         send(SCI_CLEARALL, 0, 0);
-        send(SCI_SETCODEPAGE, (loadKind == HiddenSciGuard::LoadKind::RawBytes) ? 0 : SC_CP_UTF8, 0);
+        send(SCI_SETCODEPAGE, codepageForLoadedFile(loadKind, enc), 0);
         send(SCI_ADDTEXT, (WPARAM)content.size(), reinterpret_cast<sptr_t>(content.data()));
 
         handleDelimiterPositions(DelimiterOperation::LoadAll);
