@@ -670,6 +670,7 @@ public:
         bool limitFileSizeEnabled;
         int  maxFileSizeMB;
         bool skipBinaryFilesEnabled;
+        bool searchOpenDocsEnabled;
         int  editFieldSize;
         int  csvHeaderLinesCount;
         bool resultDockPerEntryColorsEnabled;
@@ -1080,6 +1081,7 @@ private:
     inline static bool flowTabsNumericAlignEnabled = true;
     inline static bool limitFileSizeEnabled = false;
     inline static bool skipBinaryFilesEnabled = true;
+    inline static bool searchOpenDocsEnabled = true;
     inline static bool resultDockPerEntryColorsEnabled = true;  // Per-entry background colors in ResultDock
     inline static bool useListColorsForMarking = true;          // Use different colors per list entry when marking
     inline static size_t maxFileSizeMB = 100;

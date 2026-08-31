@@ -335,6 +335,7 @@
 #define IDC_CFG_GRP_FIND_INPUT            7910
 #define IDC_CFG_PICKUP_SELECTION          7911
 #define IDC_CFG_AUTO_ESCAPE_FIND          7912
+#define IDC_CFG_SEARCH_OPEN_DOCS          7913
 
 // -------------------------------------------------------------------
 //  List View Panel - Result Dock Group (7920-7929)

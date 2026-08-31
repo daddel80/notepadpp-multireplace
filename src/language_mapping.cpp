@@ -368,6 +368,7 @@ const LangKV kEnglishPairs[] = {
 // File size limit
 { L"config_chk_limit_filesize", L"Skip files larger than" },
 { L"config_chk_skip_binary", L"Skip binary files" },
+{ L"config_chk_search_open_docs", L"Search open documents instead of files on disk" },
 { L"config_cat_file_search", L"File Search" },
 { L"config_grp_file_handling", L"File handling" },
 { L"config_lbl_max_filesize_mb", L"MB" },

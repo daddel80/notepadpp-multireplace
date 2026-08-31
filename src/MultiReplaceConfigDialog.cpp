@@ -76,6 +76,7 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hFileSearchPanel, IDC_CFG_LIMIT_FILESIZE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, limitFileSizeEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hFileSearchPanel, IDC_CFG_MAX_FILESIZE_EDIT, ControlType::IntEdit, ValueType::Int, offsetof(MultiReplace::Settings, maxFileSizeMB), 1, 10000 });
     _bindings.push_back(Binding{ &_hFileSearchPanel, IDC_CFG_SKIP_BINARY, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, skipBinaryFilesEnabled), 0, 0 });
+    _bindings.push_back(Binding{ &_hFileSearchPanel, IDC_CFG_SEARCH_OPEN_DOCS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, searchOpenDocsEnabled), 0, 0 });
 }
 
 void MultiReplaceConfigDialog::applyBindingsToUI_Generic(void* settingsPtr)
@@ -207,6 +208,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_GRP_FILE_SEARCH,         L"config_grp_file_handling",       0, 0 },
         { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
         { IDC_CFG_SKIP_BINARY,             L"config_chk_skip_binary",         386, 18 },
+        { IDC_CFG_SEARCH_OPEN_DOCS,        L"config_chk_search_open_docs",    386, 18 },
 
         // List View Panel - List Behavior: groupW=460, innerWidth=460-44=416
         { IDC_CFG_GRP_LIST_BEHAVIOR,       L"config_grp_list_behavior",       0, 0 },
@@ -814,6 +816,7 @@ void MultiReplaceConfigDialog::createFileSearchPanelControls() {
     lb.AddNumberEdit(IDC_CFG_MAX_FILESIZE_EDIT, 270, -24, 45, 20);
     createStaticText(_hFileSearchPanel, innerLeft + 325, lb.y - 22, 30, 18, IDC_CFG_FILESIZE_MB_LABEL, LM.getLPCW(L"config_lbl_max_filesize_mb"));
     lb.AddCheckbox(IDC_CFG_SKIP_BINARY, LM.getLPCW(L"config_chk_skip_binary"));
+    lb.AddCheckbox(IDC_CFG_SEARCH_OPEN_DOCS, LM.getLPCW(L"config_chk_search_open_docs"));
 }
 
 HWND MultiReplaceConfigDialog::createPanel() {
@@ -1036,6 +1039,7 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
+    s.searchOpenDocsEnabled = CFG.readBool(L"ReplaceInFiles", L"SearchOpenDocs", true);
     s.editFieldSize = CFG.readInt(MultiReplace::optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     s.tabMaxLength = std::clamp(CFG.readInt(MultiReplace::optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
@@ -1237,6 +1241,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.limitFileSizeEnabled = false;
     def.maxFileSizeMB = 100;
     def.skipBinaryFilesEnabled = true;
+    def.searchOpenDocsEnabled = true;
     def.highlightMatchEnabled = true;
     def.doubleClickEditsEnabled = true;
     def.isHoverTextEnabled = true;

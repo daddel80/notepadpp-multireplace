@@ -381,6 +381,36 @@ public:
         _skippedUndecodableCount = 0;
     }
 
+    // For skips the caller decides (e.g. attached live document over the size limit)
+    void noteSkip(SkipReason reason) { fail(reason); }
+
+    // ========================================================================
+    // 4b) Attach a live N++ document for searching (N++'s findInFilelist
+    //     technique via SCI_SETDOCPOINTER). While attached, no document-
+    //     mutating call may run - the document belongs to the user's tab.
+    // ========================================================================
+
+    struct AttachedDoc {
+        HiddenSciGuard* g = nullptr;
+        sptr_t ownDoc = 0;
+
+        AttachedDoc() = default;
+        AttachedDoc(const AttachedDoc&) = delete;
+        AttachedDoc& operator=(const AttachedDoc&) = delete;
+
+        void attach(HiddenSciGuard& guard, sptr_t foreignDoc) {
+            g = &guard;
+            ownDoc = g->fn(g->pData, SCI_GETDOCPOINTER, 0, 0);
+            g->fn(g->pData, SCI_ADDREFDOCUMENT, 0, ownDoc);      // keep ours alive
+            g->fn(g->pData, SCI_SETDOCPOINTER, 0, foreignDoc);   // releases ours, refs foreign
+        }
+        ~AttachedDoc() {
+            if (!g) return;
+            g->fn(g->pData, SCI_SETDOCPOINTER, 0, ownDoc);       // releases foreign, refs ours
+            g->fn(g->pData, SCI_RELEASEDOCUMENT, 0, ownDoc);     // drop keep-alive ref
+        }
+    };
+
     // ========================================================================
     // 5) Write file to disk (atomic: temp file + replace)
     // ========================================================================

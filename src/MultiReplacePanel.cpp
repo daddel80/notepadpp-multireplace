@@ -9110,6 +9110,96 @@ static int codepageForLoadedFile(HiddenSciGuard::LoadKind loadKind, const Encodi
     return (enc.kind == Encoding::Kind::UTF8) ? SC_CP_UTF8 : 0;
 }
 
+// Open documents that intersect the scan set, keyed by lower-cased full path.
+// dirty feeds the Replace-in-Files skip; docPtr feeds the Find-in-Files
+// live-document search. Both are only readable from an ACTIVE document, so
+// each intersecting doc is activated once and the previous tabs restored.
+struct OpenScanDoc { int view; LRESULT index; bool dirty; sptr_t docPtr; };
+
+static std::wstring openDocPathKey(std::wstring s) {
+    for (auto& c : s) c = towlower(c);
+    return s;
+}
+
+static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
+    const std::vector<std::filesystem::path>& files, bool grabDocPtrs)
+{
+    std::unordered_map<std::wstring, OpenScanDoc> result;
+
+    std::unordered_set<std::wstring> scanSet;
+    scanSet.reserve(files.size());
+    for (const auto& f : files) scanSet.insert(openDocPathKey(f.wstring()));
+
+    struct ProbeRef { int view; LRESULT index; std::wstring key; };
+    std::vector<ProbeRef> toProbe;
+    std::unordered_set<std::wstring> probeKeys;   // clone in both views = one entry
+    const std::pair<int, int> views[] = {
+        { PRIMARY_VIEW, MAIN_VIEW },   // NPPM_GETNBOPENFILES id, MAIN/SUB id
+        { SECOND_VIEW,  SUB_VIEW },
+    };
+    for (const auto& [nbView, docView] : views) {
+        // Hidden views cannot be activated (switchEditViewTo refuses), so
+        // their doc state would be read from the wrong document - skip them,
+        // matching the visibility condition in N++'s getBufferFromName.
+        const HWND viewSci = (docView == MAIN_VIEW)
+            ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        if (!viewSci || !IsWindowVisible(viewSci)) continue;
+
+        const LRESULT nb = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, nbView);
+        for (LRESULT i = 0; i < nb; ++i) {
+            const LRESULT bufId = ::SendMessage(nppData._nppHandle, NPPM_GETBUFFERIDFROMPOS, i, docView);
+            if (bufId == 0) continue;
+            // NPPM_GETFULLPATHFROMBUFFERID has no size parameter and copies
+            // unchecked - query the length first, then size the buffer exactly.
+            const LRESULT pathLen = ::SendMessage(nppData._nppHandle,
+                NPPM_GETFULLPATHFROMBUFFERID, bufId, 0);
+            if (pathLen <= 0) continue;
+            std::wstring pathBuf(static_cast<size_t>(pathLen) + 1, L'\0');
+            if (::SendMessage(nppData._nppHandle, NPPM_GETFULLPATHFROMBUFFERID,
+                bufId, reinterpret_cast<LPARAM>(pathBuf.data())) <= 0) continue;
+            pathBuf.resize(wcslen(pathBuf.c_str()));
+            std::wstring key = openDocPathKey(std::move(pathBuf));
+            if (!key.empty() && scanSet.count(key) != 0 && probeKeys.insert(key).second)
+                toProbe.push_back({ docView, i, std::move(key) });
+        }
+    }
+
+    if (toProbe.empty()) return result;
+
+    const LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    const LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
+    int savedView = -1;
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
+
+    for (const auto& d : toProbe) {
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, d.view, d.index);
+        HWND hSci = (d.view == MAIN_VIEW)
+            ? nppData._scintillaMainHandle
+            : nppData._scintillaSecondHandle;
+        if (!hSci) continue;
+        OpenScanDoc entry{ d.view, d.index, false, 0 };
+        entry.dirty = (::SendMessage(hSci, SCI_GETMODIFY, 0, 0) != 0);
+        if (grabDocPtrs) {
+            entry.docPtr = static_cast<sptr_t>(::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0));
+            if (entry.docPtr)   // keep alive across a tab close mid-scan; caller releases
+                ::SendMessage(hSci, SCI_ADDREFDOCUMENT, 0, static_cast<LPARAM>(entry.docPtr));
+        }
+        result.emplace(d.key, entry);
+    }
+
+    // Restore the previously active document in each view, focused view last
+    if (savedMainIdx >= 0)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
+    if (savedSubIdx >= 0)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
+    const int focusView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
+    const LRESULT focusIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
+    if (focusIdx >= 0)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
+
+    return result;
+}
+
 void MultiReplace::handleReplaceInFiles() {
     HiddenSciGuard guard;
     if (!guard.create()) {
@@ -9209,76 +9299,13 @@ void MultiReplace::handleReplaceInFiles() {
 
     // Safety net: skip files that are open in N++ with unsaved changes. A
     // disk write under such a buffer forks the file: reloading discards the
-    // user's edits, a later save undoes this replace. The plugin API has no
-    // dirty query for foreign buffers, so replacing inside the live buffer
-    // like native N++ (Notepad_plus::replaceInFilelist) is not an option -
-    // skip and report instead. Clean open files keep the disk write; N++'s
-    // file-status auto-detection picks it up. SCI_GETMODIFY answers only for
-    // the active doc, so the probe activates each intersecting open doc once
-    // and restores the previous tabs afterwards.
+    // user's edits, a later save undoes this replace. Unlike native N++
+    // (Notepad_plus::replaceInFilelist) we cannot replace inside the live
+    // buffer and save it, so skip and report. Clean open files keep the disk
+    // write; N++'s file-status auto-detection picks it up.
     std::unordered_set<std::wstring> dirtyOpenPaths;
-    {
-        auto pathKey = [](std::wstring s) {
-            for (auto& c : s) c = towlower(c);
-            return s;
-            };
-
-        std::unordered_set<std::wstring> scanSet;
-        scanSet.reserve(files.size());
-        for (const auto& f : files) scanSet.insert(pathKey(f.wstring()));
-
-        struct OpenDocRef { int view; LRESULT index; std::wstring key; };
-        std::vector<OpenDocRef> toProbe;
-        const std::pair<int, int> views[] = {
-            { PRIMARY_VIEW, MAIN_VIEW },   // NPPM_GETNBOPENFILES id, MAIN/SUB id
-            { SECOND_VIEW,  SUB_VIEW },
-        };
-        for (const auto& [nbView, docView] : views) {
-            const LRESULT nb = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, nbView);
-            for (LRESULT i = 0; i < nb; ++i) {
-                const LRESULT bufId = ::SendMessage(nppData._nppHandle, NPPM_GETBUFFERIDFROMPOS, i, docView);
-                if (bufId == 0) continue;
-                // NPPM_GETFULLPATHFROMBUFFERID has no size parameter and copies
-                // unchecked - query the length first, then size the buffer exactly.
-                const LRESULT pathLen = ::SendMessage(nppData._nppHandle,
-                    NPPM_GETFULLPATHFROMBUFFERID, bufId, 0);
-                if (pathLen <= 0) continue;
-                std::wstring pathBuf(static_cast<size_t>(pathLen) + 1, L'\0');
-                if (::SendMessage(nppData._nppHandle, NPPM_GETFULLPATHFROMBUFFERID,
-                    bufId, reinterpret_cast<LPARAM>(pathBuf.data())) <= 0) continue;
-                pathBuf.resize(wcslen(pathBuf.c_str()));
-                std::wstring key = pathKey(std::move(pathBuf));
-                if (!key.empty() && scanSet.count(key) != 0)
-                    toProbe.push_back({ docView, i, std::move(key) });
-            }
-        }
-
-        if (!toProbe.empty()) {
-            const LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-            const LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
-            int savedView = -1;
-            ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
-
-            for (const auto& d : toProbe) {
-                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, d.view, d.index);
-                HWND hSci = (d.view == MAIN_VIEW)
-                    ? nppData._scintillaMainHandle
-                    : nppData._scintillaSecondHandle;
-                if (hSci && ::SendMessage(hSci, SCI_GETMODIFY, 0, 0) != 0)
-                    dirtyOpenPaths.insert(d.key);
-            }
-
-            // Restore the previously active document in each view, focused view last
-            if (savedMainIdx >= 0)
-                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
-            if (savedSubIdx >= 0)
-                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
-            const int focusView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
-            const LRESULT focusIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
-            if (focusIdx >= 0)
-                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
-        }
-    }
+    for (const auto& [key, d] : collectOpenScanDocs(files, /*grabDocPtrs=*/false))
+        if (d.dirty) dirtyOpenPaths.insert(key);
 
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
@@ -9315,10 +9342,9 @@ void MultiReplace::handleReplaceInFiles() {
             L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
             MessageStatus::Info);
 
-        if (!dirtyOpenPaths.empty()) {
-            std::wstring key = fp.wstring();
-            for (auto& c : key) c = towlower(c);
-            if (dirtyOpenPaths.count(key) != 0) { ++openUnsavedSkipped; continue; }
+        if (!dirtyOpenPaths.empty()
+            && dirtyOpenPaths.count(openDocPathKey(fp.wstring())) != 0) {
+            ++openUnsavedSkipped; continue;
         }
 
         DWORD attrs = GetFileAttributesW(fp.c_str());
@@ -9338,6 +9364,9 @@ void MultiReplace::handleReplaceInFiles() {
             send(SCI_ADDTEXT, (WPARAM)u8in.length(), reinterpret_cast<sptr_t>(u8in.data()));
             send(SCI_GOTOPOS, 0, 0); // SCI_ADDTEXT leaves the caret at the end; define the scan start
 
+            // Hidden-buffer content is not tracked by the editor's change log -
+            // force a fresh delimiter scan for every file.
+            _delimiterPositionsStale = true;
             handleDelimiterPositions(DelimiterOperation::LoadAll);
 
             if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
@@ -9378,6 +9407,9 @@ void MultiReplace::handleReplaceInFiles() {
         }
         refreshUIListView();
     }
+
+    // Invalidate the last scanned file's delimiter snapshot (see Find in Files).
+    _delimiterPositionsStale = true;
 
     // status line
     if (!_isShuttingDown) {
@@ -9966,6 +9998,21 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
 
+    // "Search open documents instead of files on disk": files open in N++
+    // are searched through their live document (N++ parity, incl. unsaved
+    // changes). Doc pointers are AddRef'd so a tab close mid-scan is safe.
+    std::unordered_map<std::wstring, OpenScanDoc> openDocs;
+    if (searchOpenDocsEnabled)
+        openDocs = collectOpenScanDocs(files, /*grabDocPtrs=*/true);
+    struct DocPtrReleaser {
+        HiddenSciGuard& g;
+        const std::unordered_map<std::wstring, OpenScanDoc>& m;
+        ~DocPtrReleaser() {
+            for (const auto& kv : m)
+                if (kv.second.docPtr) g.fn(g.pData, SCI_RELEASEDOCUMENT, 0, kv.second.docPtr);
+        }
+    } docPtrReleaser{ guard, openDocs };
+
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreated(nppData);
 
@@ -10032,16 +10079,38 @@ void MultiReplace::handleFindInFiles() {
             L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
             MessageStatus::Info);
 
+        const OpenScanDoc* openDoc = nullptr;
+        if (!openDocs.empty()) {
+            const auto od = openDocs.find(openDocPathKey(fp.wstring()));
+            if (od != openDocs.end() && od->second.docPtr) openDoc = &od->second;
+        }
+
         std::string content;
         Encoding::EncodingInfo enc;
-        HiddenSciGuard::LoadKind loadKind;
-        if (guard.loadTextFile(fp, content, enc, loadKind) != HiddenSciGuard::SkipReason::None) continue;
+        HiddenSciGuard::LoadKind loadKind = HiddenSciGuard::LoadKind::Text;
+        if (!openDoc && guard.loadTextFile(fp, content, enc, loadKind) != HiddenSciGuard::SkipReason::None) continue;
 
         SciBindingGuard bind(this, guard);
-        send(SCI_CLEARALL, 0, 0);
-        send(SCI_SETCODEPAGE, codepageForLoadedFile(loadKind, enc), 0);
-        send(SCI_ADDTEXT, (WPARAM)content.size(), reinterpret_cast<sptr_t>(content.data()));
+        HiddenSciGuard::AttachedDoc attached;
+        if (openDoc) {
+            // Live document instead of disk content. It brings its own text
+            // and codepage; no document-mutating call may run while attached.
+            attached.attach(guard, openDoc->docPtr);
+            const size_t maxBytes = guard.getEffectiveMaxFileSize();
+            if (maxBytes > 0 && static_cast<size_t>(send(SCI_GETLENGTH, 0, 0)) > maxBytes) {
+                guard.noteSkip(HiddenSciGuard::SkipReason::TooLarge);
+                continue;
+            }
+        }
+        else {
+            send(SCI_CLEARALL, 0, 0);
+            send(SCI_SETCODEPAGE, codepageForLoadedFile(loadKind, enc), 0);
+            send(SCI_ADDTEXT, (WPARAM)content.size(), reinterpret_cast<sptr_t>(content.data()));
+        }
 
+        // Hidden/attached content is not tracked by the editor's change log -
+        // force a fresh delimiter scan for every file.
+        _delimiterPositionsStale = true;
         handleDelimiterPositions(DelimiterOperation::LoadAll);
 
         const std::wstring wPath = fp.wstring();
@@ -10129,6 +10198,10 @@ void MultiReplace::handleFindInFiles() {
     // NOW show the dock (after search is complete, like Notepad++ does)
     dock.ensureCreatedAndVisible(nppData);
     if (ResultDock::purgeEnabled()) dock.clear();
+
+    // The loop left lineDelimiterPositions describing the last scanned file -
+    // invalidate so the next editor CSV operation rescans the live document.
+    _delimiterPositionsStale = true;
 
     // Report what was actually searched: files the loop reached (idx falls short
     // of files.size() when canceled), minus everything the guard skipped.
@@ -10605,20 +10678,9 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
     SIZE_T startColumnIndex = columnInfo.startColumnIndex;
     LRESULT totalLines = columnInfo.totalLines;
 
-    // Exclude header rows (like sort and duplicate detection do).
-    const LRESULT headerLines = static_cast<LRESULT>(CSVheaderLinesCount);
-    if (totalLines <= headerLines) {
-        return result;
-    }
-    if (startLine < headerLines) {
-        if (isBackward) return result;
-        startLine = headerLines;
-        startColumnIndex = 1;
-    }
-
     // Set line iteration based on search direction
     LRESULT line = startLine;
-    while (isBackward ? (line >= headerLines) : (line < totalLines)) {
+    while (isBackward ? (line >= 0) : (line < totalLines)) {
         // Avoid out-of-bounds access in lineDelimiterPositions
         if (line >= static_cast<LRESULT>(lineDelimiterPositions.size())) {
             break;
@@ -16125,6 +16187,7 @@ void MultiReplace::loadSettingsToPanelUI() {
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = static_cast<size_t>(CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100));
     skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
+    searchOpenDocsEnabled = CFG.readBool(L"ReplaceInFiles", L"SearchOpenDocs", true);
 
     // --- Load "Open Documents" panel settings ---
     _docsFilter = CFG.readString(L"OpenDocs", L"Filter", L"*.*");
@@ -19351,6 +19414,7 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
+    s.searchOpenDocsEnabled = CFG.readBool(L"ReplaceInFiles", L"SearchOpenDocs", true);
     s.editFieldSize = CFG.readInt(optSec(L"EditFieldSize"), L"EditFieldSize", 5);
     s.csvHeaderLinesCount = CFG.readInt(L"Scope", L"HeaderLines", 1);
     s.resultDockPerEntryColorsEnabled = CFG.readBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", true);
@@ -19380,6 +19444,7 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", s.maxFileSizeMB);
     CFG.writeBool(L"ReplaceInFiles", L"SkipBinaryFiles", s.skipBinaryFilesEnabled);
+    CFG.writeBool(L"ReplaceInFiles", L"SearchOpenDocs", s.searchOpenDocsEnabled);
     CFG.writeInt(optSec(L"EditFieldSize"), L"EditFieldSize", s.editFieldSize);
     CFG.writeInt(L"Scope", L"HeaderLines", s.csvHeaderLinesCount);
     CFG.writeBool(optSec(L"ResultDockPerEntryColors"), L"ResultDockPerEntryColors", s.resultDockPerEntryColorsEnabled);
@@ -19553,6 +19618,7 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", limitFileSizeEnabled);
     CFG.writeInt(L"ReplaceInFiles", L"MaxFileSizeMB", static_cast<int>(maxFileSizeMB));
     CFG.writeBool(L"ReplaceInFiles", L"SkipBinaryFiles", skipBinaryFilesEnabled);
+    CFG.writeBool(L"ReplaceInFiles", L"SearchOpenDocs", searchOpenDocsEnabled);
 
     // [File]/ListFilePath and [File]/OriginalListHash are no longer
     // written - per-tab equivalents are under [Tabs]. Legacy reads
@@ -19604,6 +19670,7 @@ void MultiReplace::applyConfigSettingsOnly()
     limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
+    searchOpenDocsEnabled = CFG.readBool(L"ReplaceInFiles", L"SearchOpenDocs", true);
     pickupSelection = CFG.readBool(optSec(L"PickupSelection"), L"PickupSelection", true);
     autoEscapeForFindInput = CFG.readBool(optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", false);
 

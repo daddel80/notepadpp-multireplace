@@ -121,7 +121,7 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 **Available Column Operations:**
 - **Sorting Lines by Columns** — Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values, including currency formats like `$100`, `100 EUR`, or `.5`.
   - **Smart Undo (Toggle Sort)** — A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.
-- **Exclude Header Lines** — Header rows are protected from sort, duplicate detection, and find/replace. Configure the number of header rows in [Settings > CSV Options](#3-csv-options). Set to `0` to disable.
+- **Exclude Header Lines** — Header rows are protected from sort and duplicate detection (find/replace always searches every line, like Excel). Configure the number of header rows in [Settings > CSV Options](#3-csv-options). Set to `0` to disable.
 - **Deleting Multiple Columns** — Remove specified columns at once, automatically cleaning up obsolete delimiters.
 - **Clipboard Column Copying** — Copy the content of specified columns, including their delimiters, to the clipboard.
 - **Flow Tabs (Column Alignment)** — Visually aligns columns in tab-delimited and CSV files for easier reading and editing.
@@ -407,7 +407,7 @@ Settings specific to the CSV column manipulation and alignment features.
 
 - **Flow Tabs: Right-align numeric columns** — When using the **Flow Tabs** feature (Column Alignment), numeric values will be right-aligned within their columns for better readability. Text remains left-aligned.
 - **Flow Tabs: Don't show intro message** — Suppresses the informational dialog that appears when activating Flow Tabs for the first time.
-- **CSV: Header lines to exclude** — Number of header rows protected from sort, duplicate detection, and find/replace. Set to `0` to disable.
+- **CSV: Header lines to exclude** — Number of header rows protected from sort and duplicate detection. Set to `0` to disable.
 - **Mark duplicate rows with bookmarks** — Places Notepad++ bookmarks on duplicate lines for navigation (F2 / Shift+F2). Clears existing bookmarks when active.
 
 ### 5. Copy Report
