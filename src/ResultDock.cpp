@@ -18,6 +18,7 @@
 #include "Notepad_plus_msgs.h"
 #include <windows.h>
 #include "Scintilla.h"
+#include "StringUtils.h"
 #include "StaticDialog/resource.h"
 #include "StaticDialog/Docking.h"
 #include "StaticDialog/DockingDlgInterface.h"
@@ -467,8 +468,8 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles, const std::wstr
     if (!_blockOpen) return;
 
     // Replace placeholders in the pending header line ONLY (first line)
-    const std::string hitsStr = std::to_string(totalHits);
-    const std::string filesStr = std::to_string(totalFiles);
+    const std::string hitsStr = Encoding::wstringToUtf8(StringUtils::formatNumber(static_cast<size_t>(totalHits)));
+    const std::string filesStr = Encoding::wstringToUtf8(StringUtils::formatNumber(static_cast<size_t>(totalFiles)));
 
     // Limit search to the first header line to avoid matching digits in
     // user search patterns or file content that follows
@@ -1207,14 +1208,14 @@ void ResultDock::buildListText(
 
     for (auto& [path, f] : files)
     {
-        appendIndented(LineLevel::FileHdr, f.wPath + L" " + LM.get(L"dock_hits_suffix", { std::to_wstring(f.hitCount) }));
+        appendIndented(LineLevel::FileHdr, f.wPath + L" " + LM.get(L"dock_hits_suffix", { StringUtils::formatNumber(static_cast<size_t>(f.hitCount)) }));
 
         if (groupView)
         {
             // grouped: first the file header, then each criterion block
             for (auto& c : f.crits)
             {
-                appendIndented(LineLevel::CritHdr, LM.get(L"dock_crit_header", { c.text, std::to_wstring(c.hits.size()) }));
+                appendIndented(LineLevel::CritHdr, LM.get(L"dock_crit_header", { c.text, StringUtils::formatNumber(c.hits.size()) }));
 
                 // Move c.hits into hitsCopy: each crit is processed once,
                 // and c.hits is not used afterwards.
@@ -3036,6 +3037,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
         add(IDM_RD_FOLD_ALL, L"rdmenu_fold_all");
         add(IDM_RD_UNFOLD_ALL, L"rdmenu_unfold_all");
+        add(IDM_RD_COLLAPSE_FILES, L"rdmenu_collapse_files");
         ::AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
         UINT copyFlags = MF_STRING | (hasSel ? 0 : MF_GRAYED);
         add(IDM_RD_COPY_STD, L"rdmenu_copy_std", copyFlags);
@@ -3087,6 +3089,36 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         case IDM_RD_UNFOLD_ALL:
             ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_EXPAND, 0);
             return 0;
+
+        case IDM_RD_COLLAPSE_FILES:
+        {
+            // File list view: collapse everything below the file names, so a
+            // search block shows only its file headers with their hit counts.
+            //
+            // Search headers are deliberately left alone: with purge off the
+            // dock stacks several blocks and prependBlock() collapses the
+            // previous one, so expanding them here would resurrect older
+            // blocks the user never asked to reopen. A collapsed block simply
+            // stays collapsed - one click on its "+" then shows the file list,
+            // because its inner headers are already contracted.
+            const int lineCount = static_cast<int>(::SendMessage(hwnd, SCI_GETLINECOUNT, 0, 0));
+            const int BASE = SC_FOLDLEVELBASE;
+
+            for (int line = lineCount - 1; line >= 0; --line)
+            {
+                const int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
+                if (!(level & SC_FOLDLEVELHEADERFLAG)) continue;
+
+                const int depth = (level & SC_FOLDLEVELNUMBERMASK) - BASE;
+                if (depth <= static_cast<int>(ResultDock::LineLevel::SearchHdr)) continue;
+
+                if (::SendMessage(hwnd, SCI_GETFOLDEXPANDED, line, 0)) {
+                    ::SendMessage(hwnd, SCI_SETFOLDEXPANDED, line, FALSE);
+                    ::SendMessage(hwnd, SCI_FOLDLINE, line, SC_FOLDACTION_CONTRACT);
+                }
+            }
+            return 0;
+        }
 
             // ── copy ──────────────────────────────────────
         case IDM_RD_COPY_STD:

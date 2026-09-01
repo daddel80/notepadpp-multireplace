@@ -324,6 +324,7 @@ const LangKV kEnglishPairs[] = {
 // Result Dock Menu
 { L"rdmenu_fold_all",            L"Fold all" },
 { L"rdmenu_unfold_all",          L"Unfold all" },
+{ L"rdmenu_collapse_files",      L"Collapse to file list" },
 { L"rdmenu_copy_std",            L"&Copy\tCtrl+C" },
 { L"rdmenu_copy_lines",          L"Copy selected line(s)" },
 { L"rdmenu_copy_paths",          L"Copy selected pathname(s)" },

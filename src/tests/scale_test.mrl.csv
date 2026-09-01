@@ -1,0 +1,9 @@
+Selected;Find;Replace;WholeWord;MatchCase;Regex;Extended;Comments
+0;ZTOKEN;;0;1;0;0;T1: *.txt, Skip binary AN, Groessenlimit AUS -> (5.714 hits in 1.217 file(s)) [1.217 searched, 1 skipped: 1 binary]. Datei aus 02_hits pruefen: (1.500 hits)
+0;ZTOKEN;;0;1;0;0;T2: wie T1, Settings/File Search: Groessenlimit AN 1 MB -> (5.712 hits in 1.215 file(s)) [1.215 searched, 3 skipped: 1 binary, 2 too large]
+0;ZTOKEN;;0;1;0;0;T3: *.*, Skip binary AN, Groessenlimit AUS -> (5.714 hits in 1.217 file(s)) [1.220 searched, 1.051 skipped: 1.051 binary]
+0;ZTOKEN;;0;1;0;0;T4: *.*, Skip binary AUS -> (6.765 hits in 2.268 file(s)) [2.271 file(s) searched]
+0;PRÉCÉDENT;;0;1;0;0;T4b: nach T4 zusaetzlich suchen -> Treffer in allen 06_encodings-Dateien ohne Mojibake
+0;KOLX;;0;1;0;0;"T5: *.csv, CSV-Scope, Delimiter Semikolon, kein Quote-Zeichen -> ohne Spalte: 15 in 3 files | Spalte1: 1 (nur csv_C) | Spalte2: 4 (1x im Header von csv_A) | Spalte5: 3 (NUR csv_B, Regressionstest)"
+0;ZTOKEN;DONE;0;1;0;0;"T8: Replace in Files, Filter buf_*.txt (08_buffer vorher in N++ offen+ungespeichert aendern) -> Meldung open with unsaved changes. Ordner 05_readonly -> Meldung read-only"
+0;;;0;1;0;0;T6+T7: kein Suchtext noetig - nach T1 Rechtsklick im Ergebnis-Panel, Collapse to file list (1.217 Zeilen, Suchkopf offen). Dann T1 nochmal mit Filter bulk_1*.txt (Purge AUS), Collapse to file list -> alter Block bleibt zu

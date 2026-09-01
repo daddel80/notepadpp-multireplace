@@ -7564,10 +7564,10 @@ void MultiReplace::replaceAllInOpenedDocs()
     // Show summary: total replacements across all documents. When the doc
     // filter excluded documents, append how many were searched vs. excluded.
     std::wstring docsSummary = LM.get(L"status_replace_in_docs_summary",
-        { std::to_wstring(grandTotalReplace) });
+        { StringUtils::formatNumber(grandTotalReplace) });
     if (docsFilteredOut > 0)
         docsSummary += LM.get(L"status_docs_filtered",
-            { std::to_wstring(docsSearched), std::to_wstring(docsFilteredOut) });
+            { StringUtils::formatNumber(docsSearched), StringUtils::formatNumber(docsFilteredOut) });
     showStatusMessage(docsSummary, MessageStatus::Success);
 
     // Refresh column highlighting on the active doc (suppressed during bulk replace)
@@ -9023,7 +9023,7 @@ bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool 
         while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
         if (_isShuttingDown || _isCancelRequested) return false;
         if ((count & 0x3FF) == 0)
-            showStatusMessage(LM.get(L"status_discovering_files", { std::to_wstring(count) }), MessageStatus::Info);
+            showStatusMessage(LM.get(L"status_discovering_files", { StringUtils::formatNumber(count) }), MessageStatus::Info);
         return true;
         };
 
@@ -9063,7 +9063,7 @@ std::wstring MultiReplace::buildSkipBreakdown(const HiddenSciGuard& guard) const
     auto add = [&](size_t n, const wchar_t* key) {
         if (n == 0) return;
         if (!breakdown.empty()) breakdown += L", ";
-        breakdown += std::to_wstring(n) + L" " + LM.get(key);
+        breakdown += StringUtils::formatNumber(n) + L" " + LM.get(key);
         };
     add(guard.getSkippedBinaryCount(),      L"dock_skip_binary");
     add(guard.getSkippedLargeCount(),       L"dock_skip_large");
@@ -9082,9 +9082,9 @@ std::wstring MultiReplace::buildScanSuffix(const HiddenSciGuard& guard, size_t s
     std::wstring skipClause;
     if (skipped > 0) {
         skipClause = LM.get(L"dock_scan_skipped",
-            { std::to_wstring(skipped), buildSkipBreakdown(guard) });
+            { StringUtils::formatNumber(skipped), buildSkipBreakdown(guard) });
     }
-    return LM.get(L"dock_scan_suffix", { std::to_wstring(searchedCount), skipClause });
+    return LM.get(L"dock_scan_suffix", { StringUtils::formatNumber(searchedCount), skipClause });
 }
 
 // Standalone sentence for the status line, appended after the replace summary:
@@ -9095,7 +9095,7 @@ std::wstring MultiReplace::buildSkipSentence(const HiddenSciGuard& guard) const
     const size_t skipped = guard.getSkippedTotalCount();
     if (skipped == 0) return std::wstring();
     return LM.get(L"status_scan_skipped",
-        { std::to_wstring(skipped), buildSkipBreakdown(guard) });
+        { StringUtils::formatNumber(skipped), buildSkipBreakdown(guard) });
 }
 
 // Codepage to bind the hidden buffer to for one loaded file. Text-kind
@@ -9423,13 +9423,13 @@ void MultiReplace::handleReplaceInFiles() {
         const size_t searchedFiles = (reachedFiles > notSearched) ? (reachedFiles - notSearched) : 0;
 
         std::wstring msg = LM.get(L"status_replace_summary",
-            { std::to_wstring(changed), std::to_wstring(searchedFiles) });
+            { StringUtils::formatNumber(changed), StringUtils::formatNumber(searchedFiles) });
         msg += buildSkipSentence(guard);
         if (readOnlySkipped > 0) {
-            msg += LM.get(L"status_readonly_skipped", { std::to_wstring(readOnlySkipped) });
+            msg += LM.get(L"status_readonly_skipped", { StringUtils::formatNumber(readOnlySkipped) });
         }
         if (openUnsavedSkipped > 0) {
-            msg += LM.get(L"status_open_unsaved_skipped", { std::to_wstring(openUnsavedSkipped) });
+            msg += LM.get(L"status_open_unsaved_skipped", { StringUtils::formatNumber(openUnsavedSkipped) });
         }
         if (wasCanceled) {
             msg += L" - " + LM.get(L"status_canceled");
@@ -9666,8 +9666,8 @@ void MultiReplace::handleFindAllButton()
 
     const size_t fileCount = fileMap.size();
     const std::wstring header = useListEnabled
-        ? LM.get(L"dock_list_header", { std::to_wstring(totalHits), std::to_wstring(fileCount) })
-        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), std::to_wstring(totalHits), std::to_wstring(fileCount) });
+        ? LM.get(L"dock_list_header", { StringUtils::formatNumber(totalHits), StringUtils::formatNumber(fileCount) })
+        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), StringUtils::formatNumber(totalHits), StringUtils::formatNumber(fileCount) });
 
     // NOW show the dock (after search is complete, like Notepad++ does)
     dock.ensureCreatedAndVisible(nppData);
@@ -9677,7 +9677,7 @@ void MultiReplace::handleFindAllButton()
     if (fileCount > 0) dock.appendFileBlock(fileMap, sciSend);
     dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
 
-    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindAllInDocsButton()
@@ -9936,12 +9936,12 @@ void MultiReplace::handleFindAllInDocsButton()
         // " [7 document(s) searched]" / " [3 document(s) searched, 4 excluded by filter]"
         std::wstring filterClause;
         if (docsFilteredOut > 0)
-            filterClause = LM.get(L"dock_docs_filtered", { std::to_wstring(docsFilteredOut) });
+            filterClause = LM.get(L"dock_docs_filtered", { StringUtils::formatNumber(docsFilteredOut) });
         dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()),
-            LM.get(L"dock_docs_scan_suffix", { std::to_wstring(docsSearched), filterClause }));
+            LM.get(L"dock_docs_scan_suffix", { StringUtils::formatNumber(docsSearched), filterClause }));
     }
 
-    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindInFiles() {
@@ -10221,7 +10221,7 @@ void MultiReplace::handleFindInFiles() {
     }
     const bool wasCanceled = (_isCancelRequested || aborted);
     const std::wstring canceledSuffix = wasCanceled ? (L" - " + LM.get(L"status_canceled")) : L"";
-    std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { std::to_wstring(totalHits) });
+    std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) });
     MessageStatus ms = wasCanceled ? MessageStatus::Info : (totalHits == 0 ? MessageStatus::Error : MessageStatus::Success);
 
     showStatusMessage(msg + canceledSuffix, ms);

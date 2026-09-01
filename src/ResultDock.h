@@ -338,7 +338,8 @@ private:
         IDM_RD_COPY_PATHS = 60007,
         IDM_RD_OPEN_PATHS = 60008,
         IDM_RD_TOGGLE_WRAP = 60009,
-        IDM_RD_TOGGLE_PURGE = 60010
+        IDM_RD_TOGGLE_PURGE = 60010,
+        IDM_RD_COLLAPSE_FILES = 60011
     };
 
     static constexpr int INDIC_LINE_BACKGROUND = 28;
