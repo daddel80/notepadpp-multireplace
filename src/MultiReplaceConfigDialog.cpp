@@ -496,8 +496,10 @@ INT_PTR MultiReplaceConfigDialog::handleCtlColorStatic(WPARAM wParam, LPARAM lPa
 }
 
 void MultiReplaceConfigDialog::showCategory(int index) {
+    // Keep in sync with the entries added to _hCategoryList in initUI().
+    constexpr int kCategoryCount = 6;
     if (index == _currentCategory) return;
-    if (index < 0 || index > 4) return;
+    if (index < 0 || index >= kCategoryCount) return;
     _currentCategory = index;
     ShowWindow(_hSearchReplacePanel, index == 0 ? SW_SHOW : SW_HIDE);
     ShowWindow(_hFileSearchPanel, index == 1 ? SW_SHOW : SW_HIDE);
@@ -604,6 +606,7 @@ void MultiReplaceConfigDialog::applyFonts() {
         };
 
     applyToHierarchy(_hSearchReplacePanel);
+    applyToHierarchy(_hFileSearchPanel);
     applyToHierarchy(_hListViewLayoutPanel);
     applyToHierarchy(_hAppearancePanel);
     applyToHierarchy(_hCsvFlowTabsPanel);
@@ -760,7 +763,7 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
 void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     if (!_hSearchReplacePanel) return;
     const int groupW = 460;
-    const int left = 70;
+    const int left = 90;
     int y = 20;
 
     createGroupBox(_hSearchReplacePanel, left, y, groupW, 160, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
@@ -793,7 +796,7 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
 void MultiReplaceConfigDialog::createFileSearchPanelControls() {
     if (!_hFileSearchPanel) return;
     const int groupW = 460;
-    const int left = 70;
+    const int left = 90;
     int y = 20;
 
     createGroupBox(_hFileSearchPanel, left, y, groupW, 120, IDC_CFG_GRP_FILE_SEARCH, LM.getLPCW(L"config_grp_file_handling"));
@@ -863,7 +866,7 @@ HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int 
 void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     if (!_hListViewLayoutPanel) return;
 
-    const int left = 70;
+    const int left = 90;
     const int groupW = 460;
     const int topY = 20;
     const int topGroupH = 186;
@@ -905,7 +908,7 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
 void MultiReplaceConfigDialog::createAppearancePanelControls() {
     if (!_hAppearancePanel) return;
 
-    const int left = 70;
+    const int left = 90;
     const int top = 20;
     const int groupW = 460;
 
@@ -932,7 +935,7 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
 void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     if (!_hCsvFlowTabsPanel) return;
 
-    const int left = 70;
+    const int left = 90;
     const int top = 20;
     const int groupW = 460;
     const int groupH = 158;
@@ -958,9 +961,9 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
 void MultiReplaceConfigDialog::createExportPanelControls() {
     if (!_hReportPanel) return;
 
-    const int left = 30;
+    const int left = 90;
     const int top = 20;
-    const int groupW = 560;
+    const int groupW = 460;
     const int groupH = 145;
 
     createGroupBox(_hReportPanel, left, top, groupW, groupH,
@@ -1192,7 +1195,7 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
 
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
-        safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
+        safeDestroy(_hSearchReplacePanel); safeDestroy(_hFileSearchPanel); safeDestroy(_hListViewLayoutPanel);
         safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hReportPanel);
 
         createFonts();
@@ -1300,7 +1303,7 @@ void MultiReplaceConfigDialog::resetToDefaults()
 
         auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
         safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
-        safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
+        safeDestroy(_hSearchReplacePanel); safeDestroy(_hFileSearchPanel); safeDestroy(_hListViewLayoutPanel);
         safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hReportPanel);
 
         createUI();
@@ -1360,7 +1363,7 @@ void MultiReplaceConfigDialog::onThemeChanged() {
     // Rebuild all controls
     auto safeDestroy = [](HWND& h) { if (h && IsWindow(h)) DestroyWindow(h); h = nullptr; };
     safeDestroy(_hCategoryList); safeDestroy(_hCloseButton); safeDestroy(_hResetButton);
-    safeDestroy(_hSearchReplacePanel); safeDestroy(_hListViewLayoutPanel);
+    safeDestroy(_hSearchReplacePanel); safeDestroy(_hFileSearchPanel); safeDestroy(_hListViewLayoutPanel);
     safeDestroy(_hCsvFlowTabsPanel); safeDestroy(_hAppearancePanel); safeDestroy(_hReportPanel);
 
     createFonts();

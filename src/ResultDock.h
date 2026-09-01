@@ -267,6 +267,7 @@ private:
 
     // -------------------- Callbacks/Subclassing ---------------
     static void toggleFoldAtLine(HWND hSci, int line);
+    static void foldFromMarginClick(HWND hSci, int line, bool ctrl, bool shift);
     static bool navigateFromDockLine(HWND hSci, int dispLine);
     void gotoAdjacentHit(int direction);  // shared impl for gotoNextHit/gotoPrevHit
     static LRESULT CALLBACK sciSubclassProc(HWND, UINT, WPARAM, LPARAM);

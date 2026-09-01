@@ -2782,6 +2782,58 @@ void ResultDock::toggleFoldAtLine(HWND hwnd, int line)
     ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
 }
 
+// Fold-margin click carrying Scintilla's native modifier semantics. The dock
+// handles margin clicks itself, so Scintilla's own MarginClick never runs and
+// the modifiers would otherwise be dropped:
+//
+//   plain       toggle this header only
+//   Ctrl        toggle this header and every level below it
+//   Shift       expand this header and every level below it
+//   Ctrl+Shift  toggle every fold in the dock
+//
+// These are the same modifiers Notepad++'s Search results panel offers, where
+// Ctrl-clicking a search header and then reopening it is how users fold a
+// search down to its bare file list. "Collapse to file list" in the context
+// menu does that in one step; this keeps the familiar mouse route working too.
+void ResultDock::foldFromMarginClick(HWND hwnd, int line, bool ctrl, bool shift)
+{
+    const Sci_Position lineStart = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, line, 0);
+    ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, lineStart, 0);
+    ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
+
+    if (ctrl && shift) {
+        ::SendMessage(hwnd, SCI_FOLDALL, SC_FOLDACTION_TOGGLE, 0);
+    }
+    else if (ctrl) {
+        // SCI_FOLDCHILDREN is asymmetric: expanding propagates to every child
+        // header, but contracting only hides the subtree - the child headers
+        // keep their expanded flag, so reopening this node brings the whole
+        // tree back instead of the next level only. Contract the flags first,
+        // which is what makes "collapse, then reopen one level" land on a bare
+        // file list the way it does after Fold All.
+        if (!::SendMessage(hwnd, SCI_GETFOLDEXPANDED, line, 0)) {
+            ::SendMessage(hwnd, SCI_FOLDCHILDREN, line, SC_FOLDACTION_EXPAND);
+        }
+        else {
+            const int lastChild = static_cast<int>(::SendMessage(hwnd, SCI_GETLASTCHILD, line, -1));
+            for (int l = lastChild; l > line; --l) {
+                const int lv = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, l, 0));
+                if ((lv & SC_FOLDLEVELHEADERFLAG) && ::SendMessage(hwnd, SCI_GETFOLDEXPANDED, l, 0))
+                    ::SendMessage(hwnd, SCI_SETFOLDEXPANDED, l, FALSE);
+            }
+            ::SendMessage(hwnd, SCI_FOLDLINE, line, SC_FOLDACTION_CONTRACT);
+        }
+    }
+    else if (shift) {
+        ::SendMessage(hwnd, SCI_FOLDCHILDREN, line, SC_FOLDACTION_EXPAND);
+    }
+    else {
+        ::SendMessage(hwnd, SCI_TOGGLEFOLD, line, 0);
+    }
+
+    ::SendMessage(hwnd, SCI_SETXOFFSET, 0, 0);
+}
+
 // Navigate from a result dock line to the corresponding hit in the editor.
 // Returns true if the line was a hit and navigation was initiated.
 bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
@@ -2859,7 +2911,8 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             int level = static_cast<int>(::SendMessage(hwnd, SCI_GETFOLDLEVEL, line, 0));
 
             if (level & SC_FOLDLEVELHEADERFLAG) {
-                toggleFoldAtLine(hwnd, line);
+                foldFromMarginClick(hwnd, line,
+                    (wp & MK_CONTROL) != 0, (wp & MK_SHIFT) != 0);
                 return 0;
             }
         }

@@ -177,7 +177,8 @@ The **Search Results Window** is a dedicated dockable panel that displays all ma
 - **Color-Coded Matches** — When using the replacement list, each search term is highlighted in its own distinct color (up to 28 colors). This visual distinction makes it easy to identify which list entry produced each match.
 - **Double-Click Navigation** — Double-click any result line to open the file and jump to the exact match position.
 - **Navigate via Matches Column** — After a Find All, double-click the **Matches** count of any list entry to jump to its next match in the editor. Navigation starts from the current cursor position in the Search Results Window and wraps to the first match at the end.
-- **Context Menu** — Right-click to access options like Copy Lines, Copy Paths, Open Selected Files, Fold/Unfold All, and Clear Results.
+- **Context Menu** — Right-click to access options like Copy Lines, Copy Paths, Open Selected Files, Fold/Unfold All, Collapse to File List, and Clear Results.
+- **Collapse to File List** — Folds every search block down to its file names and hit counts, giving a quick overview of which files matched without the individual hit lines. Previously collapsed blocks are left untouched.
 - **Persistent Results** — By default, new searches append to existing results, allowing you to accumulate findings. Enable "Purge on new search" in the context menu to clear previous results automatically.
 - **Word Wrap** — Toggle word wrap via the context menu for long lines.
 
@@ -199,6 +200,19 @@ Additionally, three navigation commands are available from the **Plugins > Multi
 | Focus Search Results     | Show the Search Results Window and set keyboard focus to it.           |
 | Next Search Result       | Jump to the next match in the editor and highlight it in the results.  |
 | Previous Search Result   | Jump to the previous match in the editor and highlight it in the results. |
+
+### Folding
+
+Clicking a fold arrow in the left margin supports the same modifiers as the Notepad++ Search results panel:
+
+| Click                | Action                                                            |
+|----------------------|-------------------------------------------------------------------|
+| Click                | Toggle the clicked node only; the levels below keep their state.  |
+| Ctrl + Click         | Toggle the clicked node and every level below it.                 |
+| Shift + Click        | Expand the clicked node and every level below it.                 |
+| Ctrl + Shift + Click | Toggle every fold in the panel.                                   |
+
+Ctrl + Click on a search header therefore collapses the whole block; reopening it with a plain click then shows just the file list — the same result the **Collapse to File List** context menu entry produces in one step.
 
 The color-coding of search results can be configured in [Settings > Appearance](#5-appearance) via the **Use list colors in search results** option.
 
