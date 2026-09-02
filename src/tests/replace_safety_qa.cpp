@@ -83,13 +83,14 @@ static std::wstring lmGet(const std::wstring& tpl, const std::vector<std::wstrin
     return result;
 }
 
-static const std::wstring kReadonlyEN   = L" $REPLACE_STRING read-only file(s) skipped.";
-static const std::wstring kOpenUnsavedEN = L" $REPLACE_STRING file(s) skipped: open in Notepad++ with unsaved changes.";
+// every skip reason is a guard counter and renders as one breakdown item
+static const std::wstring kScanSkippedEN = L" $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2.";
+static const std::wstring kSkipReadonlyEN    = L"read-only";
+static const std::wstring kSkipOpenUnsavedEN = L"open with unsaved changes";
 
 // searched-files denominator, mirrored from the status tail
-static size_t searchedFiles(size_t reached, size_t readOnly, size_t openUnsaved, size_t guardSkips) {
-    const size_t notSearched = readOnly + openUnsaved + guardSkips;
-    return (reached > notSearched) ? (reached - notSearched) : 0;
+static size_t searchedFiles(size_t reached, size_t guardSkips) {
+    return (reached > guardSkips) ? (reached - guardSkips) : 0;
 }
 
 // --------- MIRROR: Clear-all-marks bookmark decision (N++ clearMarks parity)
@@ -129,17 +130,17 @@ int main() {
 
     std::printf("\n=== S2 summary sentence and denominator ===\n\n");
     {
-        const std::wstring s = lmGet(kOpenUnsavedEN, { L"2" });
-        CHECK("S2 sentence renders",
-              s == L" 2 file(s) skipped: open in Notepad++ with unsaved changes.");
-        const std::wstring both = lmGet(kReadonlyEN, { L"1" }) + lmGet(kOpenUnsavedEN, { L"2" });
-        CHECK("S2 appends after the read-only sentence, same pattern",
-              both == L" 1 read-only file(s) skipped."
-                     L" 2 file(s) skipped: open in Notepad++ with unsaved changes.");
-        CHECK("S2 denominator subtracts ALL panel-side skips",
-              searchedFiles(/*reached*/10, /*ro*/1, /*openUnsaved*/2, /*guard*/3) == 4);
+        const std::wstring one = lmGet(kScanSkippedEN, { L"2", L"2 " + kSkipOpenUnsavedEN });
+        CHECK("S2 open-unsaved renders as a breakdown item",
+              one == L" 2 file(s) skipped: 2 open with unsaved changes.");
+        const std::wstring both = lmGet(kScanSkippedEN,
+            { L"3", L"1 " + kSkipReadonlyEN + L", 2 " + kSkipOpenUnsavedEN });
+        CHECK("S2 read-only and open-unsaved share ONE skip sentence",
+              both == L" 3 file(s) skipped: 1 read-only, 2 open with unsaved changes.");
+        CHECK("S2 denominator subtracts the guard total (ro 1 + unsaved 2 + other 3)",
+              searchedFiles(/*reached*/10, /*guard*/1 + 2 + 3) == 4);
         CHECK("S2 denominator clamps at zero",
-              searchedFiles(2, 1, 2, 3) == 0);
+              searchedFiles(2, 6) == 0);
     }
 
     std::printf("\n=== S3 Clear all marks vs bookmarks (N++ clearMarks parity) ===\n\n");

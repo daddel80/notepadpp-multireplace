@@ -9069,6 +9069,9 @@ std::wstring MultiReplace::buildSkipBreakdown(const HiddenSciGuard& guard) const
     add(guard.getSkippedLargeCount(),       L"dock_skip_large");
     add(guard.getSkippedUnreadableCount(),  L"dock_skip_unreadable");
     add(guard.getSkippedUndecodableCount(), L"dock_skip_undecodable");
+    add(guard.getSkippedReadOnlyCount(),    L"dock_skip_readonly");
+    add(guard.getSkippedOpenUnsavedCount(), L"dock_skip_open_unsaved");
+    add(guard.getSkippedUnencodableCount(), L"dock_skip_unencodable");
     return breakdown;
 }
 
@@ -9294,8 +9297,6 @@ void MultiReplace::handleReplaceInFiles() {
     }
 
     int total = static_cast<int>(files.size()), idx = 0, changed = 0;
-    size_t readOnlySkipped = 0;
-    size_t openUnsavedSkipped = 0;
 
     // Safety net: skip files that are open in N++ with unsaved changes. A
     // disk write under such a buffer forks the file: reloading discards the
@@ -9344,11 +9345,13 @@ void MultiReplace::handleReplaceInFiles() {
 
         if (!dirtyOpenPaths.empty()
             && dirtyOpenPaths.count(openDocPathKey(fp.wstring())) != 0) {
-            ++openUnsavedSkipped; continue;
+            guard.noteSkip(HiddenSciGuard::SkipReason::OpenUnsaved); continue;
         }
 
         DWORD attrs = GetFileAttributesW(fp.c_str());
-        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) { ++readOnlySkipped; continue; }
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
+            guard.noteSkip(HiddenSciGuard::SkipReason::ReadOnly); continue;
+        }
 
         std::string u8in;
         Encoding::EncodingInfo enc;
@@ -9393,6 +9396,9 @@ void MultiReplace::handleReplaceInFiles() {
                     if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes)) {
                         if (guard.writeFile(fp, outBytes)) ++changed;
                     }
+                    else {
+                        guard.noteSkip(HiddenSciGuard::SkipReason::Unencodable);
+                    }
                 }
             }
         }
@@ -9417,20 +9423,14 @@ void MultiReplace::handleReplaceInFiles() {
 
         // The summary's denominator is what was actually searched: every file the
         // loop reached (idx, which falls short of files.size() when canceled),
-        // minus the read-only/open-unsaved skips before loading and the guard's skips.
+        // minus everything the guard recorded as skipped.
         const size_t reachedFiles = static_cast<size_t>((std::max)(idx, 0));
-        const size_t notSearched = readOnlySkipped + openUnsavedSkipped + guard.getSkippedTotalCount();
-        const size_t searchedFiles = (reachedFiles > notSearched) ? (reachedFiles - notSearched) : 0;
+        const size_t skippedFiles = guard.getSkippedTotalCount();
+        const size_t searchedFiles = (reachedFiles > skippedFiles) ? (reachedFiles - skippedFiles) : 0;
 
         std::wstring msg = LM.get(L"status_replace_summary",
             { StringUtils::formatNumber(changed), StringUtils::formatNumber(searchedFiles) });
         msg += buildSkipSentence(guard);
-        if (readOnlySkipped > 0) {
-            msg += LM.get(L"status_readonly_skipped", { StringUtils::formatNumber(readOnlySkipped) });
-        }
-        if (openUnsavedSkipped > 0) {
-            msg += LM.get(L"status_open_unsaved_skipped", { StringUtils::formatNumber(openUnsavedSkipped) });
-        }
         if (wasCanceled) {
             msg += L" - " + LM.get(L"status_canceled");
         }
@@ -9665,9 +9665,13 @@ void MultiReplace::handleFindAllButton()
     }
 
     const size_t fileCount = fileMap.size();
+    // Placeholder counts only: closeSearchBlock() patches the real values in
+    // by replacing the last two digit runs of the header. A pre-formatted
+    // "1.500" is two digit runs, so passing final numbers here would corrupt
+    // the header ("1.1.500"). Same contract as the other two search paths.
     const std::wstring header = useListEnabled
-        ? LM.get(L"dock_list_header", { StringUtils::formatNumber(totalHits), StringUtils::formatNumber(fileCount) })
-        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), StringUtils::formatNumber(totalHits), StringUtils::formatNumber(fileCount) });
+        ? LM.get(L"dock_list_header", { L"0", L"0" })
+        : LM.get(L"dock_single_header", { this->sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), L"0", L"0" });
 
     // NOW show the dock (after search is complete, like Notepad++ does)
     dock.ensureCreatedAndVisible(nppData);

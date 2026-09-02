@@ -398,11 +398,13 @@ namespace Encoding {
             return true;
         }
 
-        // ANSI
+        // ANSI: WideCharToMultiByte substitutes '?' or a best-fit character for
+        // anything outside the codepage and still reports success. Decode the
+        // result back and compare, so a lossy conversion is refused, not written.
         {
             std::string mbs = wstringToBytes(w, dst.codepage);
             if (mbs.empty() && !w.empty()) return false;
-            // ANSI doesn't use BOM; ignore dst.withBOM
+            if (bytesToWString(mbs, dst.codepage) != w) return false;
             outBytes.append(mbs);
             return true;
         }

@@ -21,7 +21,6 @@ static const std::string L_replace_summary =
 static const std::string L_scan_suffix   = " [$REPLACE_STRING1 file(s) searched$REPLACE_STRING2]";
 static const std::string L_scan_skipped  = ", $REPLACE_STRING1 skipped: $REPLACE_STRING2";
 static const std::string L_status_skipped= " $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2.";
-static const std::string L_readonly      = " $REPLACE_STRING read-only file(s) skipped.";
 static const std::string L_canceled      = "Canceled";
 static const std::string L_single_header =
     "Search \"$REPLACE_STRING1\" ($REPLACE_STRING2 hits in $REPLACE_STRING3 file(s))";
@@ -29,6 +28,9 @@ static const std::string L_skip_binary      = "binary";
 static const std::string L_skip_large       = "too large";
 static const std::string L_skip_unreadable  = "unreadable";
 static const std::string L_skip_undecodable = "not decodable";
+static const std::string L_skip_readonly    = "read-only";
+static const std::string L_skip_open_unsaved= "open with unsaved changes";
+static const std::string L_skip_unencodable = "not encodable";
 
 // the pre-change wording, kept so the tests can show the difference
 static const std::string OLD_scan_suffix = " [of $REPLACE_STRING1 searched$REPLACE_STRING2]";
@@ -56,7 +58,10 @@ static std::string LM_get(const std::string& tpl, const std::vector<std::string>
 // ------------------------------------------------------------- skip bookkeeping
 struct Guard {
     size_t binary = 0, large = 0, unreadable = 0, undecodable = 0;
-    size_t total() const { return binary + large + unreadable + undecodable; }
+    size_t readOnly = 0, openUnsaved = 0, unencodable = 0;
+    size_t total() const {
+        return binary + large + unreadable + undecodable + readOnly + openUnsaved + unencodable;
+    }
 };
 
 // VERBATIM: MultiReplace::buildSkipBreakdown
@@ -71,6 +76,9 @@ static std::string buildSkipBreakdown(const Guard& g) {
     add(g.large, L_skip_large);
     add(g.unreadable, L_skip_unreadable);
     add(g.undecodable, L_skip_undecodable);
+    add(g.readOnly, L_skip_readonly);
+    add(g.openUnsaved, L_skip_open_unsaved);
+    add(g.unencodable, L_skip_unencodable);
     return b;
 }
 
@@ -90,16 +98,15 @@ static std::string buildSkipSentence(const Guard& g) {
 }
 
 // ------------------------------------------------- call-site assembly (verbatim)
-// handleReplaceInFiles(): searched = files the loop reached, minus read-only
-// skips and guard skips; idx < candidates when the run was canceled.
+// handleReplaceInFiles(): searched = files the loop reached, minus everything
+// the guard recorded as skipped; idx < candidates when the run was canceled.
 static std::string replaceStatusLine(size_t candidates, size_t reachedIdx, size_t changed,
-                                     size_t readOnlySkipped, const Guard& g, bool canceled) {
+                                     const Guard& g, bool canceled) {
     (void)candidates;
-    const size_t notSearched = readOnlySkipped + g.total();
-    const size_t searched = (reachedIdx > notSearched) ? (reachedIdx - notSearched) : 0;
+    const size_t skipped = g.total();
+    const size_t searched = (reachedIdx > skipped) ? (reachedIdx - skipped) : 0;
     std::string msg = LM_get(L_replace_summary, { std::to_string(changed), std::to_string(searched) });
     msg += buildSkipSentence(g);
-    if (readOnlySkipped > 0) msg += LM_get(L_readonly, { std::to_string(readOnlySkipped) });
     if (canceled) msg += " - " + L_canceled;
     return msg;
 }
@@ -132,7 +139,7 @@ int main() {
     // A) the reported screenshot case: one file, no hits, nothing skipped
     {
         Guard g{};
-        const std::string now = replaceStatusLine(1, 1, 0, 0, g, false);
+        const std::string now = replaceStatusLine(1, 1, 0, g, false);
         const std::string before = LM_get(L_replace_summary, { "0", "1" })
                                  + buildScanSuffix(g, 1, /*useOldWording=*/true);
         std::printf("  before: %s\n  now:    %s\n\n", before.c_str(), now.c_str());
@@ -144,7 +151,7 @@ int main() {
     // B) skips present: breakdown becomes its own sentence
     {
         Guard g{ 38, 2, 1, 0 };
-        const std::string now = replaceStatusLine(1772, 1772, 3, 0, g, false);
+        const std::string now = replaceStatusLine(1772, 1772, 3, g, false);
         std::printf("  now:    %s\n\n", now.c_str());
         CHECK("B denominator excludes the 41 skipped (1772-41=1731)",
               now.find("3 of 1731 file(s) modified.") != std::string::npos);
@@ -155,20 +162,20 @@ int main() {
 
     // C) read-only files were reached but never searched
     {
-        Guard g{ 0, 0, 0, 0 };
-        const std::string now = replaceStatusLine(10, 10, 2, 3, g, false);
+        Guard g{}; g.readOnly = 3;
+        const std::string now = replaceStatusLine(10, 10, 2, g, false);
         std::printf("  now:    %s\n\n", now.c_str());
         CHECK("C read-only files excluded from the searched count (10-3=7)",
               now.find("2 of 7 file(s) modified.") != std::string::npos);
-        CHECK("C read-only note still appended",
-              now.find("3 read-only file(s) skipped") != std::string::npos);
+        CHECK("C read-only is a breakdown item, not its own sentence",
+              now.find(" 3 file(s) skipped: 3 read-only.") != std::string::npos);
         CHECK("C well formed", wellFormed(now));
     }
 
     // D) canceled midway: only what was reached may be claimed as searched
     {
         Guard g{ 5, 0, 0, 0 };
-        const std::string now = replaceStatusLine(1772, 100, 7, 0, g, true);
+        const std::string now = replaceStatusLine(1772, 100, 7, g, true);
         std::printf("  now:    %s\n\n", now.c_str());
         CHECK("D canceled run reports reached-minus-skipped (100-5=95), not 1772",
               now.find("7 of 95 file(s) modified.") != std::string::npos);
@@ -179,7 +186,7 @@ int main() {
     // E) everything skipped -> honest zero, no underflow
     {
         Guard g{ 4, 0, 0, 0 };
-        const std::string now = replaceStatusLine(4, 4, 0, 0, g, false);
+        const std::string now = replaceStatusLine(4, 4, 0, g, false);
         std::printf("  now:    %s\n\n", now.c_str());
         CHECK("E all skipped -> 0 of 0, no underflow",
               now.find("0 of 0 file(s) modified.") != std::string::npos);
@@ -216,11 +223,42 @@ int main() {
     // H) undecodable bucket reachable (Replace verifies a lossless roundtrip)
     {
         Guard g{ 0, 0, 0, 6 };
-        const std::string now = replaceStatusLine(20, 20, 1, 0, g, false);
+        const std::string now = replaceStatusLine(20, 20, 1, g, false);
         std::printf("  now:    %s\n\n", now.c_str());
         CHECK("H undecodable counted and named",
               now.find("6 file(s) skipped: 6 not decodable.") != std::string::npos);
         CHECK("H well formed", wellFormed(now));
+    }
+
+    // J) replacement not representable in the file's codepage: refused, counted, named
+    {
+        Guard g{}; g.unencodable = 2;
+        const std::string now = replaceStatusLine(10, 10, 5, g, false);
+        std::printf("  now:    %s\n\n", now.c_str());
+        CHECK("J unencodable files leave the denominator (10-2=8)",
+              now.find("5 of 8 file(s) modified.") != std::string::npos);
+        CHECK("J unencodable counted and named",
+              now.find(" 2 file(s) skipped: 2 not encodable.") != std::string::npos);
+        CHECK("J well formed", wellFormed(now));
+    }
+
+    // K) every reason at once: one summary, one skip sentence, one breakdown
+    {
+        Guard g{ 1, 2, 0, 0 }; g.readOnly = 2; g.openUnsaved = 1; g.unencodable = 2;
+        const std::string now = replaceStatusLine(1225, 1225, 12, g, true);
+        std::printf("  now:    %s\n\n", now.c_str());
+        CHECK("K exact combined wording",
+              now == "Replace in files: 12 of 1217 file(s) modified."
+                     " 8 file(s) skipped: 1 binary, 2 too large, 2 read-only,"
+                     " 1 open with unsaved changes, 2 not encodable. - Canceled");
+        auto count = [&](const char* word) {
+            size_t n = 0;
+            for (size_t p = now.find(word); p != std::string::npos; p = now.find(word, p + 1)) ++n;
+            return n;
+        };
+        CHECK("K 'skipped' appears exactly once", count("skipped") == 1);
+        CHECK("K 'file(s)' appears exactly twice", count("file(s)") == 2);
+        CHECK("K well formed", wellFormed(now));
     }
 
     // I) placeholder safety: substitution must not corrupt multi-digit numbers

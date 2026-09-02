@@ -48,8 +48,8 @@ public:
     // How a loaded file should be fed into the hidden buffer
     enum class LoadKind { Text, RawBytes };
 
-    // Why a file was not loaded (None = loaded successfully)
-    enum class SkipReason { None, Binary, TooLarge, Unreadable, Undecodable };
+    // Why a file was skipped (None = processed)
+    enum class SkipReason { None, Binary, TooLarge, Unreadable, Undecodable, ReadOnly, OpenUnsaved, Unencodable };
 
     // ========================================================================
     // Configuration setters/getters (for INI/Config Panel)
@@ -369,9 +369,13 @@ public:
     size_t getSkippedLargeCount() const       { return _skippedLargeCount; }
     size_t getSkippedUnreadableCount() const  { return _skippedUnreadableCount; }
     size_t getSkippedUndecodableCount() const { return _skippedUndecodableCount; }
+    size_t getSkippedReadOnlyCount() const    { return _skippedReadOnlyCount; }
+    size_t getSkippedOpenUnsavedCount() const { return _skippedOpenUnsavedCount; }
+    size_t getSkippedUnencodableCount() const { return _skippedUnencodableCount; }
     size_t getSkippedTotalCount() const {
         return _skippedBinaryCount + _skippedLargeCount
-             + _skippedUnreadableCount + _skippedUndecodableCount;
+             + _skippedUnreadableCount + _skippedUndecodableCount
+             + _skippedReadOnlyCount + _skippedOpenUnsavedCount + _skippedUnencodableCount;
     }
 
     void resetSkipCounters() {
@@ -379,9 +383,13 @@ public:
         _skippedLargeCount = 0;
         _skippedUnreadableCount = 0;
         _skippedUndecodableCount = 0;
+        _skippedReadOnlyCount = 0;
+        _skippedOpenUnsavedCount = 0;
+        _skippedUnencodableCount = 0;
     }
 
-    // For skips the caller decides (e.g. attached live document over the size limit)
+    // For skips the caller decides: read-only, open with unsaved changes,
+    // oversized live document, replacement not encodable in the file's codepage
     void noteSkip(SkipReason reason) { fail(reason); }
 
     // ========================================================================
@@ -459,38 +467,6 @@ public:
         return buf;
     }
 
-    void replaceAllInBuffer(const std::string& findUtf8,
-        const std::string& replUtf8,
-        int searchFlags)
-    {
-        if (!fn || !pData) return;
-
-        fn(pData, SCI_SETSEARCHFLAGS, searchFlags, 0);
-        fn(pData, SCI_BEGINUNDOACTION, 0, 0);
-
-        sptr_t docLen = fn(pData, SCI_GETLENGTH, 0, 0);
-        sptr_t start = 0;
-        fn(pData, SCI_SETTARGETRANGE, start, docLen);
-
-        while (fn(pData,
-            SCI_SEARCHINTARGET,
-            static_cast<sptr_t>(findUtf8.size()),
-            reinterpret_cast<sptr_t>(findUtf8.c_str())
-        ) != -1)
-        {
-            fn(pData,
-                SCI_REPLACETARGET,
-                static_cast<sptr_t>(replUtf8.size()),
-                reinterpret_cast<sptr_t>(replUtf8.c_str())
-            );
-            start = fn(pData, SCI_GETTARGETEND, 0, 0);
-            docLen = fn(pData, SCI_GETLENGTH, 0, 0);
-            fn(pData, SCI_SETTARGETRANGE, start, docLen);
-        }
-
-        fn(pData, SCI_ENDUNDOACTION, 0, 0);
-    }
-
     // ========================================================================
     // 7) Debug helpers
     // ========================================================================
@@ -528,6 +504,9 @@ public:
         dbg << L"  Large Files:       " << _skippedLargeCount << L"\n";
         dbg << L"  Unreadable Files:  " << _skippedUnreadableCount << L"\n";
         dbg << L"  Undecodable Files: " << _skippedUndecodableCount << L"\n";
+        dbg << L"  Read-only Files:   " << _skippedReadOnlyCount << L"\n";
+        dbg << L"  Open Unsaved:      " << _skippedOpenUnsavedCount << L"\n";
+        dbg << L"  Unencodable Files: " << _skippedUnencodableCount << L"\n";
 
         return dbg.str();
     }
@@ -548,6 +527,9 @@ private:
         case SkipReason::TooLarge:    ++_skippedLargeCount;       break;
         case SkipReason::Unreadable:  ++_skippedUnreadableCount;  break;
         case SkipReason::Undecodable: ++_skippedUndecodableCount; break;
+        case SkipReason::ReadOnly:    ++_skippedReadOnlyCount;    break;
+        case SkipReason::OpenUnsaved: ++_skippedOpenUnsavedCount; break;
+        case SkipReason::Unencodable: ++_skippedUnencodableCount; break;
         case SkipReason::None:        break;
         }
         return reason;
@@ -563,6 +545,9 @@ private:
     size_t _skippedLargeCount = 0;
     size_t _skippedUnreadableCount = 0;
     size_t _skippedUndecodableCount = 0;
+    size_t _skippedReadOnlyCount = 0;
+    size_t _skippedOpenUnsavedCount = 0;
+    size_t _skippedUnencodableCount = 0;
 
     // Configuration
     size_t _maxFileSizeMB = DEFAULT_MAX_FILE_SIZE_MB;
