@@ -194,6 +194,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_canceled", L"Canceled" },
 { L"status_discovering_files", L"Discovering files... ($REPLACE_STRING)" },
 { L"status_scan_skipped", L" $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2." },
+{ L"status_replace_open_unsaved", L" $REPLACE_STRING of them in open document(s), not saved." },
 { L"status_docs_filtered", L" $REPLACE_STRING1 document(s) searched, $REPLACE_STRING2 excluded by filter." },
 { L"status_no_delimiters", L"No delimiters found." },
 { L"status_model_build_failed", L"Flow Tabs: model build failed." },
@@ -370,7 +371,7 @@ const LangKV kEnglishPairs[] = {
 // File size limit
 { L"config_chk_limit_filesize", L"Skip files larger than" },
 { L"config_chk_skip_binary", L"Skip binary files" },
-{ L"config_chk_search_open_docs", L"Search open documents instead of files on disk" },
+{ L"config_chk_search_open_docs", L"Use open documents instead of files on disk" },
 { L"config_cat_file_search", L"File Search" },
 { L"config_grp_file_handling", L"File handling" },
 { L"config_lbl_max_filesize_mb", L"MB" },

@@ -1,7 +1,10 @@
 // QA harness for the third guy038 follow-up round (issue #133):
 //
-//   1. Replace in Files skips files that are open in N++ with unsaved
-//      changes (fork prevention) and reports them in the summary.
+//   1. Replace in Files and open documents: with "Use open documents
+//      instead of files on disk" on, an open file is replaced in the editor
+//      (saved afterwards if it was clean, left unsaved if it was dirty);
+//      with the option off, dirty open files are skipped (fork prevention)
+//      and reported in the summary.
 //   2. "Clear all marks" also deletes bookmarks when "Bookmark matched
 //      lines" is checked - N++ parity (FindReplaceDlg::clearMarks).
 //   3. View-constant correction in replaceAllInOpenedDocs: NPPM_ACTIVATEDOC
@@ -93,6 +96,22 @@ static size_t searchedFiles(size_t reached, size_t guardSkips) {
     return (reached > guardSkips) ? (reached - guardSkips) : 0;
 }
 
+// --------- MIRROR: handleReplaceInFiles route decision for one file
+// openDoc: open in this N++ instance; dirty: unsaved edits; resolvable: its
+// tab still exists when the file's turn comes (bufId re-resolved at use time).
+enum class Route { Disk, Live, SkipOpenUnsaved };
+static Route replaceRoute(bool useOpenDocs, bool openDoc, bool dirty, bool resolvable) {
+    if (openDoc && useOpenDocs) {
+        if (resolvable) return Route::Live;
+        // closed since the scan started: the disk copy is all that is left
+    }
+    else if (openDoc && dirty) return Route::SkipOpenUnsaved;
+    return Route::Disk;
+}
+// Live route after a run with replacements: a clean document is saved (N++
+// parity, no reload prompt), a dirty one is left for the user to save.
+static bool liveRouteSaves(bool wasDirty) { return !wasDirty; }
+
 // --------- MIRROR: Clear-all-marks bookmark decision (N++ clearMarks parity)
 static bool clearAlsoDeletesBookmarks(bool bookmarkCheckboxChecked) {
     return bookmarkCheckboxChecked;   // keyed on state at clear time, like N++
@@ -141,6 +160,25 @@ int main() {
               searchedFiles(/*reached*/10, /*guard*/1 + 2 + 3) == 4);
         CHECK("S2 denominator clamps at zero",
               searchedFiles(2, 6) == 0);
+    }
+
+    std::printf("\n=== S5 open documents: route and save decision ===\n\n");
+    {
+        CHECK("S5 option on, open + dirty -> replaced in the editor, not skipped",
+              replaceRoute(true, true, true, true) == Route::Live);
+        CHECK("S5 option on, open + clean -> replaced in the editor",
+              replaceRoute(true, true, false, true) == Route::Live);
+        CHECK("S5 option on, tab closed meanwhile -> disk copy",
+              replaceRoute(true, true, true, false) == Route::Disk);
+        CHECK("S5 option off, open + dirty -> skipped (fork prevention)",
+              replaceRoute(false, true, true, true) == Route::SkipOpenUnsaved);
+        CHECK("S5 option off, open + clean -> disk",
+              replaceRoute(false, true, false, true) == Route::Disk);
+        CHECK("S5 not open -> disk in both modes",
+              replaceRoute(true, false, false, false) == Route::Disk
+              && replaceRoute(false, false, false, false) == Route::Disk);
+        CHECK("S5 clean document is saved afterwards", liveRouteSaves(false));
+        CHECK("S5 dirty document is left unsaved", !liveRouteSaves(true));
     }
 
     std::printf("\n=== S3 Clear all marks vs bookmarks (N++ clearMarks parity) ===\n\n");

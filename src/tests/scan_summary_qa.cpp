@@ -21,6 +21,7 @@ static const std::string L_replace_summary =
 static const std::string L_scan_suffix   = " [$REPLACE_STRING1 file(s) searched$REPLACE_STRING2]";
 static const std::string L_scan_skipped  = ", $REPLACE_STRING1 skipped: $REPLACE_STRING2";
 static const std::string L_status_skipped= " $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2.";
+static const std::string L_open_unsaved  = " $REPLACE_STRING of them in open document(s), not saved.";
 static const std::string L_canceled      = "Canceled";
 static const std::string L_single_header =
     "Search \"$REPLACE_STRING1\" ($REPLACE_STRING2 hits in $REPLACE_STRING3 file(s))";
@@ -100,12 +101,16 @@ static std::string buildSkipSentence(const Guard& g) {
 // ------------------------------------------------- call-site assembly (verbatim)
 // handleReplaceInFiles(): searched = files the loop reached, minus everything
 // the guard recorded as skipped; idx < candidates when the run was canceled.
+// changedOpenUnsaved is the part of changed that was edited in an open
+// document with unsaved changes and therefore left unsaved.
 static std::string replaceStatusLine(size_t candidates, size_t reachedIdx, size_t changed,
-                                     const Guard& g, bool canceled) {
+                                     const Guard& g, bool canceled, size_t changedOpenUnsaved = 0) {
     (void)candidates;
     const size_t skipped = g.total();
     const size_t searched = (reachedIdx > skipped) ? (reachedIdx - skipped) : 0;
     std::string msg = LM_get(L_replace_summary, { std::to_string(changed), std::to_string(searched) });
+    if (changedOpenUnsaved > 0)
+        msg += LM_get(L_open_unsaved, { std::to_string(changedOpenUnsaved) });
     msg += buildSkipSentence(g);
     if (canceled) msg += " - " + L_canceled;
     return msg;
@@ -259,6 +264,44 @@ int main() {
         CHECK("K 'skipped' appears exactly once", count("skipped") == 1);
         CHECK("K 'file(s)' appears exactly twice", count("file(s)") == 2);
         CHECK("K well formed", wellFormed(now));
+    }
+
+    // L) open documents with unsaved changes are changed, not skipped: the
+    //    addendum names them, the skip sentence stays a single sentence
+    {
+        Guard g{ 1, 2, 0, 0 }; g.readOnly = 2; g.unencodable = 2;
+        const std::string now = replaceStatusLine(1225, 1225, 12, g, true, 2);
+        std::printf("  now:    %s\n\n", now.c_str());
+        CHECK("L exact wording with unsaved open documents",
+              now == "Replace in files: 12 of 1218 file(s) modified."
+                     " 2 of them in open document(s), not saved."
+                     " 7 file(s) skipped: 1 binary, 2 too large, 2 read-only,"
+                     " 2 not encodable. - Canceled");
+        auto count = [&](const char* word) {
+            size_t n = 0;
+            for (size_t p = now.find(word); p != std::string::npos; p = now.find(word, p + 1)) ++n;
+            return n;
+        };
+        CHECK("L 'skipped' appears exactly once", count("skipped") == 1);
+        CHECK("L 'file(s)' appears exactly twice", count("file(s)") == 2);
+        CHECK("L well formed", wellFormed(now));
+    }
+
+    // M) addendum alone, nothing skipped, not canceled
+    {
+        Guard g{};
+        const std::string now = replaceStatusLine(10, 10, 3, g, false, 3);
+        CHECK("M addendum without skip sentence",
+              now == "Replace in files: 3 of 10 file(s) modified."
+                     " 3 of them in open document(s), not saved.");
+        CHECK("M well formed", wellFormed(now));
+    }
+
+    // N) no unsaved open documents: no addendum at all
+    {
+        Guard g{};
+        const std::string now = replaceStatusLine(10, 10, 3, g, false, 0);
+        CHECK("N no addendum", now == "Replace in files: 3 of 10 file(s) modified.");
     }
 
     // I) placeholder safety: substitution must not corrupt multi-digit numbers

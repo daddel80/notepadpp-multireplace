@@ -1096,6 +1096,10 @@ private:
     std::vector<SelectionRange> m_selectionScope;
     SelectionRange m_lastFindResult = { -1, -1 };
     int m_lastTotalReplaceCount = 0;
+    // Replace in Files on an open document: verify replacement conversions
+    // against the document codepage (convertReplacementW) and remember a miss.
+    bool _strictReplaceCodepage = false;
+    bool _replaceCodepageLossy = false;
     void adjustSelectionScope(Sci_Position replacePos, Sci_Position oldLen, Sci_Position newLen);
 
     inline static HWND  hDebugWnd = nullptr; // Handle for the debug window
@@ -1474,6 +1478,7 @@ private:
 #pragma region Utilities
     std::string convertAndExtendW(const std::wstring& input, bool extended, UINT cp) const;
     std::string convertAndExtendW(const std::wstring& input, bool extended);
+    std::string convertReplacementW(const std::wstring& input, bool extended, UINT cp, bool& lossy) const;
     static void addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems = 100);
     std::wstring getTextFromDialogItem(HWND hwnd, int itemID) const;
     void setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text);

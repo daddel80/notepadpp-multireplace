@@ -8132,7 +8132,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
-
+            bool finalReplaceLossy = false;
             bool engineOutputIsRegexSafe = false;
 
             // --- Formula engine expansion ---
@@ -8166,17 +8166,18 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 engineOutputIsRegexSafe = res.outputIsRegexSafe;
 
                 // Convert engine result (UTF-8) to the document codepage.
-                finalReplaceText = convertAndExtendW(
+                finalReplaceText = convertReplacementW(
                     Encoding::utf8ToWString(res.output),
-                    itemData.extended, documentCodepage);
+                    itemData.extended, documentCodepage, finalReplaceLossy);
             }
             else {
                 // Case without variables: convert once using the safe helper.
-                finalReplaceText = convertAndExtendW(itemData.replaceText, itemData.extended, documentCodepage);
+                finalReplaceText = convertReplacementW(itemData.replaceText, itemData.extended, documentCodepage, finalReplaceLossy);
             }
 
             // --- Final Replacement Execution ---
             if (!skipReplace) {
+                if (finalReplaceLossy) _replaceCodepageLossy = true;
                 bool useRegexReplace = itemData.formulaSupport
                     ? engineOutputIsRegexSafe
                     : itemData.regex;
@@ -8274,8 +8275,9 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     }
 
     std::string fixedReplace;
+    bool fixedReplaceLossy = false;
     if (!itemData.formulaSupport) {
-        fixedReplace = convertAndExtendW(itemData.replaceText, itemData.extended, documentCodepage);
+        fixedReplace = convertReplacementW(itemData.replaceText, itemData.extended, documentCodepage, fixedReplaceLossy);
     }
 
     int prevLineIdx = -1;
@@ -8295,6 +8297,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
         {
             std::string finalReplaceText; // Will hold the final text in the document's native encoding.
+            bool finalReplaceLossy = false;
             bool engineOutputIsRegexSafe = false;
 
             // --- Formula engine expansion ---
@@ -8328,14 +8331,15 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                     engineOutputIsRegexSafe = res.outputIsRegexSafe;
 
                     if (!skipReplace) {
-                        finalReplaceText = convertAndExtendW(
+                        finalReplaceText = convertReplacementW(
                             Encoding::utf8ToWString(res.output),
-                            itemData.extended, documentCodepage);
+                            itemData.extended, documentCodepage, finalReplaceLossy);
                     }
                 }
             }
 
             if (replaceThisHit && !skipReplace) {
+                if (itemData.formulaSupport ? finalReplaceLossy : fixedReplaceLossy) _replaceCodepageLossy = true;
                 if (!itemData.formulaSupport) {
                     nextPos = itemData.regex
                         ? performRegexReplace(fixedReplace, searchResult.pos, searchResult.length)
@@ -9028,9 +9032,13 @@ bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool 
         };
 
     try {
+        // Absolute, backslash root: every scanned path inherits it, and
+        // openDocPathKey compares those against the paths N++ reports for
+        // open documents. A relative or forward-slash root would never match.
+        const fs::path root = fs::absolute(fs::path(dir)).lexically_normal();
         size_t seen = 0;
         if (recurse) {
-            auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
+            auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied);
             for (auto end = fs::recursive_directory_iterator(); it != end; ++it) {
                 if (!keepAlive(++seen)) { showStatusMessage(LM.get(L"status_canceled"), MessageStatus::Info); return false; }
                 if (it->is_directory() && !includeHidden && isHiddenDir(it->path())) {
@@ -9041,7 +9049,7 @@ bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool 
             }
         }
         else {
-            for (auto& e : fs::directory_iterator(dir, fs::directory_options::skip_permission_denied)) {
+            for (auto& e : fs::directory_iterator(root, fs::directory_options::skip_permission_denied)) {
                 if (!keepAlive(++seen)) { showStatusMessage(LM.get(L"status_canceled"), MessageStatus::Info); return false; }
                 if (e.is_regular_file() && guard.matchPath(e.path())) files.push_back(e.path());
             }
@@ -9113,19 +9121,51 @@ static int codepageForLoadedFile(HiddenSciGuard::LoadKind loadKind, const Encodi
     return (enc.kind == Encoding::Kind::UTF8) ? SC_CP_UTF8 : 0;
 }
 
+// Resolves a buffer to its current (view, index); defined with the tab
+// navigation helpers further down.
+static bool GetViewIndexFromBufferId(BufferId bufId, int& viewOut, int& indexOut);
+
 // Open documents that intersect the scan set, keyed by lower-cased full path.
-// dirty feeds the Replace-in-Files skip; docPtr feeds the Find-in-Files
-// live-document search. Both are only readable from an ACTIVE document, so
-// each intersecting doc is activated once and the previous tabs restored.
-struct OpenScanDoc { int view; LRESULT index; bool dirty; sptr_t docPtr; };
+// bufId is re-resolved to a tab position at use time (tabs move or close
+// while a scan pumps messages). dirty and docPtr are only readable from an
+// ACTIVE document, so probes beyond Enumerate activate each intersecting doc
+// once and restore the previous tabs afterwards.
+struct OpenScanDoc { LRESULT bufId; bool dirty; sptr_t docPtr; };
+
+enum class OpenDocProbe { Enumerate, Dirty, DocPtr };   // DocPtr reads dirty as well
 
 static std::wstring openDocPathKey(std::wstring s) {
     for (auto& c : s) c = towlower(c);
     return s;
 }
 
+// The active document of each view plus the focused view, for restoring
+// the editor after a scan switched tabs.
+struct ActiveDocs { LRESULT mainIdx; LRESULT subIdx; int focusView; };
+
+static ActiveDocs captureActiveDocs()
+{
+    ActiveDocs a{ -1, -1, -1 };
+    a.mainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
+    a.subIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
+    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&a.focusView));
+    return a;
+}
+
+static void restoreActiveDocs(const ActiveDocs& a)
+{
+    if (a.mainIdx >= 0)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, a.mainIdx);
+    if (a.subIdx >= 0)
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, a.subIdx);
+    const int focusView = (a.focusView == 0) ? MAIN_VIEW : SUB_VIEW;
+    const LRESULT focusIdx = (a.focusView == 0) ? a.mainIdx : a.subIdx;
+    if (focusIdx >= 0)   // focused view last
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
+}
+
 static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
-    const std::vector<std::filesystem::path>& files, bool grabDocPtrs)
+    const std::vector<std::filesystem::path>& files, OpenDocProbe probe)
 {
     std::unordered_map<std::wstring, OpenScanDoc> result;
 
@@ -9133,7 +9173,7 @@ static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
     scanSet.reserve(files.size());
     for (const auto& f : files) scanSet.insert(openDocPathKey(f.wstring()));
 
-    struct ProbeRef { int view; LRESULT index; std::wstring key; };
+    struct ProbeRef { int view; LRESULT index; LRESULT bufId; std::wstring key; };
     std::vector<ProbeRef> toProbe;
     std::unordered_set<std::wstring> probeKeys;   // clone in both views = one entry
     const std::pair<int, int> views[] = {
@@ -9163,16 +9203,19 @@ static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
             pathBuf.resize(wcslen(pathBuf.c_str()));
             std::wstring key = openDocPathKey(std::move(pathBuf));
             if (!key.empty() && scanSet.count(key) != 0 && probeKeys.insert(key).second)
-                toProbe.push_back({ docView, i, std::move(key) });
+                toProbe.push_back({ docView, i, bufId, std::move(key) });
         }
     }
 
     if (toProbe.empty()) return result;
 
-    const LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-    const LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
-    int savedView = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
+    if (probe == OpenDocProbe::Enumerate) {
+        for (const auto& d : toProbe)
+            result.emplace(d.key, OpenScanDoc{ d.bufId, false, 0 });
+        return result;
+    }
+
+    const ActiveDocs saved = captureActiveDocs();
 
     for (const auto& d : toProbe) {
         ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, d.view, d.index);
@@ -9180,9 +9223,9 @@ static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
             ? nppData._scintillaMainHandle
             : nppData._scintillaSecondHandle;
         if (!hSci) continue;
-        OpenScanDoc entry{ d.view, d.index, false, 0 };
+        OpenScanDoc entry{ d.bufId, false, 0 };
         entry.dirty = (::SendMessage(hSci, SCI_GETMODIFY, 0, 0) != 0);
-        if (grabDocPtrs) {
+        if (probe == OpenDocProbe::DocPtr) {
             entry.docPtr = static_cast<sptr_t>(::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0));
             if (entry.docPtr)   // keep alive across a tab close mid-scan; caller releases
                 ::SendMessage(hSci, SCI_ADDREFDOCUMENT, 0, static_cast<LPARAM>(entry.docPtr));
@@ -9190,16 +9233,7 @@ static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
         result.emplace(d.key, entry);
     }
 
-    // Restore the previously active document in each view, focused view last
-    if (savedMainIdx >= 0)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
-    if (savedSubIdx >= 0)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
-    const int focusView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
-    const LRESULT focusIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
-    if (focusIdx >= 0)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
-
+    restoreActiveDocs(saved);
     return result;
 }
 
@@ -9297,20 +9331,22 @@ void MultiReplace::handleReplaceInFiles() {
     }
 
     int total = static_cast<int>(files.size()), idx = 0, changed = 0;
+    int changedOpenUnsaved = 0;   // part of changed: edited in the editor, not saved
 
-    // Safety net: skip files that are open in N++ with unsaved changes. A
-    // disk write under such a buffer forks the file: reloading discards the
-    // user's edits, a later save undoes this replace. Unlike native N++
-    // (Notepad_plus::replaceInFilelist) we cannot replace inside the live
-    // buffer and save it, so skip and report. Clean open files keep the disk
-    // write; N++'s file-status auto-detection picks it up.
-    std::unordered_set<std::wstring> dirtyOpenPaths;
-    for (const auto& [key, d] : collectOpenScanDocs(files, /*grabDocPtrs=*/false))
-        if (d.dirty) dirtyOpenPaths.insert(key);
+    // Open documents in the scan set. With the option on they are replaced in
+    // the editor (replaceInOpenDoc); otherwise only their dirty state matters,
+    // because a disk write under unsaved edits would fork the file: skip and
+    // report.
+    const bool liveDocs = searchOpenDocsEnabled;
+    const auto openDocs = collectOpenScanDocs(files,
+        liveDocs ? OpenDocProbe::Enumerate : OpenDocProbe::Dirty);
+    const ActiveDocs savedDocs = captureActiveDocs();
+    bool activatedAny = false;
 
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
 
-    // Per-file binding guard
+    // Per-file binding guards: the hidden buffer for files on disk, an editor
+    // view for open documents. Both restore the previous binding on exit.
     struct SciBindingGuard {
         MultiReplace* self;
         HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
@@ -9323,8 +9359,77 @@ void MultiReplace::handleReplaceInFiles() {
             self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData;
         }
     };
+    struct ViewBindingGuard {
+        MultiReplace* self;
+        HWND oldSci; HWND oldShared; SciFnDirect oldFn; sptr_t oldData;
+        ViewBindingGuard(MultiReplace* s, int view) : self(s) {
+            oldSci = s->_hScintilla; oldShared = MultiReplace::s_hScintilla;
+            oldFn = s->pSciMsg; oldData = s->pSciWndData;
+            s->_hScintilla = (view == MAIN_VIEW) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+            MultiReplace::s_hScintilla = s->_hScintilla;
+            s->pSciMsg = reinterpret_cast<SciFnDirect>(::SendMessage(s->_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0));
+            s->pSciWndData = static_cast<sptr_t>(::SendMessage(s->_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
+        }
+        ~ViewBindingGuard() {
+            self->_hScintilla = oldSci; MultiReplace::s_hScintilla = oldShared;
+            self->pSciMsg = oldFn; self->pSciWndData = oldData;
+        }
+    };
+    // Replacement text is converted on insert; for a non-UTF-8 document
+    // WideCharToMultiByte substitutes silently. Strict mode records such a
+    // conversion (convertReplacementW) so the document can be rolled back.
+    struct StrictReplaceCodepage {
+        MultiReplace* self;
+        explicit StrictReplaceCodepage(MultiReplace* s) : self(s) {
+            self->_strictReplaceCodepage = true; self->_replaceCodepageLossy = false;
+        }
+        ~StrictReplaceCodepage() { self->_strictReplaceCodepage = false; }
+        bool lossy() const { return self->_replaceCodepageLossy; }
+    };
 
     bool aborted = false;
+
+    // Per-list-entry find/replace tallies, summed over all files
+    auto accumulateListTotals = [&]() {
+        if (!useListEnabled) return;
+        for (size_t i = 0; i < replaceListData.size(); ++i) {
+            if (!replaceListData[i].isEnabled) continue;
+            const int f = (replaceListData[i].findCount > -1) ? replaceListData[i].findCount : 0;
+            const int r = (replaceListData[i].replaceCount > -1) ? replaceListData[i].replaceCount : 0;
+            listFindTotals[i] += f;
+            listReplaceTotals[i] += r;
+        }
+    };
+
+    // Open document: replace in the editor, like Replace All on that document.
+    // A document that was clean is saved afterwards (N++ parity, no reload
+    // prompt); one with unsaved edits is left for the user to save, so nothing
+    // is ever saved behind their back.
+    auto replaceInOpenDoc = [&](int view, int index, const std::filesystem::path& fp) {
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, view, index);
+        activatedAny = true;
+        ViewBindingGuard bind(this, view);
+
+        if (send(SCI_GETREADONLY, 0, 0)) { guard.noteSkip(HiddenSciGuard::SkipReason::ReadOnly); return; }
+        const bool wasDirty = (send(SCI_GETMODIFY, 0, 0) != 0);
+
+        StrictReplaceCodepage strict(this);
+        _delimiterPositionsStale = true;
+        handleDelimiterPositions(DelimiterOperation::LoadAll);
+        if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
+
+        if (m_lastTotalReplaceCount > 0 && strict.lossy()) {
+            send(SCI_UNDO, 0, 0);   // the run is one undo group (ScopedUndoAction)
+            guard.noteSkip(HiddenSciGuard::SkipReason::Unencodable);
+            return;
+        }
+        accumulateListTotals();
+        if (m_lastTotalReplaceCount == 0) return;
+
+        ++changed;
+        if (wasDirty || !::SendMessage(nppData._nppHandle, NPPM_SAVECURRENTFILE, 0, 0))
+            ++changedOpenUnsaved;
+    };
 
     for (const auto& fp : files) {
         MSG m = {};
@@ -9343,14 +9448,27 @@ void MultiReplace::handleReplaceInFiles() {
             L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
             MessageStatus::Info);
 
-        if (!dirtyOpenPaths.empty()
-            && dirtyOpenPaths.count(openDocPathKey(fp.wstring())) != 0) {
-            guard.noteSkip(HiddenSciGuard::SkipReason::OpenUnsaved); continue;
-        }
-
         DWORD attrs = GetFileAttributesW(fp.c_str());
         if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
             guard.noteSkip(HiddenSciGuard::SkipReason::ReadOnly); continue;
+        }
+
+        const OpenScanDoc* openDoc = nullptr;
+        if (!openDocs.empty()) {
+            const auto od = openDocs.find(openDocPathKey(fp.wstring()));
+            if (od != openDocs.end()) openDoc = &od->second;
+        }
+        if (openDoc && liveDocs) {
+            int view = 0, index = 0;
+            if (GetViewIndexFromBufferId(static_cast<BufferId>(openDoc->bufId), view, index)) {
+                replaceInOpenDoc(view, index, fp);
+                if (aborted) break;
+                continue;
+            }
+            // closed since the scan started: the disk copy is all that is left
+        }
+        else if (openDoc && openDoc->dirty) {
+            guard.noteSkip(HiddenSciGuard::SkipReason::OpenUnsaved); continue;
         }
 
         std::string u8in;
@@ -9374,16 +9492,7 @@ void MultiReplace::handleReplaceInFiles() {
 
             if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
 
-            // Keep list counters in sync (per-item find/replace tallies)
-            if (useListEnabled) {
-                for (size_t i = 0; i < replaceListData.size(); ++i) {
-                    if (!replaceListData[i].isEnabled) continue;
-                    const int f = (replaceListData[i].findCount > -1) ? replaceListData[i].findCount : 0;
-                    const int r = (replaceListData[i].replaceCount > -1) ? replaceListData[i].replaceCount : 0;
-                    listFindTotals[i] += f;
-                    listReplaceTotals[i] += r;
-                }
-            }
+            accumulateListTotals();
 
             // Write back only if content changed; RawBytes goes out verbatim
             std::string u8out = guard.getText();
@@ -9405,6 +9514,8 @@ void MultiReplace::handleReplaceInFiles() {
 
         if (aborted) break; // ensures RAII restored before leaving loop
     }
+
+    if (activatedAny) restoreActiveDocs(savedDocs);
 
     if (useListEnabled) {
         for (size_t i = 0; i < replaceListData.size(); ++i) {
@@ -9430,6 +9541,8 @@ void MultiReplace::handleReplaceInFiles() {
 
         std::wstring msg = LM.get(L"status_replace_summary",
             { StringUtils::formatNumber(changed), StringUtils::formatNumber(searchedFiles) });
+        if (changedOpenUnsaved > 0)
+            msg += LM.get(L"status_replace_open_unsaved", { StringUtils::formatNumber(changedOpenUnsaved) });
         msg += buildSkipSentence(guard);
         if (wasCanceled) {
             msg += L" - " + LM.get(L"status_canceled");
@@ -10007,7 +10120,7 @@ void MultiReplace::handleFindInFiles() {
     // changes). Doc pointers are AddRef'd so a tab close mid-scan is safe.
     std::unordered_map<std::wstring, OpenScanDoc> openDocs;
     if (searchOpenDocsEnabled)
-        openDocs = collectOpenScanDocs(files, /*grabDocPtrs=*/true);
+        openDocs = collectOpenScanDocs(files, OpenDocProbe::DocPtr);
     struct DocPtrReleaser {
         HiddenSciGuard& g;
         const std::unordered_map<std::wstring, OpenScanDoc>& m;
@@ -14370,6 +14483,21 @@ std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool exte
 {
     UINT cp = getCurrentDocCodePage();
     return convertAndExtendW(input, extended, cp);
+}
+
+// Replacement text on its way into the document. Under _strictReplaceCodepage
+// (Replace in Files on an open document) a conversion that does not round-trip
+// through the target codepage is reported in lossy; the caller flags the
+// insertion so the document can be rolled back instead of keeping substitutes.
+std::string MultiReplace::convertReplacementW(const std::wstring& input, bool extended, UINT targetCodepage, bool& lossy) const
+{
+    std::string bytes = convertAndExtendW(input, extended, targetCodepage);
+    lossy = false;
+    if (_strictReplaceCodepage && targetCodepage != CP_UTF8) {
+        const std::wstring expanded = Encoding::utf8ToWString(convertAndExtendW(input, extended, CP_UTF8));
+        lossy = (Encoding::bytesToWString(bytes, targetCodepage) != expanded);
+    }
+    return bytes;
 }
 
 void MultiReplace::addStringToComboBoxHistory(HWND hComboBox, const std::wstring& str, int maxItems)
