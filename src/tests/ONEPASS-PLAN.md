@@ -4,6 +4,20 @@ Working document for the staged rollout of `src/OnePassHits.h/.cpp`. Each stage
 ends in a decision point and can be shipped or reverted on its own. Work top to
 bottom; do not start a stage before the previous one meets its exit criteria.
 
+> **Status: ready for release.** Stage 7, the manual checklist
+> (`ONEPASS-CHECKLIST.md`), has been run by the owner in real Notepad++: all 20
+> numbered cases green, including one live catch mid-run (an unrebuilt DLL made
+> C3 look like a regression - a fresh build cleared it, confirmed by both the
+> on-pass and the reference run). J5 (undo: one Ctrl+Z restores the whole run in
+> one step) was run separately as the highest-value item from HANDOVER section
+> 8.3 and is also green. J3/J4 (formula skip/error) and multi-document Replace
+> All were not run - see the open item below. It took eight findings to get
+> here (the last found by reading, not by a test); section 11 of
+> `ONEPASS-HANDOVER.md` analyses why, and that analysis is the useful part. The
+> feature can be reduced later (`remember = false`, one word) or removed (one
+> file plus ~40 panel lines). `ONEPASS-HANDOVER.md` is the entry point for
+> review; `ONEPASS-CHECKLIST.md` is the list that was run.
+
 ## Where we are
 
 | Item | State |
@@ -14,8 +28,8 @@ bottom; do not start a stage before the previous one meets its exit criteria.
 | `src/tests/onepass_qa.cpp` | standalone, builds with g++/cl against the real class; sections A to L3 |
 | `src/tests/onepass_engine_qa.cpp` | same checks on the real Scintilla document and the N++ Boost bridge; sections A to L3 plus K (classification completeness), `bench`, `trace` |
 | Fixed along the way | empty matches (`^ $ \b` lookarounds) are replaced like Replace All; the EOF freeze (`^`, `x*`) is gone; skipped hits no longer move the walk past other entries |
-| Found by the analytical passes (Stages 1 and 6) | seven defects the fuzz had not reached, all fixed and each pinned by a fixed test case: see "Findings" |
-| Still open | Stage 7 (manual checklist in Notepad++) and Stage 8 |
+| Found by the analytical passes (Stages 1, 6 and 6b) | eight defects the fuzz had not reached, all fixed and each pinned by a fixed test case except F8, which was removed rather than pinned: see "Findings" |
+| Still open | Stage 8 (ship). Stage 7 ran green (20/20 cases plus J5/undo); J3/J4 (formula skip/error) and multi-document Replace All were not run - see `ONEPASS-HANDOVER.md` section 9. |
 | `src/MultiReplacePanel.cpp` (Stage 6) | `performSingleSearch` marks a refused engine answer; `replaceOne` takes the position its confirming search starts from |
 
 ## Findings of the analytical pass
@@ -34,11 +48,20 @@ for reading the code instead of only running it.
 | F4 | Column scope: a replacement that inserts the delimiter (`a` to `a,`) moves the rest of the line into another column, so text that did not change can enter or leave the search scope. Invalidating hits on that line was not enough: the line can gain a hit for an entry whose remembered hit was on a later line. | in column scope nothing remembered survives a replacement (as in selection scope). Remembered hits still survive skips. Column mode therefore keeps today's cost per step. | engine section E with delimiter-inserting entries |
 | F5 | The regex bridge decodes the text from wherever the search starts. If a replacement ends inside a character, the untouched bytes after it belong to a sequence that now starts inside the replacement and decode to other characters than before, so a remembered hit and the classification of the byte before it are both stale. Only reachable in malformed UTF-8 (`x` to `\xC3` in front of a lone `\xA4`). | a trail byte at the replacement end, or a walk position on one, drops everything remembered (`insideChar`). Not reached in an ANSI document, where every byte is a character. | engine C34 to C37, section M4 |
 | F6 | The bridge can answer a search with a match that ends **before** it starts (`\b` in malformed UTF-8), and with -2 or -3 for an invalid pattern or an internal exception. `performSingleSearch` refuses all three, which the walk could not tell apart from "there is nothing here" and used as proof that the entry has no hits left. | `performSingleSearch` sets `_searchRefused`; the walk's document view reports a refused search as length -1 and never concludes from it that an entry is exhausted. | engine section M4 (0 of 600 differences after the fix, 111 refused answers observed) |
+| F8 | `reset()` (an edit from outside the run) cleared the empty-match bars but not `_netDelta`, the offset that maps a current position to its original one. With a stale offset the sentinel -1 of `lastEmptyOrig` can be hit by a real position, and one empty match would be barred that should not be. Found by reading, not by a test. | `reset()` restarts the mapping with the bars. The collision is then impossible rather than unlikely, so there is no test case for it; C55 covers the path (growth, then outside edits). | removed by construction, path covered by C55 |
 | F7 | An entry whose match is bound to the search start (`\K`, `\G`, lookbehind) is not visible from its own match position, so `replaceOne`'s confirming search refused every such hit: one-pass counted `a\Kb` hits and replaced none, while Replace All with the same entry replaced them. Pre-existing, not caused by the bookkeeping. | `replaceOne` takes the position the confirming search starts from; the walk passes the position it searched from for those entries (`OnePassHits::verifyFrom`), the match itself for all others. The confirmation is still an independent search that must return the same position and length. | engine B9a to B9c (`a\Kb`, `\Ka`, `(?<=a)b` against Replace All), C41 |
 
 The safety property held throughout: F3 and F4 could produce an extra counted
-hit, F1, F2, F5, F6 and F7 a missed replacement; none could produce a replacement
-of text the entry does not match.
+hit, F1, F2, F5, F6, F7 and F8 a missed replacement; none could produce a
+replacement of text the entry does not match.
+
+Why they kept coming: every round until Stage 6 widened the testing, and
+widening has a long tail. F7 in particular sat behind a test exclusion - the
+comparison against Notepad++'s Replace All skipped `\K` patterns, so the one
+defect the comparison existed to find was the one it could not see. Stage 6b
+therefore stops widening and closes the contract instead: section P compares
+**every** pattern the harness knows, with no exclusion, and the table below
+lists every assumption with the way it is discharged.
 
 ## The safety property this plan rests on
 
@@ -83,6 +106,7 @@ against it instead of re-derived. Every row was read against `OnePassHits.cpp`;
 | I12 | Every remembered hit is the result of a plain search from some position, or its shift. Introduced with F3; it is what makes I2 airtight. | `keep()` |
 | I13 | A hit found by a search from p is found again by a search from its own position, so `replaceOne` can confirm it there. Measured as K5: true for every construct except those bound to the search start, which are the ones `verifyFrom` handles (F7). | `verifyFrom()`, K5 |
 | I14 | Every search start the walk uses is a character boundary for the regex bridge, so two searches see the same characters. Malformed text is the exception and is handled by dropping everything remembered (F5). | `insideChar()`, `forget()` |
+| I15 | A position and its original counterpart differ by `_netDelta`, which is only meaningful while the walk owns every change. An edit from outside restarts the mapping together with the bars (F8). | `reset()` |
 
 ## Stage 2: panel seams (done by code reading; the manual cases remain in Stage 7)
 
@@ -150,7 +174,10 @@ unit exists to remove, and the user experiences it as the freeze that is being
 fixed. The mechanisms empty hits need (bars, sidestep, `_netDelta`, `none` at
 the end of text) are covered by I8, the level sections and the fixed cases.
 
-**Whether remembering is on in 6.1: yes, always, without a setting.** An
+**Whether remembering is on when this ships: yes, always, without a setting.**
+(Superseded on the release question by the status note at the top: the branch is
+parked and 6.1 does not carry it. The reasoning below is why there is no switch
+if and when it does ship.) An
 INI-only switch with default off was built first and removed again. The reason:
 a switch is a statement that the bookkeeping is not trusted, and it would not
 even have covered the risk it pretended to cover. Of the 138 lines of
@@ -214,7 +241,62 @@ single-entry runs on malformed text: remembering, the plain walk and Notepad++'s
 own Replace All agree in all of them, although the engine answered with a match
 ending before its start 111 times.
 
-## Stage 7: manual checklist in Notepad++ (yours)
+## The closed contract (Stage 6b)
+
+Every earlier round found something because it widened the testing. Widening has
+a long tail, so this section does the opposite: it lists **every** assumption the
+walk makes, and next to each one how it is discharged. Three ways count as
+discharged - **proven** (the code cannot depend on it being false), **measured**
+(checked against the engine over a space, not over examples) and **removed** (the
+code was changed so the assumption is no longer needed). Anything that is only
+argued is a gap, and the table says so.
+
+### About the regex engine
+
+| # | Assumption | Discharged by | Status |
+| --- | --- | --- | --- |
+| E1 | A hit found by a search from p is found again by a search from the hit's own position. Without it `replaceOne` could not confirm a proposal. | K5 over 232 constructs x 53 texts x every position x both case modes. The only violators are the constructs bound to the search start; for those the walk passes the position it searched from (`verifyFrom`). | measured + removed |
+| E2 | "Nothing from p" means nothing from any later position. This is what lets an entry without a hit be left alone, and it is the whole speed argument. | K4 over the same space: 0 violations in well-formed text. The violations in malformed text turned out to be refused answers, which are no longer read as "nothing" (F6). | measured + removed |
+| E3 | Only certain constructs look at the byte before a match; the rest may be remembered across a change in front of them. | K1 over the hand-written list (40 dependent, all classified) **and** K8 over 4000 patterns generated from a grammar (1232 dependent, 0 misclassified). The hand-written list is no longer the only evidence. | measured |
+| E4 | Bytes of the same context class before a match give the same answer, so a class change is a sufficient trigger. | K3, same space, 0 gaps. | measured |
+| E5 | The anchored `\G(?:...)` probe never hides a hit the plain search would find. | K2, 0 violations. And structurally since F3: the probe only decides whether the plain search runs, it never supplies a hit. | measured + proven |
+| E6 | The probe window for a whole-word literal (4x the find text plus 4 bytes) is long enough. | K7 over every literal, every position, every flag combination: 0 disagreements with a search over the whole document. | measured |
+| E7 | The engine gives the same answer for an empty search range whether or not a backward search ran before. | K6, 0 quirks; half of every fuzz section now runs after a backward search. | measured |
+| E8 | An answer of "no match" is an answer. | Removed: `performSingleSearch` marks a refused answer (invalid pattern, exception, a match ending before its start) and the walk never concludes from it (F6). | removed |
+| E9 | Two searches see the same characters, so a position means the same thing to both. | Removed for the case where it fails: a walk position or a replacement end inside a character drops everything remembered (F5). Only reachable in malformed UTF-8. | removed |
+| E10 | The engine's empty-match rules: never directly after the entry's own match, CRLF stepped as one character, the end of a range is the end of the text. | Sections A, B and P: every pattern in the harness, as a single entry, on every probe text, must equal Notepad++'s own Replace All - 30820 runs, 0 differences. | measured |
+
+### About the document and the panel
+
+| # | Assumption | Discharged by | Status |
+| --- | --- | --- | --- |
+| P1 | A wrong proposal cannot become a wrong replacement. | Proven: `replaceOne` re-searches with the entry's own flags and refuses unless position and length match exactly. Independent of everything above. | proven |
+| P2 | Text at and after the replacement end is untouched, so a remembered hit only moves by delta. | Proven from the edit itself, restricted to full scope; column and selection scope keep nothing across a replacement (F4). | proven |
+| P3 | A new context-dependent match can only appear at the replacement end. | Proven given E3/E4/E9: matches further on consist of untouched bytes with an untouched byte in front of them, and the walk never returns to text before its position. | proven |
+| P4 | The line count catches every change of line structure, including a CRLF pair split or joined. | Proven: any such change adds or removes a line. The form feed, which is a line separator for the engine but not for Scintilla, is covered by the context class instead (F1). | proven |
+| P5 | Nothing edits the document behind the walk. | Proven for the formula engine: `ILuaEngineHost` has no Scintilla access. Any other change is caught by the length check and `reset()`. | proven |
+| P6 | The bars that terminate nullable patterns stay meaningful. | Proven: the walk position never decreases, each entry takes at most one empty match per original position, non-empty hits consume text. `reset()` restarts the position mapping together with the bars (F8). | proven |
+| P7 | `_searchRefused` is read only for the search that set it. | Proven by inspection: the walk's document view clears it immediately before every search whose answer it reads. | proven |
+| P8 | The code page seen by the walk is the one the searches use. | Proven: taken once from the run's `SearchContext`, which cannot change during a run. | proven |
+
+### What is left
+
+Two things, and they are named rather than hidden.
+
+1. **The engine is a third party.** Everything in the first table is measured
+   over a large space, not proven. A construct outside both the hand-written
+   list and the grammar, behaving unlike all 232 constructs and all 3697 random
+   ones, would not be covered. P1 bounds what that could cost: a missed or a
+   reordered replacement, visible in the count columns, never a wrong one.
+2. **A pre-existing difference outside this work.** Section P found that the
+   panel's own `replaceAll` loop counts one extra empty match between `\r` and
+   `\n` for a nullable pattern with an empty replacement, where Notepad++'s
+   Replace All does not: `ensureForwardProgress` steps by a character, the engine
+   steps a CRLF pair as one. The resulting text is identical, only the count in
+   the Find column differs, and the one-pass walk agrees with Notepad++. It is
+   noted here because the measurement found it, not because one-pass caused it.
+
+## Stage 7: manual checklist in Notepad++ - done, all green
 
 One build. Run the list on a UTF-8 file and repeat on a CRLF file. Where the
 expected result is "same as Replace All", run Notepad++'s own Replace All with
@@ -243,7 +325,7 @@ the single entry on a copy of the file and compare text and count.
 | 19 | entry `a\Kb` to `K` on `abc abx ab` | same as Replace All with that entry (this did not replace anything before F7) |
 | 20 | one-pass off (the tab's own option): the same list must still run one Replace All per entry from the start of the file | unchanged behaviour |
 
-Exit: all 20 pass on both line endings.
+Exit: all 20 pass on both line endings. **Run, by the owner, in real Notepad++: all 20 numbered cases (A1-J2 in the superseding `ONEPASS-CHECKLIST.md`, which is what was actually executed - one .mrl/.txt pair per case) plus J5 (undo) came back green.** One live catch on the way: C3 (`a\Kb`) first looked like the F7 regression had returned - Find 3, Replace 0 - which turned out to be an unrebuilt DLL older than the source fix; a fresh build produced the correct `aKc aKx aK`, 3/3, on both the on-pass and the off-pass reference run. Not run: J3/J4 (formula skip/error - build-dependent) and multi-document "Replace All in Open Documents", which calls `onePassReplaceAll` once per open document and was never exercised by any harness or the checklist - see Open Items.
 
 ## Stage 8: ship
 
@@ -273,10 +355,16 @@ its weight:
    search or its shift, so the bookkeeping cannot disagree with the
    verification about what the engine finds.
 3. Measured: the properties the design assumes about the engine are no longer
-   assumptions. Section K measures five of them over 232 constructs and 53
-   texts at every position; the hand-written classification has 0 gaps, and the
-   two properties that carry `none` and the confirmation search (K4, K5) are
-   measured rather than argued.
+   assumptions. Section K measures eight of them - over 232 hand-picked
+   constructs and 53 texts at every position, and over 4000 patterns generated
+   from a grammar. The two that carry the whole design, "nothing here stays
+   nothing" (K4) and "a hit is found again at its own position" (K5), are
+   measured, not argued; so is the classification (K1 and K8, 0 gaps in 3697
+   measurable random patterns) and the probe window (K7).
+3a. Complete rather than wide: section P runs every pattern the harness knows,
+   as a single entry, on every probe text, in UTF-8 and ANSI, against
+   Notepad++'s own Replace All - 30820 runs, no exclusions, 0 differences.
+   The exclusion that used to sit here is what hid F7 for four rounds.
 4. Differential: remembering against the plain walk over 16 dimensions (three
    scopes, outside edits, custom word characters, ANSI, start position, runs
    after a backward search, three entry classes in isolation, exotic UTF-8,
@@ -284,7 +372,11 @@ its weight:
    plus one with texts up to 3000 characters on the real engine, 0 mismatches;
    single entries against N++'s own processRange, 0 mismatches; the standalone
    harness the same with sanitizers.
-5. Read: fourteen invariants and eight panel seams confirmed line by line.
+5. Read: fifteen invariants and eight panel seams confirmed line by line, and
+   a closed table of every assumption with the way each one is discharged
+   ("The closed contract" above). Two entries in that table are marked as
+   remaining: the engine is a third party, and one pre-existing difference in
+   the panel's own Replace All that this work did not cause and did not change.
 
 What this does not give is a proof. The bookkeeping is stateful invalidation
 logic against a third-party engine that surprised the analysis five times (form
@@ -309,8 +401,24 @@ wrong one. After Stage 6 the exotic corners that can be built at all have been
 built, including the malformed-encoding case where the engine stops being a
 function of the text and the pattern alone.
 
-Verdict: ship it, remembering on, no switch. The one-pass mode stays the
-option it always was.
+What changed in Stage 6b is the kind of confidence, not the amount of testing.
+Before it, the answer to "are there more bugs" was "the last rounds found some,
+so probably". Now every assumption is written down with the way it is
+discharged, and the ones that cannot be proven are measured over spaces rather
+than examples. A defect from here on has to be an assumption nobody wrote down
+- and the safety property still bounds what that costs.
+
+Verdict from the analysis: ship it, remembering on, no switch. The one-pass mode
+stays the option it always was.
+
+Decision by the owner: ship. The manual checklist has been run in real
+Notepad++ (Stage 7, all 20 cases plus J5/undo green, one live catch along the
+way - see the status note at the top), and the owner reviewed the findings in
+`ONEPASS-HANDOVER.md` before deciding. It goes into the codebase, not a side
+branch. Not run before this decision: J3/J4 (formula skip/error) and
+multi-document Replace All in Open Documents; that gap is recorded rather than
+closed, and either surface is where a next defect is most likely to be found -
+see `ONEPASS-HANDOVER.md` section 9.
 
 ## Revert path
 
