@@ -36,6 +36,7 @@
 #include "Notepad_plus_msgs.h"
 #include "NppStyleKit.h"
 #include "NumericToken.h"
+#include "OnePassHits.h"
 #include "PluginDefinition.h"
 #include "ResultDock.h"
 #include "Scintilla.h"
@@ -7620,63 +7621,107 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
     std::vector<int> replTotals(n, 0);
     std::vector<int> lineFind(n, 0);
     std::vector<int> prevLine(n, -1);
-    std::vector<bool> exhausted(n, false);
+
+    std::vector<OnePassEntry> entries(n);
+    for (size_t i = 0; i < n; ++i) {
+        const ReplaceItemData& item = replaceListData[i];
+        OnePassEntry& e = entries[i];
+        e.active = item.isEnabled && !item.findText.empty();   // empty finds ran in preprocess
+        if (!e.active) continue;
+        e.findText = convertAndExtendW(item.findText, item.extended);
+        e.flags = buildSearchFlags(item.wholeWord, item.matchCase, item.regex, /*dotMatchesNL=*/false, /*isReplaceAll=*/true)
+            | static_cast<int>(SCFIND_REGEXP_EMPTYMATCH_ALLOWATSTART);
+        e.regex = item.regex;
+        e.wholeWord = item.wholeWord;
+    }
+
+    // the walk's view of the editor
+    auto prepare = [&](const std::string& pattern, int flags) {
+        ctx.findText = pattern;
+        ctx.searchFlags = flags;
+        ctx.retrieveFoundText = false;
+        send(SCI_SETSEARCHFLAGS, flags);
+    };
+    OnePassDoc doc;
+    doc.search = [&](const std::string& pattern, int flags, Sci_Position from) {
+        prepare(pattern, flags);
+        _searchRefused = false;
+        const SearchResult r = performSearchForward(ctx, from);
+        // length -1: the engine refused, so the entry must not be treated as having no hits left
+        return OnePassHit{ static_cast<Sci_Position>(r.pos), (r.pos < 0 && _searchRefused) ? -1 : static_cast<Sci_Position>(r.length) };
+    };
+    doc.searchRange = [&](const std::string& pattern, int flags, Sci_Position from, Sci_Position to) {
+        prepare(pattern, flags);
+        SelectionRange range;
+        range.start = from;
+        range.end = to;
+        const SearchResult r = performSingleSearch(ctx, range);
+        return OnePassHit{ static_cast<Sci_Position>(r.pos), static_cast<Sci_Position>(r.length) };
+    };
+    doc.charAt = [&](Sci_Position pos) { return static_cast<int>(send(SCI_GETCHARAT, pos, 0)) & 0xFF; };
+    doc.positionAfter = [&](Sci_Position pos) { return static_cast<Sci_Position>(send(SCI_POSITIONAFTER, pos, 0)); };
+    doc.lineCount = [&]() { return static_cast<Sci_Position>(send(SCI_GETLINECOUNT, 0, 0)); };
+    doc.length = [&]() { return static_cast<Sci_Position>(ctx.docLength); };
+    doc.utf8 = ctx.cachedCodepage == SC_CP_UTF8;
+
+    const OnePassHits::Scope scope = (ctx.isColumnMode && columnDelimiterData.isValid()) ? OnePassHits::Scope::Column
+        : ctx.isSelectionMode ? OnePassHits::Scope::Selection : OnePassHits::Scope::Full;
+    OnePassHits hits(doc, std::move(entries), scope);
 
     _bulkReplaceInProgress = true;
 
     bool replaceSuccess = true;
     Sci_Position pos = fixedStart;
-    size_t w = SIZE_MAX;
 
     while (replaceSuccess) {
         const Sci_Position liveLen = send(SCI_GETLENGTH, 0, 0);
         if (liveLen != ctx.docLength) {
-            std::fill(exhausted.begin(), exhausted.end(), false); // external edit: proof void
+            hits.reset(); // external edit: nothing remembered is trustworthy
             ctx.docLength = liveLen;
         }
-        ctx.retrieveFoundText = false; // probing never needs the text
-        SearchResult sr = performListSearchForward(replaceListData, pos, w, ctx, &exhausted);
-        if (sr.pos < 0 || w >= n) break;
+        size_t w = SIZE_MAX;
+        const OnePassHit hit = hits.next(pos, w);
+        if (hit.pos < 0 || w >= n) break;
 
         ++findTotals[w];
-        const int hitLine = static_cast<int>(send(SCI_LINEFROMPOSITION, sr.pos, 0));
+        const int hitLine = static_cast<int>(send(SCI_LINEFROMPOSITION, hit.pos, 0));
         if (hitLine != prevLine[w]) { lineFind[w] = 0; prevLine[w] = hitLine; }
         ++lineFind[w];
         const bool replaceThisHit = !useMatchList || (matchSet.count(findTotals[w]) != 0);
 
         if (replaceThisHit) {
             const ReplaceItemData& item = replaceListData[w];
-            ctx.findText = convertAndExtendW(item.findText, item.extended);
-            ctx.searchFlags = buildSearchFlags(item.wholeWord, item.matchCase, item.regex,
-                /*dotMatchesNL=*/false, /*isReplaceAll=*/true);
+            prepare(hits.entry(w).findText, hits.entry(w).flags);   // replaceOne verifies the hit with the entry's own search
             ctx.retrieveFoundText = item.formulaSupport;
-            send(SCI_SETSEARCHFLAGS, ctx.searchFlags);
+            hits.beforeReplace(hit);
 
-            SelectionInfo matchSel{ static_cast<Sci_Position>(sr.pos),
-                                    static_cast<Sci_Position>(sr.pos + sr.length),
-                                    static_cast<Sci_Position>(sr.length) };
+            SelectionInfo matchSel{ hit.pos, hit.pos + hit.len, hit.len };
             SearchResult verify;
             Sci_Position newPos = -1;
-            const bool replaced = replaceOne(item, matchSel, verify, newPos, w, ctx, findTotals[w], lineFind[w]);
+            const Sci_Position lenBefore = ctx.docLength;
+            const bool replaced = replaceOne(item, matchSel, verify, newPos, w, ctx, findTotals[w], lineFind[w], hits.verifyFrom(w, hit.pos));
 
+            // the walk continues right after the hit; a hit that was not replaced is
+            // barred for its entry, so an empty one cannot be found twice
             if (replaced) {
                 ++replTotals[w];
                 ++totalReplaceCount;
-                pos = newPos;
                 ctx.docLength = send(SCI_GETLENGTH, 0, 0);
+                const Sci_Position delta = ctx.docLength - lenBefore;
+                hits.afterReplace(w, hit, delta);
+                pos = hit.pos + hit.len + delta;
             }
-            else if (newPos > static_cast<Sci_Position>(sr.pos)) {
-                pos = newPos;                    // engine skip(): advanced, not replaced
-            }
-            else if (item.formulaSupport) {
-                replaceSuccess = false;          // engine error / debug stop: abort run
+            else if (verify.pos != hit.pos || verify.length != hit.len || newPos >= 0) {
+                hits.afterSkip(w, hit);          // verification mismatch or engine skip()
+                pos = hit.pos + hit.len;
             }
             else {
-                pos = advanceAfterMatch(sr);     // verification mismatch: skip safely
+                replaceSuccess = false;          // engine error / debug stop: abort run
             }
         }
         else {
-            pos = advanceAfterMatch(sr);         // not in match list: count and move on
+            hits.afterSkip(w, hit);              // not in match list: count and move on
+            pos = hit.pos + hit.len;
         }
 
         updateCountColumns(w, findTotals[w], replTotals[w]); // absolute totals override replaceOne's per-hit values
@@ -8114,12 +8159,15 @@ void MultiReplace::handleReplaceButton() {
     WaitForDebugWindowClose(true);
 }
 
-bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt, int lcnt)
+bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt, int lcnt, Sci_Position verifyFrom)
 {
     // Get the document's codepage once at the beginning.
     int documentCodepage = getCurrentDocCodePage();
 
-    searchResult = performSearchForward(context, selection.startPos);
+    // The match is confirmed by an independent search with the entry's own flags before anything is
+    // written. It starts at the match, except where the caller knows the match is only visible from
+    // the position it was searched from (\K, \G and lookbehind in the one-pass walk).
+    searchResult = performSearchForward(context, verifyFrom >= 0 ? verifyFrom : selection.startPos);
 
     // Only proceed if the found match is exactly the same as the initial selection.
     if (searchResult.pos == selection.startPos && searchResult.length == selection.length) {
@@ -10654,6 +10702,10 @@ SearchResult MultiReplace::performSingleSearch(const SearchContext& context, Sel
 
     // Accept zero-length matches so anchors/lookarounds can be replaced.
     if (pos < 0 || matchEnd < pos || matchEnd > context.docLength) {
+        // -2 invalid regex, -3 an exception in the Boost bridge, and a match ending before it
+        // starts (the bridge can return one on malformed UTF-8): the engine did not answer, so
+        // this is not the same as "there is nothing here". The one-pass walk needs the difference.
+        if (pos < -1 || (pos >= 0 && matchEnd < pos)) _searchRefused = true;
         return {};  // Return empty result if no match is found
     }
 
@@ -10932,7 +10984,7 @@ SearchResult MultiReplace::performListSearchBackward(const std::vector<ReplaceIt
     return closestMatch;
 }
 
-SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context, std::vector<bool>* exhausted) {
+SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context) {
     SearchResult closestMatch;
     closestMatch.pos = -1;
     closestMatch.length = 0;
@@ -10942,9 +10994,6 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
 
     for (size_t i = 0; i < list.size(); ++i) {
         if (!list[i].isEnabled) {
-            continue;
-        }
-        if (exhausted && (*exhausted)[i]) {
             continue;
         }
 
@@ -10967,10 +11016,6 @@ SearchResult MultiReplace::performListSearchForward(const std::vector<ReplaceIte
                 closestMatch.length = result.length;
                 closestMatchIndex = i;
             }
-        }
-        else if (exhausted && !list[i].regex && !list[i].wholeWord &&
-            !context.isColumnMode && !context.isSelectionMode) {
-            (*exhausted)[i] = true; // literal, forward-only: empty stays empty
         }
     }
 

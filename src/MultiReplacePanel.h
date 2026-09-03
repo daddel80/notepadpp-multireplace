@@ -614,6 +614,9 @@ public:
 #ifndef SCFIND_REGEXP_EMPTYMATCH_ALL
 #define SCFIND_REGEXP_EMPTYMATCH_ALL            0x40000000
 #endif
+#ifndef SCFIND_REGEXP_EMPTYMATCH_ALLOWATSTART
+#define SCFIND_REGEXP_EMPTYMATCH_ALLOWATSTART   0x80000000
+#endif
 #ifndef SCFIND_REGEXP_SKIPCRLFASONE
 #define SCFIND_REGEXP_SKIPCRLFASONE             0x08000000
 #endif
@@ -1060,6 +1063,7 @@ private:
     inline static bool doubleClickEditsEnabled = true;    // Double click to Edit List entries
     inline static bool highlightMatchEnabled = true;      // HighlightMatch during Find in List
     bool _bulkReplaceInProgress = false;                  // one-pass walk: mute per-hit list highlight
+    bool _searchRefused = false;                          // performSingleSearch refused the engine's answer (invalid pattern, exception, match ending before its start)
     inline static bool isHoverTextEnabled = true;         // Important to set on false as TIMER will be triggered at startup.
     inline static int  editFieldSize = 5;                 // Size of the edit field for find/replace input
     inline static bool stayAfterReplaceEnabled = false;   // Status for keeping panel open after replace
@@ -1295,7 +1299,7 @@ private:
     void replaceAllInOpenedDocs();
     bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
-    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1);
+    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1, Sci_Position verifyFrom = -1); // verifyFrom: start of the confirming search, default the match itself
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX, bool fileScope = false);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
@@ -1385,7 +1389,7 @@ private:
     SearchResult performSearchBackward(const SearchContext& context, LRESULT start);
     SearchResult performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward);
     SearchResult performSearchSelection(const SearchContext& context, LRESULT start, bool isBackward);
-    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context, std::vector<bool>* exhausted = nullptr); // exhausted: one-pass only (forward-only proof, never with wrap)
+    SearchResult performListSearchForward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
     SearchResult performListSearchBackward(const std::vector<ReplaceItemData>& list, LRESULT cursorPos, size_t& closestMatchIndex, const SearchContext& context);
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     void selectListItem(size_t matchIndex);
