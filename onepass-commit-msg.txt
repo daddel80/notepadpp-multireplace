@@ -1,0 +1,46 @@
+One-pass: close the assumption contract, fix reset(), add handover + checklist
+
+Decision: Replace All in one pass with remembering goes into the code (not a
+side branch). The release gate, the manual acceptance checklist passing in
+real Notepad++, has been met: ONEPASS-CHECKLIST.md run by the owner, all 20
+numbered cases plus undo (J5) green. One live catch along the way: C3 (a\Kb)
+first showed Find 3 / Replace 0, which looked like the \K defect back - a
+stale, unrebuilt DLL was the cause, not the code; a fresh build gave the
+correct result on both the on-pass run and the off-pass reference. Not run:
+formula skip()/error entries (J3/J4, code-reading confirms the skip() path
+reuses the same afterSkip() bookkeeping as a match-list miss, but it has not
+been exercised live) and multi-document Replace All in Open Documents, which
+calls onePassReplaceAll once per open document and was never exercised by any
+harness or the checklist.
+
+Analytical pass over everything the walk assumes, with the way each assumption
+is discharged (src/tests/ONEPASS-PLAN.md, "The closed contract"). Two new docs
+in the test folder:
+- ONEPASS-HANDOVER.md: the reasoning for whoever reviews or continues this -
+  all eight findings with why the tests had not caught them, what is proven vs
+  measured vs argued, and a ranked review agenda.
+- ONEPASS-CHECKLIST.md: the manual acceptance list, every case copy-paste with
+  the expected result verified against the Boost engine.
+
+reset() cleared the empty-match bars but not _netDelta, the offset that maps a
+current position to its original one. With a stale offset a real position can
+hit the -1 sentinel of lastEmptyOrig and one empty match would be barred that
+should not be. Found by reading; the mapping now restarts with the bars.
+
+Harness:
+- section P: every pattern the harness knows, as a single entry, on every probe
+  text, in UTF-8 and ANSI, against Notepad++'s own Replace All and the panel's
+  replaceAll loop. 30820 runs, no exclusions, 0 differences. The exclusion that
+  used to sit here is what hid the \K defect for four rounds.
+- K5 no longer excuses entries bound to the search start, K7 measures the probe
+  window for whole-word literals, K8 measures the classification against 4000
+  patterns generated from a grammar (3697 measurable, 0 gaps).
+- C55 covers reset() after growing replacements.
+
+Also recorded, not changed: the panel's own replaceAll counts one extra empty
+match between \r and \n for a nullable pattern with an empty replacement, where
+Notepad++ does not (ensureForwardProgress steps by a character, the engine steps
+a CRLF pair as one). Same text, different count, pre-existing.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01PkbXFhabbgAkJhcTvRzmz5
