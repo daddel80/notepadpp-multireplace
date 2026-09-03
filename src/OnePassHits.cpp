@@ -227,5 +227,8 @@ void OnePassHits::afterSkip(size_t w, const OnePassHit& hit)
 
 void OnePassHits::reset()
 {
+    // _netDelta maps a current position to its original one and is what makes lastEmptyOrig comparable.
+    // After an edit from outside it no longer describes the text, so the mapping restarts with the bars.
+    _netDelta = 0;
     for (Entry& e : _e) { e.valid = false; e.none = false; e.consumedEnd = -1; e.lastEmptyOrig = -1; e.searchedFrom = -1; }
 }

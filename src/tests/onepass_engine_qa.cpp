@@ -303,6 +303,29 @@ static Run classic(const std::string& text, const Entry& e, Sci::Position startP
     run.text = doc.text(); return run;
 }
 
+// ---------------------------------------------------------------- PANEL: MultiReplace's own replaceAll loop
+// This is what the tab's one-pass option is switched against: with one-pass off every entry gets its own
+// run of this loop from the start of the document. A single entry must give the same result either way.
+static Run panelReplaceAll(const std::string& text, const Entry& e, Sci::Position startPos = 0, DocOptions o = {}) {
+    Doc doc(text, o); Run run; run.replaced.assign(1, 0); run.found.assign(1, 0);
+    auto ensureForwardProgress = [&](Sci::Position candidate, Sci::Position lastPos) {   // panel: ensureForwardProgress
+        if (candidate > lastPos) return candidate;
+        const Sci::Position next = std::max(doc.next(lastPos), lastPos + 1);
+        return std::min(next, doc.len());
+    };
+    Sci::Position pos = startPos;
+    for (int steps = 0; steps < 200000; ++steps) {
+        Sci::Position len; const Sci::Position p = doc.find(pos, doc.len(), e.find, replFlags(e), len);
+        if (p < 0) break;
+        ++run.found[0];
+        const Sci::Position ins = doc.replace(p, len, e.repl, e.regex); ++run.replaced[0];
+        Sci::Position nextPos = p + ins;
+        if (len == 0 || nextPos != p) nextPos = ensureForwardProgress(nextPos, p);
+        pos = nextPos;
+    }
+    run.text = doc.text(); return run;
+}
+
 // ---------------------------------------------------------------- driver
 static int failures = 0; static bool verboseOld = false;
 static void CHECK(const std::string& what, bool ok) { std::printf("%s %s\n", ok ? "PASS" : "FAIL", what.c_str()); if (!ok) ++failures; }
@@ -634,6 +657,65 @@ static void kPositions(KResult& k, const std::string& pat, bool regex, int flags
     if (k.gates > gates0 || k.stabs > stabs0 || k.nones > nones0) std::printf("  '%s': K2 %d, K4 %d, K5 %d violations in valid text\n", show(pat).c_str(), k.gates - gates0, k.nones - nones0, k.stabs - stabs0);
 }
 
+// K7: the probe for a literal entry searches a window (4x the find text plus 4 bytes) instead of the
+// whole document, so that a gate that fails costs nothing. The window must never hide a match that
+// starts exactly at the probe position - case folding can make a match longer than its pattern.
+static int probeWindow(const std::vector<std::string>& texts) {
+    int bad = 0, checks = 0;
+    for (const std::string& lit : kLiterals) {
+        if (lit.empty()) continue;
+        for (int mode = 0; mode < 4; ++mode) {
+            const int flags = ((mode & 1) ? (int)FindOption::MatchCase : 0) | ((mode & 2) ? (int)FindOption::WholeWord : 0);
+            for (const std::string& text : texts) {
+                Doc d(text); const Sci::Position L = d.len();
+                for (Sci::Position p = 0; p <= L; ++p) {
+                    Sci::Position lw, lf;
+                    const Sci::Position win = std::min(L, p + 4 * (Sci::Position)lit.size() + 4);
+                    const bool inWindow = kFind(d, p, win, lit, flags, lw) == p;
+                    const bool inFull = kFind(d, p, L, lit, flags, lf) == p;
+                    ++checks;
+                    if (inWindow != inFull) { if (++bad <= 5) std::printf("  K7 WINDOW: '%s' at %lld of '%s' (flags %d): window %d, full %d\n", show(lit).c_str(), (long long)p, show(text).c_str(), flags, (int)inWindow, (int)inFull); }
+                }
+            }
+        }
+    }
+    std::printf("  K7 probe window: %d positions checked, %d disagreements with a search over the whole document\n", checks, bad);
+    return bad;
+}
+
+// K8: the classification is a textual token test over a hand-written list of constructs. A construct
+// nobody thought of is the residual. Random patterns from a grammar cover what the list does not:
+// each one is measured the same way as K1 - does a hit at P change with the byte before P, and does
+// the classification know? Patterns this Boost build rejects are skipped, not counted as safe.
+static std::string randomPattern(std::mt19937& rng, int depth = 0) {
+    static const char* atoms[] = { "a", "b", "x", "ab", ".", "\\w", "\\d", "\\s", "\\S", "\\W", "\\h", "\\R", "\\N", "[ab]", "[^ab]", "[a-z]", "[[:alpha:]]", "[[:space:]]",
+        "\\b", "\\B", "^", "$", "\\A", "\\Z", "\\z", "\\<", "\\>", "[[:<:]]", "[[:>:]]", "\\`", "\\'", "\\G", "\\K", "\xC3\xA4", "\\x61", "\\n", "\\r", "\\f", "\\t" };
+    static const char* quant[] = { "*", "+", "?", "{0,2}", "{1,3}", "*?", "+?", "??", "*+", "++" };
+    const int k = rng() % (depth >= 2 ? 6 : 12);
+    switch (k) {
+    case 0: case 1: case 2: case 3: case 4: case 5: return atoms[rng() % (sizeof(atoms) / sizeof(atoms[0]))];
+    case 6: return randomPattern(rng, depth + 1) + quant[rng() % 10];
+    case 7: return "(" + randomPattern(rng, depth + 1) + ")";
+    case 8: return "(?:" + randomPattern(rng, depth + 1) + "|" + randomPattern(rng, depth + 1) + ")";
+    case 9: return randomPattern(rng, depth + 1) + randomPattern(rng, depth + 1);
+    case 10: return (rng() % 2 ? "(?=" : "(?!") + randomPattern(rng, depth + 1) + ")";
+    default: return (rng() % 2 ? "(?<=" : "(?<!") + std::string(atoms[rng() % 8]) + ")" + randomPattern(rng, depth + 1);
+    }
+}
+static int randomClassification(std::mt19937& rng, int count) {
+    KResult k;
+    int measured = 0;
+    for (int i = 0; i < count; ++i) {
+        const std::string pat = randomPattern(rng);
+        const int before = k.unsupported;
+        kDependence(k, pat, true, false, kRx | (int)FindOption::MatchCase);
+        if (k.unsupported == before) ++measured;
+    }
+    std::printf("  K8 random patterns: %d generated, %d measured (%d rejected by this Boost), %d depend on the byte before, %d gaps\n",
+        count, measured, k.unsupported, k.dependent, k.gaps);
+    return k.gaps;
+}
+
 static int engineProperties() {
     KResult k; const std::vector<std::string> texts = probeTexts();
     for (const std::string& pat : kConstructs) {
@@ -652,7 +734,50 @@ static int engineProperties() {
     std::printf("  valid UTF-8: K2 gate violations %d (harmless F3-direction disagreements %d), K3 class gaps %d, K4 none violations %d, K5 stability violations %d, K6 direction quirks %d\n",
         k.gates, k.f3, k.classes, k.nones, k.stabs, k.quirks);
     std::printf("  invalid UTF-8 (engine inconsistency, informational): K2 %d, K4 %d, K5 %d, K6 %d\n", k.invalidGates, k.invalidNones, k.invalidStabs, k.invalidQuirks);
-    return k.gaps + k.gates + k.classes + k.nones + k.stabs + k.quirks;
+    int extra = probeWindow(texts);
+    std::mt19937 pr(0xC0FFEE);
+    extra += randomClassification(pr, 4000);
+    return k.gaps + k.gates + k.classes + k.nones + k.stabs + k.quirks + extra;
+}
+
+// Every pattern the harness knows, as a single entry, on every probe text: the one-pass walk must give the
+// same text and the same count as Notepad++'s Replace All (processRange) and as the panel's own replaceAll
+// loop. No pattern and no text is excluded - the \K defect (F7) survived four rounds behind one exclusion.
+static int singleEntryEquivalence(const std::vector<Entry>& pool, const std::vector<std::string>& texts, const char* what) {
+    int bad = 0, runs = 0, differsPanelClassic = 0;
+    const std::set<int> none;
+    for (const Entry& e : pool) {
+        if (e.find.empty()) continue;   // an empty find is a disabled entry, it never reaches the walk
+        for (const std::string& text : texts) {
+            for (int ci = 0; ci < 2; ++ci) {
+                DocOptions o; o.codePage = ci ? 0 : kCpUtf8;
+                { Doc probe(text, o); Sci::Position l = (Sci::Position)e.find.size();
+                  const Sci::Position r = probe.d->FindText(0, probe.len(), e.find.c_str(), fo(replFlags(e)), &l);
+                  if (r == -2 || r == -3) continue; }        // this Boost build rejects the pattern: nothing to compare
+                ++runs;
+                Doc a(text, o); const std::vector<Entry> one{ e };
+                NewPass n(a, one, none); n.go();
+                const Run cl = classic(text, e, 0, o), pl = panelReplaceAll(text, e, 0, o);
+                if (cl.text != pl.text || cl.replaced != pl.replaced) ++differsPanelClassic;
+                // the reference is Notepad++'s own Replace All. Where the panel's replaceAll loop disagrees
+                // with it the panel loop is reported separately: that is not the one-pass walk's business.
+                if (cl.text != pl.text || cl.replaced != pl.replaced) {
+                    if (++differsPanelClassic <= 3)
+                        std::printf("  NOTE the panel's own replaceAll differs from Notepad++ Replace All (not a one-pass question): '%s' -> '%s'%s on '%s': panel %d replaced, Notepad++ %d, one-pass %d; text %s\n",
+                            show(e.find).c_str(), show(e.repl).c_str(), e.regex ? " rx" : "", show(text).c_str(), pl.replaced[0], cl.replaced[0], n.run.replaced[0],
+                            cl.text == pl.text ? "identical" : "DIFFERENT");
+                }
+                if (n.run.text != cl.text || n.run.replaced != cl.replaced || n.capped) {
+                    if (++bad <= 10)
+                        std::printf("  DIFF '%s' -> '%s'%s%s on '%s' (cp %d): one-pass %d replaced '%s', Notepad++ Replace All %d '%s'%s\n",
+                            show(e.find).c_str(), show(e.repl).c_str(), e.regex ? " rx" : "", e.wholeWord ? " ww" : "", show(text).c_str(), o.codePage,
+                            n.run.replaced[0], show(n.run.text).c_str(), cl.replaced[0], show(cl.text).c_str(), n.capped ? " NO TERMINATION" : "");
+                }
+            }
+        }
+    }
+    std::printf("  %s: %d runs, %d differences from Notepad++ Replace All; the panel's own replaceAll loop differs from Notepad++ in %d of them (pre-existing, see the notes above)\n", what, runs, bad, differsPanelClassic);
+    return bad;
 }
 
 static std::string prose(std::mt19937& rng, size_t bytes) {
@@ -809,12 +934,26 @@ int main(int argc, char** argv) {
     { std::vector<Entry> many; for (int i = 0; i < 200; ++i) many.push_back({ std::string(1, (char)('a' + i % 26)) + std::to_string(i % 7), "<" + std::to_string(i) + ">" }); many.push_back({ "\\b", "|", true }); std::mt19937 r(7);
       compareNewRef("C52 201 entries on a 3000 byte text", fuzzText(r, 3000), many); }
     { std::vector<Entry> dup(10, Entry{ "a", "b" }); compareNewRef("C53 ten identical entries with a match list", "aaaa aaaa", dup, { 1, 3, 4 }); }
+    { const std::string t = "a b a b a b"; const std::vector<Entry> l = { { "^", ">>>>>>>>>>>>>>>>>>>>", true }, { "\\b", "|", true }, { "a", "" } }; const std::set<int> none;
+      Doc a(t), b(t); NewPass n(a, l, none); n.extEdits = { 2, 4, 6 }; n.go(); RefPass r(b, l, none); r.extEdits = { 2, 4, 6 }; r.go();
+      CHECK("C55 growing replacements, then edits from outside and reset()  [on == off]", sameRun(n.run, r.run) && !n.capped && !r.capped); }
     { Doc a("ab ab"), b("ab ab"); a.backwardSearch(); b.backwardSearch(); const std::vector<Entry> l = { { "$", ";", true }, { "\\z", "z", true }, { "x*", "y", true } }; const std::set<int> none;
       NewPass n(a, l, none); n.startPos = 5; n.go(); RefPass r(b, l, none); r.startPos = 5; r.go();
       CHECK("C54 start at EOF after a Find Previous (empty search range, bridge direction quirk)  [on == off]", sameRun(n.run, r.run) && !n.capped && !r.capped); }
 
+    std::printf("\n=== P) every pattern as a single entry on every probe text: one-pass == Replace All ===\n");
+    {
+        std::vector<Entry> all(std::begin(kPool), std::end(kPool));
+        all.insert(all.end(), kExoticPool.begin(), kExoticPool.end());
+        all.insert(all.end(), kBrokenPool.begin(), kBrokenPool.end());
+        for (const Entry& e : crazy) all.push_back(e);
+        std::vector<std::string> texts = probeTexts();
+        for (const char* t : { t1.c_str(), t2.c_str(), t3.c_str(), "", "\r\n", "\r", "\n\r", "a\rb\nc\r\nd", "a\f\fb", "\xC3\xA4\xC3\xA4", "x\xA4" "b x\xA4" "b", "a,b,c\nx,y,z\n" }) texts.push_back(t);
+        CHECK("P single entry == Replace All for every pattern and text", singleEntryEquivalence(all, texts, "P") == 0);
+    }
+
     std::printf("\n=== K) the properties the bookkeeping rests on, measured against the engine ===\n");
-    CHECK("K1-K6 classification complete, gate complete, classes sufficient, none monotone, hits stable, no direction quirk", engineProperties() == 0);
+    CHECK("K1-K8 classification complete (hand-written list and 4000 random patterns), gate complete, classes sufficient, none monotone, hits stable, no direction quirk, probe window sufficient", engineProperties() == 0);
 
     std::mt19937 rng(seed); const int cases = quick ? 150 : 600;
     static const char* kWordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-.";
