@@ -30,6 +30,7 @@
     <ClInclude Include="..\src\AboutDialog.h" />
     <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
+    <ClInclude Include="..\src\OnePassHits.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
     <ClInclude Include="..\src\CsvListFormat.h" />
     <ClInclude Include="..\src\DPIManager.h" />
@@ -103,6 +104,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\ColumnTabs.cpp" />
+    <ClCompile Include="..\src\OnePassHits.cpp" />
     <ClCompile Include="..\src\ConfigManager.cpp" />
     <ClCompile Include="..\src\CsvListFormat.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />

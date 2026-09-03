@@ -341,7 +341,7 @@ By default, **Replace All** applies each list entry to the whole text in sequenc
 
 - **Example** — With the entries `cat` → `dog` and `dog` → `cat`, the text `cat dog` becomes `cat cat` in sequential mode, but `dog cat` in one pass. Swaps like this are only possible in one-pass mode.
 - **Per tab** — The option is stored per list tab, is saved in the list file, and survives restarts and tab duplication. New tabs start with it off.
-- **Notes** — A short intro explains the mode on first activation. **Replace at matches** numbers hits per entry as they occur during the pass. With many list entries a pass can take longer than the sequential mode.
+- **Notes** — A short intro explains the mode on first activation. **Replace at matches** numbers hits per entry as they occur during the pass. Empty matches (`^`, `$`, `\b`, lookarounds) are replaced once per position, as **Replace All** does for a single entry. Each entry remembers its next hit, so a step only searches what the last replacement could have changed, which keeps large lists fast when some entries have no hits in the file; lookbehind, `\K` and `\G` entries are searched at every step. Every hit is confirmed by an independent search with the entry's own settings before anything is written.
 
 ### Column Locking
 
