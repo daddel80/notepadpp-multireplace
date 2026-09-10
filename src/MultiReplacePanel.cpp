@@ -1625,6 +1625,68 @@ void MultiReplace::updateUseListState(bool isUpdate)
     SendMessage(_hUseListButtonTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
 }
 
+// Library Mode switch. Only the collapsed states need layout work: with
+// the list active it stays visible either way and just the glyph changes.
+// The flag is written straight through because the settings dialog reads
+// it from the cache when it opens, so both entry points stay in step.
+void MultiReplace::setKeepListVisible(bool enable)
+{
+    if (keepListVisible == enable) {
+        return;
+    }
+    keepListVisible = enable;
+    CFG.writeBool(optSec(L"KeepListVisible"), L"KeepListVisible", keepListVisible);
+
+    if (!useListEnabled) {
+        const std::vector<int> listToolbarButtons = {
+            IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
+            IDC_UP_BUTTON, IDC_DOWN_BUTTON
+        };
+
+        if (keepListVisible) {
+            // Collapsed -> show the list as inactive (dimmed)
+            adjustWindowSize();
+            ShowWindow(_replaceListView, SW_SHOW);
+            for (int id : listToolbarButtons)
+                ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
+            setBottomRowVisible(true);
+            InvalidateRect(_replaceListView, nullptr, TRUE);
+        }
+        else {
+            // Inactive list without Library Mode -> collapse it
+            if (_listSearchBarVisible) {
+                hideListSearchBar();
+            }
+            ShowWindow(_replaceListView, SW_HIDE);
+            for (int id : listToolbarButtons)
+                ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
+            setBottomRowVisible(false);
+            adjustWindowSize();
+        }
+    }
+
+    updateUseListState(true);
+}
+
+// Context menu of the Use-List button, carrying the Library Mode switch.
+// Same option and wording as in the settings dialog, both write the one
+// flag, so the two entry points can never drift apart.
+void MultiReplace::showUseListButtonMenu(int screenX, int screenY)
+{
+    HMENU hMenu = CreatePopupMenu();
+    if (!hMenu) {
+        return;
+    }
+
+    AppendMenu(hMenu, MF_STRING | (keepListVisible ? MF_CHECKED : MF_UNCHECKED),
+        IDM_KEEP_LIST_VISIBLE, LM.getLPCW(L"ctxmenu_keep_list_visible"));
+
+    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON,
+        screenX, screenY, 0, _hSelf, nullptr);
+
+    DestroyMenu(hMenu);
+}
+
 void MultiReplace::loadLanguageGlobal() {
     if (!nppData._nppHandle) return;
 
@@ -6189,6 +6251,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             createContextMenu(_hSelf, ptScreen, state); // Show context menu
             return TRUE;
         }
+
+        // Use-List button: the Library Mode switch sits on the control it
+        // affects. lParam is -1 when the menu came from the keyboard, in
+        // which case the button itself is the anchor.
+        if ((HWND)wParam == GetDlgItem(_hSelf, IDC_USE_LIST_BUTTON)) {
+            POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+            if (lParam == static_cast<LPARAM>(-1)) {
+                RECT rc{};
+                GetWindowRect((HWND)wParam, &rc);
+                pt = { rc.left, rc.bottom };
+            }
+            showUseListButtonMenu(pt.x, pt.y);
+            return TRUE;
+        }
         return FALSE;
     }
 
@@ -7362,6 +7438,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 return TRUE;
             }
             updateHeaderSortDirection();
+            return TRUE;
+        }
+
+        case IDM_KEEP_LIST_VISIBLE:
+        {
+            setKeepListVisible(!keepListVisible);
             return TRUE;
         }
 
@@ -19852,32 +19934,7 @@ void MultiReplace::applyConfigSettingsOnly()
     autoEscapeForFindInput = CFG.readBool(optSec(L"AutoEscapeForFindInput"), L"AutoEscapeForFindInput", false);
 
     // Library Mode: keep list visible
-    bool newKeepListVisible = CFG.readBool(optSec(L"KeepListVisible"), L"KeepListVisible", false);
-    if (keepListVisible != newKeepListVisible) {
-        keepListVisible = newKeepListVisible;
-        if (keepListVisible && !useListEnabled) {
-            // Library Mode while collapsed: open it as inactive (dimmed)
-            adjustWindowSize();
-            ShowWindow(_replaceListView, SW_SHOW);
-            for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-                IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
-                ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
-            }
-            setBottomRowVisible(true);
-            InvalidateRect(_replaceListView, nullptr, TRUE);
-        }
-        else if (!keepListVisible && !useListEnabled) {
-            // Switching from Library Mode while list is inactive -> collapse it
-            if (_listSearchBarVisible) hideListSearchBar();
-            ShowWindow(_replaceListView, SW_HIDE);
-            for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-                IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
-                ShowWindow(GetDlgItem(_hSelf, id), SW_HIDE);
-            }
-            setBottomRowVisible(false);
-            adjustWindowSize();
-        }
-    }
+    setKeepListVisible(CFG.readBool(optSec(L"KeepListVisible"), L"KeepListVisible", false));
 
     // Dim intensity (0..100). A value change only affects the next
     // repaint of the dimmed list; no explicit refresh is needed here.

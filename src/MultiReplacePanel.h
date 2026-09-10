@@ -1202,6 +1202,8 @@ private:
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
     void adjustWindowSize();
     void updateUseListState(bool isUpdate);
+    void setKeepListVisible(bool enable);
+    void showUseListButtonMenu(int screenX, int screenY);
 
 #pragma endregion
 

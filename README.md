@@ -306,6 +306,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | In-place editing           | Double-Click         | Opens the selected entry for direct in-place editing (configurable in Settings). |
 | Move rows up / down        | Ctrl+Up / Ctrl+Down  | Moves selected rows up or down in the list. Hold for auto-repeat. |
 | Toggle list visibility     | Ctrl+L               | Collapses or expands the list.                              |
+| List visibility options    | Right-Click on "Use List" | Opens a menu holding **Keep list always visible**, which keeps the list on screen (dimmed) instead of collapsing it. |
 | Fill Find field with selection | Ctrl+Shift+H     | Copies the current Scintilla selection into the **Find what** field. Works as a global hotkey regardless of which window has focus, without opening or focusing MultiReplace. |
 | List/input mode bypass     | Ctrl+Shift + Button Click | Momentarily flips the list-vs-input mode for the clicked action. With an active list, the action uses the input fields (list dims); with a dimmed list (when **Keep list always visible** is enabled), the action uses the list. Release the keys to return. |
 
@@ -333,7 +334,7 @@ You can manage the visibility of the additional columns via the **Header Column 
 The **"Use List"** button toggles between processing the entire list or just the single "Find what" / "Replace with" fields. You can also press **Ctrl+L** from anywhere in the panel to toggle the list.
 
 - **Classic behavior (default)** — Toggling the list off collapses it to save screen space.
-- **Keep list always visible** — When this option is enabled in the Settings (List View and Layout), the list stays visible even while it is inactive. Instead of collapsing, inactive entries are visually dimmed so the list remains usable as a reference while you work with the single input fields.
+- **Keep list always visible** — When this option is enabled, the list stays visible even while it is inactive. Instead of collapsing, inactive entries are visually dimmed so the list remains usable as a reference while you work with the single input fields. Toggle it straight from the panel by **right-clicking the "Use List" button**, or in [Settings > List View and Layout](#3-list-view-and-layout).
 - **Ctrl+Shift bypass** — Hold **Ctrl+Shift** while clicking an action button (Find Next, Replace, Replace All, etc.) to momentarily flip the current list-vs-input mode: an active list is bypassed in favor of the input fields (and dims visually); a dimmed list (only possible with **Keep list always visible** enabled) is temporarily activated. Release the keys to return. Useful for quick one-off operations without toggling permanently.
 
 ### Replace All in One Pass
@@ -415,7 +416,7 @@ Manage the visual elements and behavior of the replacement list to save screen s
   - **Edit in-place on double-click** — When On, double-clicking a cell allows editing the text directly. When Off, double-clicking transfers the entry content to the top input fields.
   - **Show full text on hover** — Displays a tooltip with the complete text for long entries that are truncated in the view.
   - **Expanded edit height (lines)** — Defines how many lines the in-place edit box expands to when modifying multiline text (Range: 2–20).
-  - **Keep list always visible** — When enabled, toggling the list off no longer collapses it. The list stays visible and is dimmed instead, so you can keep using it as a reference while working with the single input fields. See [List Toggling](#list-toggling) for details.
+  - **Keep list always visible** — When enabled, toggling the list off no longer collapses it. The list stays visible and is dimmed instead, so you can keep using it as a reference while working with the single input fields. The same switch is available by right-clicking the **"Use List"** button in the panel. See [List Toggling](#list-toggling) for details.
 
 ### 4. CSV Options
 Settings specific to the CSV column manipulation and alignment features.
