@@ -1229,6 +1229,13 @@ private:
     bool validateColumnOrder(const std::vector<ColumnID>& order) const;
     void syncColumnOrderFromHeader();
     void initColumnOrder();
+    // A row carrying only the dialog's current option checkboxes, no text:
+    // used by "Add new line", so a new row starts in the search mode the
+    // user has active instead of a fixed all-off default.
+    ReplaceItemData buildItemDataFromDialogOptions() const;
+    // The above plus the dialog's current Find/Replace text, used by
+    // "Add into List".
+    ReplaceItemData buildItemDataFromDialogFields() const;
     void insertReplaceListItem(const ReplaceItemData& itemData);
     int  getColumnWidth(ColumnID columnID);
     int  calcDynamicColWidth(const ResizableColWidths& widths);
@@ -1414,7 +1421,14 @@ private:
     void copyTextToClipboard(const std::wstring& text, int textCount);
     void initTextMarkerIndicators();
     void updateTextMarkerStyles();
-    std::vector<size_t> getIndicesOfUniqueEnabledItems(bool removeDuplicates) const;
+    // Result of scanning the replace list for enabled, non-empty, unique-signature
+    // rows: which indices to run, and how many were skipped as exact duplicates
+    // of an earlier row (same find text + same option flags).
+    struct UniqueEnabledItems {
+        std::vector<size_t> indices;
+        size_t skippedDuplicates = 0;
+    };
+    UniqueEnabledItems getIndicesOfUniqueEnabledItems(bool removeDuplicates) const;
 
 #pragma endregion
 

@@ -3430,17 +3430,29 @@ void MultiReplace::selectRows(const std::vector<size_t>& selectedIDs) {
     }
 }
 
-void MultiReplace::handleCopyToListButton() {
+ReplaceItemData MultiReplace::buildItemDataFromDialogOptions() const {
     ReplaceItemData itemData;
-
-    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
 
     itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
     itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
     itemData.formulaSupport = (IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED);
     itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
     itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+
+    return itemData;
+}
+
+ReplaceItemData MultiReplace::buildItemDataFromDialogFields() const {
+    ReplaceItemData itemData = buildItemDataFromDialogOptions();
+
+    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+
+    return itemData;
+}
+
+void MultiReplace::handleCopyToListButton() {
+    ReplaceItemData itemData = buildItemDataFromDialogFields();
 
     insertReplaceListItem(itemData);
 
@@ -4816,7 +4828,9 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         else {
             insertPosition = ListView_GetItemCount(_replaceListView);
         }
-        ReplaceItemData newItem; // Default-initialized
+        // Empty row, but with the search options currently active in the dialog:
+        // a row without a mode would silently search in a different one.
+        ReplaceItemData newItem = buildItemDataFromDialogOptions();
         newItem.isDirty = true;
         newItem.lastModified = getCurrentTimestamp();
         std::vector<ReplaceItemData> itemsToAdd = { newItem };
@@ -9793,6 +9807,7 @@ void MultiReplace::handleFindAllButton()
 
     ResultDock::FileMap fileMap;
     int totalHits = 0;
+    size_t skippedDuplicates = 0;
 
     if (useListEnabled)
     {
@@ -9806,7 +9821,9 @@ void MultiReplace::handleFindAllButton()
         }
         resetCountColumns();
 
-        std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        std::vector<size_t>& workIndices = uniqueItems.indices;
+        skippedDuplicates = uniqueItems.skippedDuplicates;
 
         // Synchronized Limit Calculation
         int maxListSlots = calcMaxListSlots();
@@ -9924,7 +9941,9 @@ void MultiReplace::handleFindAllButton()
     if (fileCount > 0) dock.appendFileBlock(fileMap, sciSend);
     dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
 
-    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
+    showStatusMessage(msg, (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindAllInDocsButton()
@@ -9956,13 +9975,16 @@ void MultiReplace::handleFindAllInDocsButton()
     dock.ensureCreated(nppData);
 
     int totalHits = 0;
+    size_t skippedDuplicates = 0;
     std::unordered_set<std::string> uniqueFiles;
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
     std::vector<size_t> workIndices;
     if (useListEnabled) {
-        workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        workIndices = std::move(uniqueItems.indices);
+        skippedDuplicates = uniqueItems.skippedDuplicates;
     }
 
     int maxListSlots = calcMaxListSlots();
@@ -10188,7 +10210,9 @@ void MultiReplace::handleFindAllInDocsButton()
             LM.get(L"dock_docs_scan_suffix", { StringUtils::formatNumber(docsSearched), filterClause }));
     }
 
-    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
+    showStatusMessage(msg, (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindInFiles() {
@@ -10264,13 +10288,16 @@ void MultiReplace::handleFindInFiles() {
     dock.ensureCreated(nppData);
 
     int totalHits = 0;
+    size_t skippedDuplicates = 0;
     std::unordered_set<std::string> uniqueFiles;
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
     std::vector<size_t> workIndices;
     if (useListEnabled) {
-        workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        workIndices = std::move(uniqueItems.indices);
+        skippedDuplicates = uniqueItems.skippedDuplicates;
     }
 
     int maxListSlots = calcMaxListSlots();
@@ -10469,6 +10496,7 @@ void MultiReplace::handleFindInFiles() {
     const bool wasCanceled = (_isCancelRequested || aborted);
     const std::wstring canceledSuffix = wasCanceled ? (L" - " + LM.get(L"status_canceled")) : L"";
     std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
     MessageStatus ms = wasCanceled ? MessageStatus::Info : (totalHits == 0 ? MessageStatus::Error : MessageStatus::Success);
 
     showStatusMessage(msg + canceledSuffix, ms);
@@ -11308,6 +11336,7 @@ void MultiReplace::handleMarkMatchesButton() {
     }
 
     int totalMatchCount = 0;
+    size_t skippedDuplicates = 0;
     markedStringsCount = 0;
     textToSlot.clear();
     nextSlot = 0;
@@ -11332,7 +11361,9 @@ void MultiReplace::handleMarkMatchesButton() {
             return;
         }
 
-        std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        std::vector<size_t>& workIndices = uniqueItems.indices;
+        skippedDuplicates = uniqueItems.skippedDuplicates;
 
         // Synchronized Limit Calculation
         int maxListSlots = calcMaxListSlots();
@@ -11406,7 +11437,9 @@ void MultiReplace::handleMarkMatchesButton() {
         totalMatchCount = markString(context, startPos, findText, bookmarkMarkerId);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
-    showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
+    std::wstring msg = LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
+    showStatusMessage(msg, MessageStatus::Info);
 }
 
 // Search-and-mark loop; a non-negative bookmarkMarkerId also bookmarks
@@ -11750,10 +11783,10 @@ void MultiReplace::updateTextMarkerStyles()
     }
 }
 
-std::vector<size_t> MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDuplicates) const
+MultiReplace::UniqueEnabledItems MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDuplicates) const
 {
-    std::vector<size_t> validIndices;
-    validIndices.reserve(replaceListData.size());
+    UniqueEnabledItems result;
+    result.indices.reserve(replaceListData.size());
 
     std::unordered_set<std::wstring> seenSignatures;
 
@@ -11776,14 +11809,15 @@ std::vector<size_t> MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDupl
             signature += L"|"; signature += (item.wholeWord ? L"1" : L"0");
 
             if (seenSignatures.find(signature) != seenSignatures.end()) {
+                ++result.skippedDuplicates;
                 continue; // Skip exact duplicate
             }
             seenSignatures.insert(signature);
         }
 
-        validIndices.push_back(i);
+        result.indices.push_back(i);
     }
-    return validIndices;
+    return result;
 }
 
 #pragma endregion
