@@ -96,8 +96,8 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_disable_list", L"Disable list (Ctrl+L). Right-click for options." },
 { L"tooltip_filter_help", L"Separate patterns with semicolons (;)\n\nFind in specific file types:\n*.cpp; *.h; *.txt\n\nExclude file patterns:\n*.*; !*.exe; !*.obj; !*.log\n\nMatch a specific filename:\nmy report.txt\n\nExclude folders (in Files mode):\n*.*; !\\tests\\; !\\bin*\n\nExclude folders recursively:\n*.*; !+\\log*" },
 { L"tooltip_report_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%              - Find pattern\n  %REPLACE%       - Replace text\n  %COMMENT%    - Comment\n  %FCOUNT%        - Find count\n  %RCOUNT%        - Replace count\n  %MODIFIED%      - Modified\n\nRow info:\n  %ROW%              - Row number\n  %SEL%                 - Enabled (1/0)\n\nOptions:\n  %REGEX%           - Regex enabled (1/0)\n  %CASE%             - Match case (1/0)\n  %WORD%           - Whole word (1/0)\n  %EXT%                - Extended (1/0)\n  %VAR%               - Formula Support (1/0)\n\nUse \\t for tab delimiter" },
-{ L"tooltip_move_up", L"Move selected lines up (Ctrl+Up)" },
-{ L"tooltip_move_down", L"Move selected lines down (Ctrl+Down)" },
+{ L"tooltip_move_up", L"Move selected rows up (Ctrl+Up)" },
+{ L"tooltip_move_down", L"Move selected rows down (Ctrl+Down)" },
 { L"tooltip_bookmark_matches", L"Bookmark matched lines" },
 { L"tooltip_find_duplicates", L"Find Duplicates" },
 
@@ -140,7 +140,7 @@ const LangKV kEnglishPairs[] = {
 // Static Status message entries
 { L"status_duplicate_entry", L"Duplicate entry: " },
 { L"status_value_added", L"Value added to the list." },
-{ L"status_one_line_deleted", L"1 line deleted." },
+{ L"status_one_row_deleted", L"1 row deleted." },
 { L"status_column_marks_cleared", L"Column marks cleared." },
 { L"status_all_marks_cleared", L"All marks cleared." },
 { L"status_cannot_replace_read_only", L"Cannot replace. Document is read-only." },
@@ -217,7 +217,7 @@ const LangKV kEnglishPairs[] = {
 
 // Dynamic Status Messages
 { L"status_rows_shifted", L"$REPLACE_STRING rows successfully shifted." },
-{ L"status_lines_deleted", L"$REPLACE_STRING lines deleted." },
+{ L"status_rows_deleted", L"$REPLACE_STRING rows deleted." },
 { L"status_layout_applied_to_tabs", L"Column layout applied to $REPLACE_STRING other tab(s)." },
 { L"status_occurrences_replaced", L"$REPLACE_STRING occurrences were replaced." },
 { L"status_occurrences_replaced_one_pass", L"$REPLACE_STRING occurrences were replaced in one pass." },
@@ -264,8 +264,8 @@ const LangKV kEnglishPairs[] = {
 { L"status_recoverable_errors_skipped_summary", L"$REPLACE_STRING match(es) skipped." },
 { L"msgbox_title_recoverable_errors_skipped_notice", L"Matches Skipped" },
 { L"msgbox_recoverable_errors_skipped_notice", L"$REPLACE_STRING match(es) were skipped because their replacement could not be evaluated.\n\nThe original text was left unchanged for those matches." },
-{ L"msgbox_confirm_delete_single", L"Are you sure you want to delete this line?" },
-{ L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING lines?" },
+{ L"msgbox_confirm_delete_single", L"Are you sure you want to delete this row?" },
+{ L"msgbox_confirm_delete_multiple", L"Are you sure you want to delete $REPLACE_STRING rows?" },
 { L"msgbox_confirm_overwrite_file", L"The file $REPLACE_STRING already exists. Overwrite it?" },
 { L"msgbox_title_clear_list", L"Clear List" },
 { L"msgbox_confirm_clear_list", L"Remove all $REPLACE_STRING entries from the list?<br/><br/>This can be undone with Ctrl+Z." },
@@ -312,7 +312,7 @@ const LangKV kEnglishPairs[] = {
 { L"ctxmenu_disable", L"D&isable\tAlt+D" },
 { L"ctxmenu_undo", L"U&ndo\tCtrl+Z" },
 { L"ctxmenu_redo", L"R&edo\tCtrl+Y" },
-{ L"ctxmenu_add_new_line", L"&Add New Line\tCtrl+I" },
+{ L"ctxmenu_add_new_row", L"&Add New Row\tCtrl+I" },
 { L"ctxmenu_set_options", L"Set Options" },
 { L"ctxmenu_clear_options", L"Clear Options" },
 { L"ctxmenu_opt_wholeword", L"Whole Word" },
@@ -401,7 +401,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_numeric_align", L"Flow Tabs: Right-align numeric columns" },
 { L"config_chk_flowtabs_intro_dontshow", L"Flow Tabs: Don't show intro message" },
 { L"config_chk_duplicate_bookmarks", L"Mark duplicate rows with bookmarks" },
-{ L"config_lbl_csv_sort", L"CSV Sort: Header lines to exclude:" },
+{ L"config_lbl_csv_sort", L"CSV Sort: Header rows to exclude:" },
 
 // Export
 { L"config_grp_report", L"Copy Report" },

@@ -1259,7 +1259,7 @@ private:
     static std::wstring getCurrentTimestamp();
     void shiftListItem(const Direction& direction);
     void handleDeletion(NMITEMACTIVATE* pnmia);
-    void deleteSelectedLines();
+    void deleteSelectedRows();
     void sortReplaceListData(int columnID);
     size_t generateUniqueID();
     std::vector<size_t> getSelectedRows();

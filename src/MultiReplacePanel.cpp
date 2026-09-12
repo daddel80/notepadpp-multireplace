@@ -3251,10 +3251,10 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
     InvalidateRect(_replaceListView, nullptr, TRUE);
 
-    showStatusMessage(LM.get(L"status_one_line_deleted"), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_one_row_deleted"), MessageStatus::Success);
 }
 
-void MultiReplace::deleteSelectedLines() {
+void MultiReplace::deleteSelectedRows() {
     // Collect selected indices
     std::vector<size_t> selectedIndices;
     int i = -1;
@@ -3293,7 +3293,7 @@ void MultiReplace::deleteSelectedLines() {
     updateHeaderSelection();
 
     // Show status message
-    showStatusMessage(LM.get(L"status_lines_deleted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_rows_deleted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
 }
 
 void MultiReplace::sortReplaceListData(int columnID) {
@@ -4612,22 +4612,22 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING | (state.canUndo ? MF_ENABLED : MF_GRAYED), IDM_UNDO, LM.get(L"ctxmenu_undo").c_str());
         AppendMenu(hMenu, MF_STRING | (state.canRedo ? MF_ENABLED : MF_GRAYED), IDM_REDO, LM.get(L"ctxmenu_redo").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, LM.get(L"ctxmenu_cut").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, LM.get(L"ctxmenu_copy").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, LM.get(L"ctxmenu_paste").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_ROWS_TO_CLIPBOARD, LM.get(L"ctxmenu_cut").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_ROWS_TO_CLIPBOARD, LM.get(L"ctxmenu_copy").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_ROWS_FROM_CLIPBOARD, LM.get(L"ctxmenu_paste").c_str());
         AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, LM.get(L"ctxmenu_select_all").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_COPY_REPORT, LM.get(L"ctxmenu_copy_report").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, LM.get(L"ctxmenu_edit").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, LM.get(L"ctxmenu_delete").c_str());
-        AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_LINE, LM.get(L"ctxmenu_add_new_line").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_ROWS, LM.get(L"ctxmenu_delete").c_str());
+        AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_ROW, LM.get(L"ctxmenu_add_new_row").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, LM.get(L"ctxmenu_transfer_to_input_fields").c_str());
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_UPDATE_FROM_FIELDS, LM.get(L"ctxmenu_update_from_input_fields").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, LM.get(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, LM.get(L"ctxmenu_enable").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, LM.get(L"ctxmenu_disable").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_ROWS, LM.get(L"ctxmenu_enable").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_ROWS, LM.get(L"ctxmenu_disable").c_str());
 
         // Set Options Submenu
         HMENU hSetMenu = CreatePopupMenu();
@@ -4780,7 +4780,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         break;
     case ItemAction::Cut:
         copySelectedItemsToClipboard();
-        deleteSelectedLines();
+        deleteSelectedRows();
         break;
     case ItemAction::Copy:
         copySelectedItemsToClipboard();
@@ -4816,7 +4816,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
 
         int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), LM.get(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
-            deleteSelectedLines();
+            deleteSelectedRows();
         }
         break;
     }
@@ -6211,7 +6211,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
                 else {
                     switch (pnkd->wVKey) {
-                    case VK_DELETE: // Delete key for deleting selected lines
+                    case VK_DELETE: // Delete key for deleting selected rows
                         performItemAction(_contextMenuClickPoint, ItemAction::Delete);
                         break;
                     case VK_F12: // F12 key
@@ -7300,19 +7300,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_CUT_LINES_TO_CLIPBOARD:
+        case IDM_CUT_ROWS_TO_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Cut);
             return TRUE;
         }
 
-        case IDM_COPY_LINES_TO_CLIPBOARD:
+        case IDM_COPY_ROWS_TO_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Copy);
             return TRUE;
         }
 
-        case IDM_PASTE_LINES_FROM_CLIPBOARD:
+        case IDM_PASTE_ROWS_FROM_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Paste);
             return TRUE;
@@ -7324,7 +7324,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_DELETE_LINES:
+        case IDM_DELETE_ROWS:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Delete);
             return TRUE;
@@ -7336,13 +7336,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_ENABLE_LINES:
+        case IDM_ENABLE_ROWS:
         {
             setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
             return TRUE;
         }
 
-        case IDM_DISABLE_LINES:
+        case IDM_DISABLE_ROWS:
         {
             setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
             return TRUE;
@@ -7461,7 +7461,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_ADD_NEW_LINE:
+        case IDM_ADD_NEW_ROW:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Add);
             return TRUE;
