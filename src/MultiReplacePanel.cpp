@@ -3251,10 +3251,10 @@ void MultiReplace::handleDeletion(NMITEMACTIVATE* pnmia) {
 
     InvalidateRect(_replaceListView, nullptr, TRUE);
 
-    showStatusMessage(LM.get(L"status_one_line_deleted"), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_one_row_deleted"), MessageStatus::Success);
 }
 
-void MultiReplace::deleteSelectedLines() {
+void MultiReplace::deleteSelectedRows() {
     // Collect selected indices
     std::vector<size_t> selectedIndices;
     int i = -1;
@@ -3293,7 +3293,7 @@ void MultiReplace::deleteSelectedLines() {
     updateHeaderSelection();
 
     // Show status message
-    showStatusMessage(LM.get(L"status_lines_deleted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
+    showStatusMessage(LM.get(L"status_rows_deleted", { std::to_wstring(selectedIndices.size()) }), MessageStatus::Success);
 }
 
 void MultiReplace::sortReplaceListData(int columnID) {
@@ -3430,17 +3430,29 @@ void MultiReplace::selectRows(const std::vector<size_t>& selectedIDs) {
     }
 }
 
-void MultiReplace::handleCopyToListButton() {
+ReplaceItemData MultiReplace::buildItemDataFromDialogOptions() const {
     ReplaceItemData itemData;
-
-    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
 
     itemData.wholeWord = (IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED);
     itemData.matchCase = (IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED);
     itemData.formulaSupport = (IsDlgButtonChecked(_hSelf, IDC_FORMULA_SUPPORT_CHECKBOX) == BST_CHECKED);
     itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
     itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
+
+    return itemData;
+}
+
+ReplaceItemData MultiReplace::buildItemDataFromDialogFields() const {
+    ReplaceItemData itemData = buildItemDataFromDialogOptions();
+
+    itemData.findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
+    itemData.replaceText = getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT);
+
+    return itemData;
+}
+
+void MultiReplace::handleCopyToListButton() {
+    ReplaceItemData itemData = buildItemDataFromDialogFields();
 
     insertReplaceListItem(itemData);
 
@@ -4600,22 +4612,22 @@ void MultiReplace::createContextMenu(HWND hwnd, POINT ptScreen, MenuState state)
         AppendMenu(hMenu, MF_STRING | (state.canUndo ? MF_ENABLED : MF_GRAYED), IDM_UNDO, LM.get(L"ctxmenu_undo").c_str());
         AppendMenu(hMenu, MF_STRING | (state.canRedo ? MF_ENABLED : MF_GRAYED), IDM_REDO, LM.get(L"ctxmenu_redo").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_LINES_TO_CLIPBOARD, LM.get(L"ctxmenu_cut").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_LINES_TO_CLIPBOARD, LM.get(L"ctxmenu_copy").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_LINES_FROM_CLIPBOARD, LM.get(L"ctxmenu_paste").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_CUT_ROWS_TO_CLIPBOARD, LM.get(L"ctxmenu_cut").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_COPY_ROWS_TO_CLIPBOARD, LM.get(L"ctxmenu_copy").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.canPaste ? MF_ENABLED : MF_GRAYED), IDM_PASTE_ROWS_FROM_CLIPBOARD, LM.get(L"ctxmenu_paste").c_str());
         AppendMenu(hMenu, MF_STRING, IDM_SELECT_ALL, LM.get(L"ctxmenu_select_all").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_COPY_REPORT, LM.get(L"ctxmenu_copy_report").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.canEdit ? MF_ENABLED : MF_GRAYED), IDM_EDIT_VALUE, LM.get(L"ctxmenu_edit").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_LINES, LM.get(L"ctxmenu_delete").c_str());
-        AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_LINE, LM.get(L"ctxmenu_add_new_line").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection ? MF_ENABLED : MF_GRAYED), IDM_DELETE_ROWS, LM.get(L"ctxmenu_delete").c_str());
+        AppendMenu(hMenu, MF_STRING, IDM_ADD_NEW_ROW, LM.get(L"ctxmenu_add_new_row").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_COPY_DATA_TO_FIELDS, LM.get(L"ctxmenu_transfer_to_input_fields").c_str());
         AppendMenu(hMenu, MF_STRING | (state.clickedOnItem ? MF_ENABLED : MF_GRAYED), IDM_UPDATE_FROM_FIELDS, LM.get(L"ctxmenu_update_from_input_fields").c_str());
         AppendMenu(hMenu, MF_STRING | (state.listNotEmpty ? MF_ENABLED : MF_GRAYED), IDM_SEARCH_IN_LIST, LM.get(L"ctxmenu_search_in_list").c_str());
         AppendMenu(hMenu, MF_SEPARATOR, 0, NULL);
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_LINES, LM.get(L"ctxmenu_enable").c_str());
-        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_LINES, LM.get(L"ctxmenu_disable").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allEnabled ? MF_ENABLED : MF_GRAYED), IDM_ENABLE_ROWS, LM.get(L"ctxmenu_enable").c_str());
+        AppendMenu(hMenu, MF_STRING | (state.hasSelection && !state.allDisabled ? MF_ENABLED : MF_GRAYED), IDM_DISABLE_ROWS, LM.get(L"ctxmenu_disable").c_str());
 
         // Set Options Submenu
         HMENU hSetMenu = CreatePopupMenu();
@@ -4768,7 +4780,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         break;
     case ItemAction::Cut:
         copySelectedItemsToClipboard();
-        deleteSelectedLines();
+        deleteSelectedRows();
         break;
     case ItemAction::Copy:
         copySelectedItemsToClipboard();
@@ -4804,7 +4816,7 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
 
         int msgBoxID = MessageBox(nppData._nppHandle, confirmationMessage.c_str(), LM.get(L"msgbox_title_confirm").c_str(), MB_ICONWARNING | MB_YESNO);
         if (msgBoxID == IDYES) {
-            deleteSelectedLines();
+            deleteSelectedRows();
         }
         break;
     }
@@ -4816,7 +4828,9 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         else {
             insertPosition = ListView_GetItemCount(_replaceListView);
         }
-        ReplaceItemData newItem; // Default-initialized
+        // Empty row, but with the search options currently active in the dialog:
+        // a row without a mode would silently search in a different one.
+        ReplaceItemData newItem = buildItemDataFromDialogOptions();
         newItem.isDirty = true;
         newItem.lastModified = getCurrentTimestamp();
         std::vector<ReplaceItemData> itemsToAdd = { newItem };
@@ -6197,7 +6211,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 }
                 else {
                     switch (pnkd->wVKey) {
-                    case VK_DELETE: // Delete key for deleting selected lines
+                    case VK_DELETE: // Delete key for deleting selected rows
                         performItemAction(_contextMenuClickPoint, ItemAction::Delete);
                         break;
                     case VK_F12: // F12 key
@@ -7286,19 +7300,19 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_CUT_LINES_TO_CLIPBOARD:
+        case IDM_CUT_ROWS_TO_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Cut);
             return TRUE;
         }
 
-        case IDM_COPY_LINES_TO_CLIPBOARD:
+        case IDM_COPY_ROWS_TO_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Copy);
             return TRUE;
         }
 
-        case IDM_PASTE_LINES_FROM_CLIPBOARD:
+        case IDM_PASTE_ROWS_FROM_CLIPBOARD:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Paste);
             return TRUE;
@@ -7310,7 +7324,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_DELETE_LINES:
+        case IDM_DELETE_ROWS:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Delete);
             return TRUE;
@@ -7322,13 +7336,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_ENABLE_LINES:
+        case IDM_ENABLE_ROWS:
         {
             setSelections(true, ListView_GetSelectedCount(_replaceListView) > 0);
             return TRUE;
         }
 
-        case IDM_DISABLE_LINES:
+        case IDM_DISABLE_ROWS:
         {
             setSelections(false, ListView_GetSelectedCount(_replaceListView) > 0);
             return TRUE;
@@ -7447,7 +7461,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
 
-        case IDM_ADD_NEW_LINE:
+        case IDM_ADD_NEW_ROW:
         {
             performItemAction(_contextMenuClickPoint, ItemAction::Add);
             return TRUE;
@@ -9793,6 +9807,7 @@ void MultiReplace::handleFindAllButton()
 
     ResultDock::FileMap fileMap;
     int totalHits = 0;
+    size_t skippedDuplicates = 0;
 
     if (useListEnabled)
     {
@@ -9806,7 +9821,9 @@ void MultiReplace::handleFindAllButton()
         }
         resetCountColumns();
 
-        std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        std::vector<size_t>& workIndices = uniqueItems.indices;
+        skippedDuplicates = uniqueItems.skippedDuplicates;
 
         // Synchronized Limit Calculation
         int maxListSlots = calcMaxListSlots();
@@ -9924,7 +9941,9 @@ void MultiReplace::handleFindAllButton()
     if (fileCount > 0) dock.appendFileBlock(fileMap, sciSend);
     dock.closeSearchBlock(totalHits, static_cast<int>(fileCount));
 
-    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
+    showStatusMessage(msg, (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindAllInDocsButton()
@@ -9956,13 +9975,16 @@ void MultiReplace::handleFindAllInDocsButton()
     dock.ensureCreated(nppData);
 
     int totalHits = 0;
+    size_t skippedDuplicates = 0;
     std::unordered_set<std::string> uniqueFiles;
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
     std::vector<size_t> workIndices;
     if (useListEnabled) {
-        workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        workIndices = std::move(uniqueItems.indices);
+        skippedDuplicates = uniqueItems.skippedDuplicates;
     }
 
     int maxListSlots = calcMaxListSlots();
@@ -10188,7 +10210,9 @@ void MultiReplace::handleFindAllInDocsButton()
             LM.get(L"dock_docs_scan_suffix", { StringUtils::formatNumber(docsSearched), filterClause }));
     }
 
-    showStatusMessage((totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) }), (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
+    std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
+    showStatusMessage(msg, (totalHits == 0) ? MessageStatus::Error : MessageStatus::Success);
 }
 
 void MultiReplace::handleFindInFiles() {
@@ -10264,13 +10288,16 @@ void MultiReplace::handleFindInFiles() {
     dock.ensureCreated(nppData);
 
     int totalHits = 0;
+    size_t skippedDuplicates = 0;
     std::unordered_set<std::string> uniqueFiles;
     if (useListEnabled) resetCountColumns();
     std::vector<int> listHitTotals(useListEnabled ? replaceListData.size() : 0, 0);
 
     std::vector<size_t> workIndices;
     if (useListEnabled) {
-        workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        workIndices = std::move(uniqueItems.indices);
+        skippedDuplicates = uniqueItems.skippedDuplicates;
     }
 
     int maxListSlots = calcMaxListSlots();
@@ -10469,6 +10496,7 @@ void MultiReplace::handleFindInFiles() {
     const bool wasCanceled = (_isCancelRequested || aborted);
     const std::wstring canceledSuffix = wasCanceled ? (L" - " + LM.get(L"status_canceled")) : L"";
     std::wstring msg = (totalHits == 0) ? LM.get(L"status_no_matches_found") : LM.get(L"status_occurrences_found", { StringUtils::formatNumber(totalHits) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
     MessageStatus ms = wasCanceled ? MessageStatus::Info : (totalHits == 0 ? MessageStatus::Error : MessageStatus::Success);
 
     showStatusMessage(msg + canceledSuffix, ms);
@@ -11308,6 +11336,7 @@ void MultiReplace::handleMarkMatchesButton() {
     }
 
     int totalMatchCount = 0;
+    size_t skippedDuplicates = 0;
     markedStringsCount = 0;
     textToSlot.clear();
     nextSlot = 0;
@@ -11332,7 +11361,9 @@ void MultiReplace::handleMarkMatchesButton() {
             return;
         }
 
-        std::vector<size_t> workIndices = getIndicesOfUniqueEnabledItems(true);
+        UniqueEnabledItems uniqueItems = getIndicesOfUniqueEnabledItems(true);
+        std::vector<size_t>& workIndices = uniqueItems.indices;
+        skippedDuplicates = uniqueItems.skippedDuplicates;
 
         // Synchronized Limit Calculation
         int maxListSlots = calcMaxListSlots();
@@ -11406,7 +11437,9 @@ void MultiReplace::handleMarkMatchesButton() {
         totalMatchCount = markString(context, startPos, findText, bookmarkMarkerId);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
-    showStatusMessage(LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) }), MessageStatus::Info);
+    std::wstring msg = LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) });
+    if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
+    showStatusMessage(msg, MessageStatus::Info);
 }
 
 // Search-and-mark loop; a non-negative bookmarkMarkerId also bookmarks
@@ -11750,10 +11783,10 @@ void MultiReplace::updateTextMarkerStyles()
     }
 }
 
-std::vector<size_t> MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDuplicates) const
+MultiReplace::UniqueEnabledItems MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDuplicates) const
 {
-    std::vector<size_t> validIndices;
-    validIndices.reserve(replaceListData.size());
+    UniqueEnabledItems result;
+    result.indices.reserve(replaceListData.size());
 
     std::unordered_set<std::wstring> seenSignatures;
 
@@ -11776,14 +11809,15 @@ std::vector<size_t> MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDupl
             signature += L"|"; signature += (item.wholeWord ? L"1" : L"0");
 
             if (seenSignatures.find(signature) != seenSignatures.end()) {
+                ++result.skippedDuplicates;
                 continue; // Skip exact duplicate
             }
             seenSignatures.insert(signature);
         }
 
-        validIndices.push_back(i);
+        result.indices.push_back(i);
     }
-    return validIndices;
+    return result;
 }
 
 #pragma endregion

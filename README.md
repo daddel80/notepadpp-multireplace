@@ -121,7 +121,7 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
 **Available Column Operations:**
 - **Sorting Lines by Columns** — Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values, including currency formats like `$100`, `100 EUR`, or `.5`.
   - **Smart Undo (Toggle Sort)** — A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.
-- **Exclude Header Lines** — Header rows are protected from sort and duplicate detection (find/replace always searches every line, like Excel). Configure the number of header rows in [Settings > CSV Options](#3-csv-options). Set to `0` to disable.
+- **Exclude Header Rows** — Header rows are protected from sort and duplicate detection (find/replace always searches every line, like Excel). Configure the number of header rows in [Settings > CSV Options](#3-csv-options). Set to `0` to disable.
 - **Deleting Multiple Columns** — Remove specified columns at once, automatically cleaning up obsolete delimiters.
 - **Clipboard Column Copying** — Copy the content of specified columns, including their delimiters, to the clipboard.
 - **Flow Tabs (Column Alignment)** — Visually aligns columns in tab-delimited and CSV files for easier reading and editing.
@@ -292,6 +292,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Paste                    | Ctrl+V        | Pastes content from the clipboard into the list.            |
 | Edit Field               |               | Opens the selected list entry for direct editing.           |
 | Delete                   | Del           | Removes the selected entry from the list.                   |
+| Add New Row              | Ctrl+I        | Inserts an empty row below the selection. The new row takes over the search options currently set in the dialog. |
 | Select All               | Ctrl+A        | Selects all entries in the list.                            |
 | Enable                   | Alt+E         | Enables the selected entries, making them active for operations. |
 | Disable                  | Alt+D         | Disables the selected entries to prevent them from being included in operations. |
@@ -423,7 +424,7 @@ Settings specific to the CSV column manipulation and alignment features.
 
 - **Flow Tabs: Right-align numeric columns** — When using the **Flow Tabs** feature (Column Alignment), numeric values will be right-aligned within their columns for better readability. Text remains left-aligned.
 - **Flow Tabs: Don't show intro message** — Suppresses the informational dialog that appears when activating Flow Tabs for the first time.
-- **CSV: Header lines to exclude** — Number of header rows protected from sort and duplicate detection. Set to `0` to disable.
+- **CSV: Header rows to exclude** — Number of header rows protected from sort and duplicate detection. Set to `0` to disable.
 - **Mark duplicate rows with bookmarks** — Places Notepad++ bookmarks on duplicate lines for navigation (F2 / Shift+F2). Clears existing bookmarks when active.
 
 ### 5. Copy Report

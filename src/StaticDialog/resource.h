@@ -206,18 +206,18 @@
 // ===================================================================
 #define IDM_UNDO                        5701
 #define IDM_REDO                        5702
-#define IDM_CUT_LINES_TO_CLIPBOARD      5703
-#define IDM_COPY_LINES_TO_CLIPBOARD     5704
-#define IDM_PASTE_LINES_FROM_CLIPBOARD  5705
+#define IDM_CUT_ROWS_TO_CLIPBOARD       5703
+#define IDM_COPY_ROWS_TO_CLIPBOARD      5704
+#define IDM_PASTE_ROWS_FROM_CLIPBOARD   5705
 #define IDM_SELECT_ALL                  5706
 #define IDM_EDIT_VALUE                  5707
-#define IDM_DELETE_LINES                5708
-#define IDM_ADD_NEW_LINE                5709
+#define IDM_DELETE_ROWS                 5708
+#define IDM_ADD_NEW_ROW                 5709
 #define IDM_COPY_DATA_TO_FIELDS         5710
 #define IDM_COPY_REPORT                 5711
 #define IDM_SEARCH_IN_LIST              5712
-#define IDM_ENABLE_LINES                5713
-#define IDM_DISABLE_LINES               5714
+#define IDM_ENABLE_ROWS                 5713
+#define IDM_DISABLE_ROWS                5714
 
 // Set/Clear Options Submenus
 #define IDM_SET_WHOLEWORD               5715
