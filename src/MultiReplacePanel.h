@@ -942,7 +942,7 @@ private:
     size_t _currentRuleIndex = SIZE_MAX; // List index for showErrorMessage; SIZE_MAX = no engine call active
     Sci_Position _currentMatchPos = -1;  // Document position for showErrorMessage; -1 = unknown
     bool isColumnHighlighted = false;
-    SIZE_T CSVheaderLinesCount = 1; // Header rows excluded from sort, dedup, and find/replace
+    SIZE_T CSVheaderLinesCount = 1; // Header rows excluded from sort and dedup (find/replace always searches every line)
     inline static POINT debugWindowPosition{ CW_USEDEFAULT, CW_USEDEFAULT };
     inline static bool  debugWindowPositionSet = false;
     inline static int   debugWindowResponse = -1;
