@@ -5171,7 +5171,7 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
     // 2. Collect matching hits from ALL files within the active search block.
     //    Filtered on findText + searchFlags to show only hits for THIS list entry.
     struct MatchRange {
-        Sci_Position start; Sci_Position length; int docLine;
+        Sci_Position start; Sci_Position length; int docLine; int flags;
         size_t hitIdx; std::string filePathUtf8; bool isCurrentDoc;
     };
     std::vector<MatchRange> ranges;
@@ -5225,7 +5225,7 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
                 Sci_Position mLen = (j < hit.allLengths.size()) ? hit.allLengths[j] : hit.length;
                 int line = (hit.docLine >= 0) ? hit.docLine
                     : (isCurDoc ? static_cast<int>(send(SCI_LINEFROMPOSITION, mPos, 0)) : -1);
-                ranges.push_back({ mPos, mLen, line, i, hit.fullPathUtf8, isCurDoc });
+                ranges.push_back({ mPos, mLen, line, subFlags, i, hit.fullPathUtf8, isCurDoc });
             }
         }
     }
@@ -5300,16 +5300,19 @@ void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
     bool crossFile = !ranges[foundIdx].isCurrentDoc;
 
     if (crossFile) {
-        // Cross-file: open/switch to target file and navigate to hit
+        // Cross-file: open/switch to the target file and select this entry's match there
         if (hitIdx < allHits.size()) {
-            const auto& targetHit = allHits[hitIdx];
-            std::wstring wPath = Encoding::utf8ToWString(targetHit.fullPathUtf8);
-            std::wstring openedPath;
-            if (!ResultDock::EnsureFileOpenOrOfferCreate(wPath, openedPath)) {
-                showStatusMessage(LM.get(L"status_unable_to_open_file", { wPath }), MessageStatus::Error);
+            const MatchRange& r = ranges[foundIdx];
+            ResultDock::Hit target = allHits[hitIdx];
+            target.pos = r.start;
+            target.length = r.length;
+            target.docLine = r.docLine;
+            target.searchFlags = r.flags;
+            target.findTextW = item.findText;
+            if (!ResultDock::SwitchAndJump(std::move(target))) {
+                showStatusMessage(LM.get(L"status_unable_to_open_file", { Encoding::utf8ToWString(r.filePathUtf8) }), MessageStatus::Error);
                 return;
             }
-            ResultDock::NavigateToHit(targetHit);
         }
     }
     else {
@@ -5384,7 +5387,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
-        ResultDock::setPerEntryColorsEnabled(true);  // Enable per-entry coloring for testing
         ResultDock::setStatusCallback([this](const std::wstring& msg, bool isError) {
             showStatusMessage(msg, isError ? MessageStatus::Error : MessageStatus::Info);
             });

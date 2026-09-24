@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <utility>
 #include <commctrl.h>
 #include <functional>
 #include "Encoding.h"
@@ -39,8 +40,6 @@
 
 extern NppData nppData;
 
-// #define MR_DEBUG_JUMP 0
-
 namespace {
     LanguageManager& LM = LanguageManager::instance();
 
@@ -49,67 +48,22 @@ namespace {
         return _stricmp(a.c_str(), b.c_str()) == 0;
     }
 
-    // Consolidated pending jump state - minimal data for robust cross-file navigation
-    struct PendingJumpState {
+    // Jump deferred past Notepad++'s view restore after a tab switch (see SwitchAndJump)
+    struct PendingJump {
         bool active = false;
-        std::wstring path;              // Target file path for validation
-        std::string fullPathUtf8;       // UTF-8 path for file matching
-
-        // Minimal fields needed for NavigateToHit-style re-search
-        int docLine = -1;               // 0-based line number in target document
-        int searchFlags = 0;            // Full Scintilla search flags as set
-        // by MultiReplace::buildSearchFlags();
-        // includes POSIX/EMPTYMATCH/SKIPCRLF
-        // bits in addition to the user options.
-        std::wstring findTextW;         // Search text for re-search on line
-
-        // Fallback position if re-search fails
-        Sci_Position fallbackPos = 0;
-        Sci_Position fallbackLen = 0;
-
-        // Navigation state machine
-        HWND targetEditor = nullptr;    // Active editor to watch
-        int phase = 0;                  // 0=idle, 1=buffer-activated, 2=update-seen
-
-        void clear() {
-            active = false;
-            path.clear();
-            fullPathUtf8.clear();
-            docLine = -1;
-            searchFlags = 0;
-            findTextW.clear();
-            fallbackPos = 0;
-            fallbackLen = 0;
-            targetEditor = nullptr;
-            phase = 0;
-        }
-
-        void setFromHit(const std::wstring& targetPath, const ResultDock::Hit& hit) {
-            active = !targetPath.empty();
-            path = targetPath;
-            fullPathUtf8 = hit.fullPathUtf8;
-            docLine = hit.docLine;
-            searchFlags = hit.searchFlags;
-            findTextW = hit.findTextW;
-            fallbackPos = hit.pos;
-            fallbackLen = hit.length;
-            targetEditor = nullptr;
-            phase = 0;
-        }
+        std::wstring path;          // document the jump belongs to
+        ResultDock::Hit hit;
     };
 
-    static PendingJumpState s_pending;
+    static PendingJump s_pending;
     static const UINT s_timerId = 1001;
 
-    // Legacy function signature for compatibility with SwitchAndJump
-    static void SetPendingJump(const std::wstring& path, Sci_Position pos, Sci_Position len)
+    // Editor view Notepad++ currently works in
+    static HWND activeEditor()
     {
-        s_pending.clear();
-        s_pending.active = !path.empty();
-        s_pending.path = path;
-        s_pending.fallbackPos = pos;
-        s_pending.fallbackLen = len;
-        // docLine = -1 means fallback-only mode (no re-search)
+        int view = 0;
+        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&view));
+        return (view == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
     }
 
     static constexpr uint32_t argb(BYTE a, COLORREF c)
@@ -177,7 +131,6 @@ void ResultDock::clear()
     _hits.clear();
     _lineStartToHitIndex.clear();
 
-    _searchHeaderLines.clear();
     _slotToColor.clear();
 
     if (!_hSci)
@@ -194,8 +147,7 @@ void ResultDock::clear()
         S(SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);;
 
     // Clear every indicator used by the dock
-    for (int ind : { INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE,
-        INDIC_MATCH_BG, INDIC_MATCH_FORE })
+    for (int ind : { INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE })
     {
         S(SCI_SETINDICATORCURRENT, ind);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
@@ -292,10 +244,8 @@ void ResultDock::applyStyling() const
 {
     if (!_hSci) return;
 
-    // 1) Clear fixed indicators (New IDs at end of range)
-    const std::vector<int> indicatorsToClear = {
-        INDIC_LINE_BACKGROUND, INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE, INDIC_MATCH_BG
-    };
+    // 1) Clear fixed indicators
+    const std::vector<int> indicatorsToClear = { INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE };
     for (int id : indicatorsToClear) {
         S(SCI_SETINDICATORCURRENT, id);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
@@ -325,36 +275,11 @@ void ResultDock::applyStyling() const
             S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
             S(SCI_INDICSETUNDER, indicId, TRUE);
         }
-
-        // Apply Colors to hits
-        for (const auto& hit : _hits) {
-            if (hit.displayLineStart < 0) continue;
-
-            for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
-                if (i >= hit.matchColors.size()) break;
-
-                // Retrieve the slot index we stored in matchColors
-                int slotIdx = hit.matchColors[i];
-
-                if (slotIdx >= 0 && slotIdx < MAX_ENTRY_COLORS) {
-                    const int indicId = INDIC_ENTRY_BG_BASE + slotIdx;
-                    S(SCI_SETINDICATORCURRENT, indicId);
-                    S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
-                }
-            }
-        }
     }
-    else {
-        // Standard Mode (Single Color)
-        // Red Match Color
-        S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-        for (const auto& hit : _hits) {
-            if (hit.displayLineStart < 0) continue;
-            for (size_t i = 0; i < hit.matchStarts.size(); ++i) {
-                S(SCI_INDICATORFILLRANGE, hit.displayLineStart + hit.matchStarts[i], hit.matchLens[i]);
-            }
-        }
-    }
+
+    // 4) Line numbers and matches of all hits
+    applyHitIndicators(_hits);
+    markAllStyled();
 }
 void ResultDock::onThemeChanged() {
     applyTheme();
@@ -424,7 +349,6 @@ void ResultDock::startSearchBlock(const std::wstring& header, bool groupView, bo
 {
     if (purge) {
         clear();
-        _searchHeaderLines.clear();
         _slotToColor.clear();
     }
 
@@ -564,79 +488,6 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles, const std::wstr
 
     ::RedrawWindow(_hSci, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
-}
-
-
-// -----------------------------------------------------------------------------
-// Insert one formatted file block *immediately* into the dock.
-// Builds text for exactly one file (no SearchHdr) and prepends it as a block.
-// After insertion we re-expand the previously-top block to neutralize the
-// "collapse previous block" behaviour inside prependBlock().
-// -----------------------------------------------------------------------------
-void ResultDock::insertFileBlockNow(FileMap& fm, const SciSendFn& sciSend)
-{
-    if (!_hSci) return;
-
-    // Build per-file text & hits (no SearchHdr)
-    std::string  partText;
-    std::vector<Hit> partHits;
-    buildListText(fm, _groupViewPending, L"", sciSend, partText, partHits);
-    if (partText.empty()) return;
-
-    // Count lines of the new block; check whether there was old content
-    const bool hadOld = S(SCI_GETLENGTH) > 0;
-    int newBlockLines = 0;
-    for (char c : partText) if (c == '\n') ++newBlockLines;
-
-    // Prepend the block (will also style/fold this fragment and collapse previous block)
-    prependBlock(partText, partHits);
-
-    // If there was a previous block, prependBlock() collapsed it by design.
-    // For per-file incremental commits we prefer keeping it expanded → re-expand it.
-    if (hadOld) {
-        const int firstLineOfOldBlock = newBlockLines + 1; // + separator line
-        const int level = static_cast<int>(S(SCI_GETFOLDLEVEL, firstLineOfOldBlock));
-        if (level & SC_FOLDLEVELHEADERFLAG) {
-            S(SCI_SETFOLDEXPANDED, firstLineOfOldBlock, TRUE);
-            S(SCI_FOLDCHILDREN, firstLineOfOldBlock, SC_FOLDACTION_EXPAND);
-        }
-    }
-}
-
-// -----------------------------------------------------------------------------
-// Insert only the search header at the very top (final numbers), used after
-// incremental per-file inserts. We also re-expand the now-second block so the
-// last file block does not end up collapsed just because we added the header.
-// -----------------------------------------------------------------------------
-void ResultDock::insertSearchHeader(const std::wstring& header)
-{
-    if (!_hSci) return;
-
-    // Build single header line (as in startSearchBlock)
-    std::string hdr = getIndentStringU8(LineLevel::SearchHdr);
-    hdr += Encoding::wstringToUtf8(header);
-    hdr += "\r\n";
-
-    // Count header lines (always 1) and whether there was content before
-    const bool hadOld = S(SCI_GETLENGTH) > 0;
-    int hdrLines = 0; for (char c : hdr) if (c == '\n') ++hdrLines;
-
-    std::vector<Hit> none;
-    prependBlock(hdr, none);
-
-    // If there was existing content, the previous top block (a file block)
-    // was just collapsed by prependBlock(). Immediately re-expand it.
-    if (hadOld) {
-        const int firstLineOfOldBlock = hdrLines + 1; // typically 1
-        const int level = static_cast<int>(S(SCI_GETFOLDLEVEL, firstLineOfOldBlock));
-        if (level & SC_FOLDLEVELHEADERFLAG) {
-            S(SCI_SETFOLDEXPANDED, firstLineOfOldBlock, TRUE);
-            S(SCI_FOLDCHILDREN, firstLineOfOldBlock, SC_FOLDACTION_EXPAND);
-        }
-    }
-
-    // Optional: remember header line index if you use collapseOldSearches elsewhere
-    _searchHeaderLines.insert(_searchHeaderLines.begin(), 0);
 }
 
 // ---------------- Construction & Core State ---------------
@@ -889,23 +740,16 @@ void ResultDock::applyTheme()
     S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
     S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);
 
-    // Line background indicator
-    S(SCI_INDICSETSTYLE, INDIC_LINE_BACKGROUND, INDIC_HIDDEN);
-
     // Line number indicator
     S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, theme.lineNr);
-
-    // Match background indicator
-    S(SCI_INDICSETSTYLE, INDIC_MATCH_BG, INDIC_HIDDEN);
-    S(SCI_INDICSETUNDER, INDIC_MATCH_BG, TRUE);
 
     // Red match color
     S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
     S(SCI_INDICSETFORE, INDIC_MATCH_FORE, theme.matchFg);
     S(SCI_INDICSETUNDER, INDIC_MATCH_FORE, TRUE);
 
-    // Per-entry background color indicators (10 distinct colors)
+    // Per-entry background color indicators
     // Text color remains standard (matchFg), only background varies per entry
     // Determine alpha based on mode
     const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
@@ -958,8 +802,7 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
     const int IND_CRIT = INDENT_SPACES[(int)LineLevel::CritHdr];
 
     for (int line = firstLine; line <= lastLine; ++line) {
-        const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
-        const int          ll = static_cast<int>(S(SCI_LINELENGTH, line));
+        const int ll = static_cast<int>(S(SCI_LINELENGTH, line));
 
         int style = STYLE_DEFAULT;
         if (ll > 0) {
@@ -969,32 +812,25 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
             else if (indent == IND_FILE) style = STYLE_FILEPATH;
         }
         if (ll > 0) S(SCI_SETSTYLING, ll, style);
-
-        // Keep EOL visuals aligned with default
-        const Sci_Position lineEnd = S(SCI_GETLINEENDPOSITION, line);
-        const int          eolLen = (int)(lineEnd - (ls + ll));
-        if (eolLen > 0) S(SCI_SETSTYLING, eolLen, STYLE_DEFAULT);
     }
 
     // Indicators only on the freshly added hits
-    S(SCI_SETINDICATORCURRENT, INDIC_LINE_BACKGROUND);
-    for (const auto& h : newHits) {
-        if (h.displayLineStart < 0) continue;
-        const int          line = static_cast<int>(S(SCI_LINEFROMPOSITION, h.displayLineStart));
-        const Sci_Position ls = S(SCI_POSITIONFROMLINE, line);
-        const Sci_Position ll = S(SCI_LINELENGTH, line);
-        if (ll > 0) S(SCI_INDICATORFILLRANGE, ls, ll);
-    }
+    applyHitIndicators(newHits);
+    markAllStyled();
+}
 
+// Line-number and match indicators of the given hits
+void ResultDock::applyHitIndicators(const std::vector<Hit>& hits) const
+{
     S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& h : newHits)
+    for (const auto& h : hits)
         if (h.displayLineStart >= 0)
             S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.numberStart, h.numberLen);
 
-    // 3c/3d) Match Highlighting (Exclusive Logic for Partial Updates)
+    // Match Highlighting (Exclusive Logic)
     if (_perEntryColorsEnabled) {
         // CASE A: Colorful Backgrounds -> Apply ONLY background indicators (Text remains standard/white)
-        for (const auto& h : newHits) {
+        for (const auto& h : hits) {
             if (h.displayLineStart < 0) continue;
             for (size_t i = 0; i < h.matchStarts.size(); ++i) {
                 const int colorIdx = (i < h.matchColors.size())
@@ -1011,13 +847,20 @@ void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const st
     else {
         // CASE B: Standard Mode -> Apply ONLY text color indicator (e.g. Orange/Green)
         S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-        for (const auto& h : newHits) {
+        for (const auto& h : hits) {
             if (h.displayLineStart < 0) continue;
             for (size_t i = 0; i < h.matchStarts.size(); ++i) {
                 S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
             }
         }
     }
+}
+
+// Styles are set eagerly, so all text counts as styled: Scintilla then sends no
+// SCN_STYLENEEDED, which Notepad++ would relay to every plugin.
+void ResultDock::markAllStyled() const
+{
+    S(SCI_STARTSTYLING, S(SCI_GETLENGTH), 0);
 }
 
 void ResultDock::rebuildFoldingRange(int firstLine, int lastLine, const std::string& dockTextU8) const
@@ -1156,24 +999,6 @@ void ResultDock::prependBlock(const std::string& dockTextU8, std::vector<Hit>& n
     S(SCI_SETFIRSTVISIBLELINE, 0, 0);
     S(SCI_SETXOFFSET, 0, 0);
 
-}
-
-void ResultDock::collapseOldSearches()
-{
-    if (!_hSci || _searchHeaderLines.size() < 2)
-        return;
-
-    /// Collapse all previous search blocks; keep only the most recent expanded.
-    const size_t lastIdx = _searchHeaderLines.size() - 1;
-    for (size_t i = 0; i < lastIdx; ++i) {
-        const int headerLine = _searchHeaderLines[i];
-        /// Safety check: ensure headerLine is within the current line count.
-        const int lineCount = static_cast<int>(S(SCI_GETLINECOUNT));
-        if (headerLine >= 0 && headerLine < lineCount) {
-            S(SCI_SETFOLDEXPANDED, headerLine, FALSE);
-            S(SCI_FOLDCHILDREN, headerLine, SC_FOLDACTION_CONTRACT);
-        }
-    }
 }
 
 // ---------------------- Formatting ------------------------
@@ -1477,12 +1302,12 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             // Single-pass transform on UTF-8: build displayU8 and mapOrigToDisp
             // in one walk over origU8. Same cleanup rules as before
             // (SHY drop / NBSP+Ctl -> ASCII space / else verbatim).
+            // The walk stops past the display cap; later offsets map beyond the capped text.
             displayU8.clear();
-            displayU8.reserve(origU8.size());
-            mapOrigToDisp.assign(origU8.size() + 1, 0);
+            mapOrigToDisp.clear();
 
             size_t o = 0, d = 0;
-            while (o < origU8.size())
+            while (o < origU8.size() && d <= kMaxHitTextUtf8)
             {
                 unsigned char c = (unsigned char)origU8[o];
                 size_t clen;
@@ -1505,26 +1330,24 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
                 if (cp == 0x00AD) {
                     // SHY drop
-                    for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
-                        mapOrigToDisp[o + k] = d;
+                    mapOrigToDisp.insert(mapOrigToDisp.end(), clen, d);
                     // no d++, no append
                 }
                 else if (isNbspCp(cp) || isCtlCp(cp)) {
-                    for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
-                        mapOrigToDisp[o + k] = d;
+                    mapOrigToDisp.insert(mapOrigToDisp.end(), clen, d);
                     displayU8.push_back(' ');
                     ++d; // one visible ASCII space per replaced codepoint
                 }
                 else {
-                    for (size_t k = 0; k < clen && (o + k) < origU8.size(); ++k)
-                        mapOrigToDisp[o + k] = d + k;
+                    for (size_t k = 0; k < clen; ++k)
+                        mapOrigToDisp.push_back(d + k);
                     displayU8.append(origU8, o, clen);
                     d += clen;
                 }
 
                 o += clen;
             }
-            if (!mapOrigToDisp.empty()) mapOrigToDisp.back() = d;
+            mapOrigToDisp.push_back(d);
 
             // finalize
             capUtf8WithEllipsis(displayU8, kMaxHitTextUtf8);
@@ -1867,13 +1690,9 @@ std::wstring ResultDock::BuildDefaultPathForPseudo(const std::wstring& label)
     return dir + L"\\" + label;
 }
 
-bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
-    std::wstring& outOpenedPath, bool* isNowActive)
+bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath)
 {
     extern NppData nppData;
-
-    // Helper: report that the document is now the active tab.
-    auto setActive = [&](bool active) { if (isNowActive) *isNowActive = active; };
 
     // Detect pseudo (e.g., "new 1") and normalize to a real path if needed.
     const bool isPseudo = IsPseudoPath(desiredPath);
@@ -1881,7 +1700,6 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
     // Fast path: if it's a pseudo-name and that tab is currently open, done.
     if (isPseudo && IsCurrentDocByTitle(desiredPath)) {
         outOpenedPath = desiredPath;
-        setActive(true);
         return true;
     }
 
@@ -1893,13 +1711,11 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
     // Try to activate if already open (by full path)
     if (IsCurrentDocByFullPath(targetPath)) {
         outOpenedPath = targetPath;
-        setActive(true);
         return true;
     }
     SwitchToFileIfOpenByFullPath(targetPath);
     if (IsCurrentDocByFullPath(targetPath)) {
         outOpenedPath = targetPath;
-        setActive(true);
         return true;
     }
 
@@ -1907,10 +1723,8 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
     if (FileExistsW(targetPath)) {
         ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
         outOpenedPath = targetPath;
-        // SendMessage is synchronous — the tab is typically active after return.
-        // Check rather than assume, so callers can navigate immediately.
-        setActive(IsCurrentDocByFullPath(targetPath));
-        return true;
+        // SendMessage is synchronous: the tab is active now unless Notepad++ refused the file.
+        return IsCurrentDocByFullPath(targetPath);
     }
 
     // File doesn't exist: prompt user to create it
@@ -1935,8 +1749,7 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
     const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
     if (ok) {
         outOpenedPath = targetPath;
-        setActive(IsCurrentDocByFullPath(targetPath));
-        return true;
+        return IsCurrentDocByFullPath(targetPath);
     }
 
     // Shouldn't happen, but handle gracefully
@@ -1948,9 +1761,7 @@ bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
 void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len)
 {
     // Always use the currently active Scintilla to avoid focusing the wrong view.
-    int whichView = 0; // 0 main, 1 secondary
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
-    HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+    HWND hEd = activeEditor();
     if (!hEd)
         return;
 
@@ -2004,10 +1815,7 @@ void ResultDock::JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len
 
 void ResultDock::NavigateToHit(const Hit& hit)
 {
-    // Get active Scintilla
-    int whichView = 0;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
-    HWND hEd = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+    HWND hEd = activeEditor();
     if (!hEd)
         return;
 
@@ -2153,21 +1961,31 @@ void ResultDock::adjustHitPositionsForFlowTab(
     }
 }
 
-void ResultDock::SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len)
+// Opens or activates the hit's document, then selects the hit there
+bool ResultDock::SwitchAndJump(Hit hit)
 {
-    std::wstring openedPath;
-    bool active = false;
-    if (!EnsureFileOpenOrOfferCreate(fullPath, openedPath, &active))
-        return;
+    if (hit.fullPathUtf8.empty()) return false;
 
-    if (active) {
-        // Document is already the active tab — jump directly
-        JumpSelectCenterActiveEditor(pos, len);
+    // A new jump replaces a deferred one
+    HWND hDock = instance()._hSci;
+    if (hDock) ::KillTimer(hDock, s_timerId);
+    s_pending = {};
+
+    std::wstring openedPath;
+    if (!EnsureFileOpenOrOfferCreate(Encoding::utf8ToWString(hit.fullPathUtf8), openedPath))
+        return false;
+
+    // With wrapped lines Notepad++ restores a tab's saved view on the repaint after a tab switch
+    // and would undo the jump; WM_TIMER is delivered only after pending WM_PAINT.
+    HWND hEd = activeEditor();
+    if (hDock && hEd && ::SendMessage(hEd, SCI_GETWRAPMODE, 0, 0) != SC_WRAP_NONE) {
+        s_pending = { true, openedPath, std::move(hit) };
+        ::SetTimer(hDock, s_timerId, 1, nullptr);
+        return true;
     }
-    else {
-        // Tab switch is pending (async) — jump when NPPN_BUFFERACTIVATED fires
-        SetPendingJump(openedPath, pos, len);
-    }
+
+    NavigateToHit(hit);
+    return true;
 }
 
 void ResultDock::scrollToHitAndHighlight(int displayLineStart)
@@ -2867,22 +2685,11 @@ bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
         ::SendMessage(hwnd, SCI_SETEMPTYSELECTION, dockLineStart, 0);
         };
 
-    // Open/switch/create the target file
-    std::wstring openedPath;
-    bool active = false;
-    if (!EnsureFileOpenOrOfferCreate(wPath, openedPath, &active)) {
+    // Open/switch/create the target file and jump to the hit
+    if (!SwitchAndJump(hit)) {
         if (_statusCallback)
             _statusCallback(LM.get(L"status_tab_not_found", { wPath }), true);
         return false;
-    }
-
-    if (active) {
-        // Document is already the active tab — navigate immediately
-        NavigateToHit(hit);
-    }
-    else {
-        // Tab switch is pending (async) — navigate when NPPN_BUFFERACTIVATED fires
-        s_pending.setFromHit(openedPath, hit);
     }
 
     restoreDockView();
@@ -2953,82 +2760,14 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         if (wp == s_timerId)
         {
             ::KillTimer(hwnd, s_timerId);
-            if (s_pending.active && s_pending.targetEditor && s_pending.phase == 2)
-            {
-                HWND hEd = s_pending.targetEditor;
-                bool jumped = false;
-
-                // Line-based re-search: find match closest to stored position
-                if (!jumped && s_pending.docLine >= 0 && !s_pending.findTextW.empty())
-                {
-                    const int lineCount = static_cast<int>(::SendMessage(hEd, SCI_GETLINECOUNT, 0, 0));
-                    if (s_pending.docLine < lineCount)
-                    {
-                        const Sci_Position lineStart = ::SendMessage(hEd, SCI_POSITIONFROMLINE, s_pending.docLine, 0);
-                        const Sci_Position lineEnd = ::SendMessage(hEd, SCI_GETLINEENDPOSITION, s_pending.docLine, 0);
-
-                        const int docCp = static_cast<int>(::SendMessage(hEd, SCI_GETCODEPAGE, 0, 0));
-                        const std::string findBytes = Encoding::wstringToBytes(s_pending.findTextW, docCp);
-
-                        if (!findBytes.empty())
-                        {
-                            ::SendMessage(hEd, SCI_SETSEARCHFLAGS, s_pending.searchFlags, 0);
-
-                            Sci_Position bestPos = -1;
-                            Sci_Position bestLen = 0;
-                            Sci_Position bestDistance = 0x7FFFFFFF;
-
-                            Sci_Position searchFrom = lineStart;
-                            while (searchFrom < lineEnd) {
-                                ::SendMessage(hEd, SCI_SETTARGETRANGE, searchFrom, lineEnd);
-                                const Sci_Position found = ::SendMessage(hEd, SCI_SEARCHINTARGET,
-                                    findBytes.size(), reinterpret_cast<LPARAM>(findBytes.c_str()));
-
-                                if (found < 0) break;
-
-                                const Sci_Position foundEnd = ::SendMessage(hEd, SCI_GETTARGETEND, 0, 0);
-                                const Sci_Position foundLen = foundEnd - found;
-
-                                Sci_Position distance = (found > s_pending.fallbackPos)
-                                    ? (found - s_pending.fallbackPos)
-                                    : (s_pending.fallbackPos - found);
-                                if (distance < bestDistance) {
-                                    bestDistance = distance;
-                                    bestPos = found;
-                                    bestLen = foundLen;
-                                }
-
-                                searchFrom = foundEnd;
-                                // Same empty-match handling as NavigateToHit:
-                                // advance past empty matches instead of bailing,
-                                // so non-empty matches further along the line
-                                // can still be found.
-                                if (searchFrom <= found) searchFrom = found + 1;
-                            }
-
-                            if (bestPos >= 0)
-                            {
-                                JumpSelectCenterActiveEditor(bestPos, bestLen);
-                                jumped = true;
-                            }
-                        }
-                    }
-                }
-
-                // Direct position fallback
-                if (!jumped)
-                {
-                    JumpSelectCenterActiveEditor(s_pending.fallbackPos, s_pending.fallbackLen);
-                }
-
-                s_pending.clear();
-            }
+            // Deferred jump from SwitchAndJump; dropped if another tab became active meanwhile
+            const PendingJump jump = std::exchange(s_pending, PendingJump{});
+            if (jump.active && IsCurrentDocByFullPath(jump.path))
+                NavigateToHit(jump.hit);
             return 0;
         }
         break;
     }
-
-
 
     case DMN_CLOSE:
         ::SendMessage(nppData._nppHandle, NPPM_DMMHIDE, 0, reinterpret_cast<LPARAM>(ResultDock::instance()._hDock));
@@ -3223,40 +2962,6 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
     return s_prevSciProc
         ? ::CallWindowProc(s_prevSciProc, hwnd, msg, wp, lp)
         : ::DefWindowProc(hwnd, msg, wp, lp);
-}
-
-void ResultDock::onNppNotification(const SCNotification* notify)
-{
-    if (!notify)
-        return;
-
-    if (!s_pending.active || s_pending.path.empty())
-        return;
-
-    if (notify->nmhdr.code == NPPN_BUFFERACTIVATED)
-    {
-        wchar_t cur[MAX_PATH] = {};
-        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(cur));
-        if (!cur[0] || _wcsicmp(cur, s_pending.path.c_str()) != 0)
-            return;
-
-        int whichView = 0;
-        ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&whichView));
-        s_pending.targetEditor = (whichView == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-        s_pending.phase = 1;
-        return;
-    }
-
-    if (notify->nmhdr.code == SCN_UPDATEUI)
-    {
-        if (!s_pending.targetEditor || notify->nmhdr.hwndFrom != s_pending.targetEditor || s_pending.phase != 1)
-            return;
-
-        s_pending.phase = 2;
-        if (_hSci)
-            ::SetTimer(_hSci, s_timerId, 1, nullptr);
-        return;
-    }
 }
 
 // ------------------- Color Utilities ----------------------

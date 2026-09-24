@@ -127,23 +127,12 @@ public:
     void appendFileBlock(FileMap& fm, const SciSendFn& sciSend);
     void closeSearchBlock(int totalHits, int totalFiles, const std::wstring& scanSuffix = L"");
 
-    // Incremental insertion helpers (commit per-file immediately)
-    void insertFileBlockNow(FileMap& fm, const SciSendFn& sciSend);
-    void insertSearchHeader(const std::wstring& header);
-
-    void onNppNotification(const SCNotification* notify);
-
     // ------------------- Jump Navigation ----------------------
     // Status callback for navigation errors (set by MultiReplace during init)
     using StatusCallback = std::function<void(const std::wstring& msg, bool isError)>;
     static void setStatusCallback(StatusCallback cb) { _statusCallback = std::move(cb); }
 
-    static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
-    static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
-    static void SwitchAndJump(const std::wstring& fullPath, Sci_Position pos, Sci_Position len);
-    static void NavigateToHit(const Hit& hit);  // Robust line-based navigation with re-search
-    static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath,
-        std::wstring& outOpenedPath, bool* isNowActive = nullptr);
+    static bool SwitchAndJump(Hit hit);  // Opens or activates the hit's file, then selects the hit
     void scrollToHitAndHighlight(int displayLineStart);
 
     // ------------------- Global Shortcut Actions -----------------
@@ -198,7 +187,7 @@ public:
     // Maximum number of distinct colors (limited by Scintilla indicators)
     static constexpr int MAX_ENTRY_COLORS = 28;
 
-    // Per-entry background indicators (15-30)
+    // Per-entry background indicators (0-27)
     static constexpr int INDIC_ENTRY_BG_BASE = 0;
 
 private:
@@ -214,11 +203,12 @@ private:
 
     // -------- Range styling / folding (partial updates) -------
     void applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const;
+    void applyHitIndicators(const std::vector<Hit>& hits) const;
+    void markAllStyled() const;
     void rebuildFoldingRange(int firstLine, int lastLine, const std::string& dockTextU8) const;
 
     // ---------------- Block building / insertion --------------
     void prependBlock(const std::string& dockTextU8, std::vector<Hit>& newHits);
-    void collapseOldSearches();
 
     // ---------------------- Formatting ------------------------
     void buildListText(FileMap& files,
@@ -257,6 +247,13 @@ private:
     static bool IsCurrentDocByFullPath(const std::wstring& fullPath);
     static bool IsCurrentDocByTitle(const std::wstring& titleOnly);
     static std::wstring BuildDefaultPathForPseudo(const std::wstring& label);
+    static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
+    // True when the document is the active tab afterwards
+    static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath);
+
+    // ------------------------- Jumping ------------------------
+    static void NavigateToHit(const Hit& hit);  // Robust line-based navigation with re-search
+    static void JumpSelectCenterActiveEditor(Sci_Position pos, Sci_Position len);
 
     // --------------- Context Menu Command Handlers ------------
     static void copySelectedLines(HWND hSci);
@@ -275,10 +272,8 @@ private:
 
     // ----------------------- Theme Colors ---------------------
     struct DockThemeColors {
-        COLORREF lineBg;
         COLORREF lineNr;
         COLORREF matchFg;
-        COLORREF matchBg;
         COLORREF headerBg;
         COLORREF headerFg;
         COLORREF critHdrBg;
@@ -291,10 +286,8 @@ private:
     };
 
     static constexpr DockThemeColors LightDockTheme = {
-        RGB(0xEE, 0xEE, 0xEE), // lineBg
         RGB(0x40, 0x80, 0xBF), // lineNr
         RGB(0xFA, 0x3F, 0x34), // matchFg
-        RGB(0xFF, 0xEB, 0x5A), // matchBg
         RGB(0xD5, 0xFF, 0xD5), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
         RGB(0xC4, 0xEB, 0xC4), // critHdrBg
@@ -308,10 +301,8 @@ private:
 
 
     static constexpr DockThemeColors DarkDockTheme = {
-        RGB(0x3A, 0x3D, 0x33), // lineBg
         RGB(0x80, 0xC0, 0xFF), // lineNr
         RGB(0xA6, 0xE2, 0x2E), // matchFg
-        RGB(0x3A, 0x3D, 0x33), // matchBg
         RGB(0x8F, 0xAF, 0x9F), // headerBg
         RGB(0x00, 0x00, 0x00), // headerFg
         RGB(0x78, 0x94, 0x84), // critHdrBg
@@ -343,10 +334,8 @@ private:
         IDM_RD_COLLAPSE_FILES = 60011
     };
 
-    static constexpr int INDIC_LINE_BACKGROUND = 28;
     static constexpr int INDIC_LINENUMBER_FORE = 29;
     static constexpr int INDIC_MATCH_FORE = 30;
-    static constexpr int INDIC_MATCH_BG = 31;
 
     static constexpr int STYLE_HEADER = 33;
     static constexpr int STYLE_CRITHDR = 34;
@@ -367,9 +356,6 @@ private:
     std::vector<Hit> _pendingHits;
     bool             _groupViewPending = false;
     bool             _blockOpen = false;
-
-    // Track header line indices for collapse logic
-    std::vector<int> _searchHeaderLines;
 
     // UI Option Flags
     inline static bool _wrapEnabled = false;
