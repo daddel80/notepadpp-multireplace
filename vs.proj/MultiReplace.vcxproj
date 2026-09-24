@@ -33,6 +33,8 @@
     <ClInclude Include="..\src\OnePassHits.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
     <ClInclude Include="..\src\CsvListFormat.h" />
+    <ClInclude Include="..\src\DialogFreeze.h" />
+    <ClInclude Include="..\src\DirectoryWalk.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\Encoding.h" />
@@ -107,6 +109,8 @@
     <ClCompile Include="..\src\OnePassHits.cpp" />
     <ClCompile Include="..\src\ConfigManager.cpp" />
     <ClCompile Include="..\src\CsvListFormat.cpp" />
+    <ClCompile Include="..\src\DialogFreeze.cpp" />
+    <ClCompile Include="..\src\DirectoryWalk.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />

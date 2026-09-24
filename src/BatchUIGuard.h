@@ -16,15 +16,18 @@
 
 #pragma once
 #include <windows.h>
+#include "DialogFreeze.h"
 #include "MultiReplacePanel.h"
 
-// RAII guard for batch UI state
+// RAII guard for batch UI state: panel frozen except Cancel, window kept above its owner
 class BatchUIGuard {
     MultiReplace* self;
     HWND hDlg;
+    DialogFreeze freeze;
 public:
-    BatchUIGuard(MultiReplace* s, HWND h) : self(s), hDlg(h) { self->setBatchUIState(hDlg, true); }
-    ~BatchUIGuard() { self->setBatchUIState(hDlg, false); }
+    BatchUIGuard(MultiReplace* s, HWND h)
+        : self(s), hDlg(h), freeze(h, GetDlgItem(h, IDC_CANCEL_REPLACE_BUTTON)) { self->setBatchWindowState(hDlg, true); }
+    ~BatchUIGuard() { self->setBatchWindowState(hDlg, false); }
 
     BatchUIGuard(const BatchUIGuard&) = delete;            // prevent accidental copies
     BatchUIGuard& operator=(const BatchUIGuard&) = delete; // prevent accidental copies

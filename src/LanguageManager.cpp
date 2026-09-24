@@ -22,6 +22,7 @@
 #include "Encoding.h"
 #include "language_mapping.h"
 
+#include <filesystem>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -175,7 +176,7 @@ LPWSTR LanguageManager::getW(const std::wstring& id,
 // --- nativeLang.xml detection --------------------------------------------
 std::wstring LanguageManager::detectLanguage(const std::wstring& xmlPath)
 {
-    std::wifstream file(xmlPath);
+    std::wifstream file(std::filesystem::path{ xmlPath });
     if (!file.is_open())
         return L"english";
 

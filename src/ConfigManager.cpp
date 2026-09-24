@@ -25,6 +25,7 @@
 #include "ConfigManager.h"
 #include "Encoding.h"  
 #include "StringUtils.h" 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -80,7 +81,7 @@ bool ConfigManager::save(const std::wstring& file) const
     std::wstring path = file.empty() ? _iniPath : file;
     if (path.empty()) return false;
 
-    std::ofstream out(path, std::ios::binary);
+    std::ofstream out(std::filesystem::path(path), std::ios::binary);
     if (!out.is_open()) return false;
 
     // UTF-8 BOM

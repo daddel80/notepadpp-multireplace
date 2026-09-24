@@ -316,7 +316,7 @@ namespace ColumnTabs {
     // -------------------------------------------------------------------------
     // Destructive API (edits text)
     // -------------------------------------------------------------------------
-    bool ColumnTabs::CT_InsertAlignedPadding(HWND hSci,
+    bool CT_InsertAlignedPadding(HWND hSci,
         const CT_ColumnModelView& model,
         const CT_AlignOptions& opt,
         bool* outNothingToAlign /*=nullptr*/,
@@ -540,7 +540,7 @@ namespace ColumnTabs {
         return true;
     }
 
-    bool ColumnTabs::CT_RemoveAlignedPadding(HWND hSci, bool suppressUndoBufferClear /*=false*/)
+    bool CT_RemoveAlignedPadding(HWND hSci, bool suppressUndoBufferClear /*=false*/)
     {
         if (!ColumnTabs::CT_GetCurDocHasPads(hSci))
             return false;
@@ -648,12 +648,12 @@ namespace ColumnTabs {
         return true;
     }
 
-    bool ColumnTabs::CT_HasAlignedPadding(HWND hSci) noexcept
+    bool CT_HasAlignedPadding(HWND hSci) noexcept
     {
         return CT_GetCurDocHasPads(hSci);
     }
 
-    bool ColumnTabs::CT_ApplyNumericPadding(
+    bool CT_ApplyNumericPadding(
         HWND hSci,
         const CT_ColumnModelView& model,
         int firstLine,
@@ -996,7 +996,7 @@ namespace ColumnTabs {
         detail::g_savedManualStopsPx.clear();
     }
 
-    bool ColumnTabs::CT_HasFlowTabStops() noexcept
+    bool CT_HasFlowTabStops() noexcept
     {
         using namespace detail;
         for (size_t i = 0, n = g_hasETSLine.size(); i < n; ++i) {
@@ -1028,23 +1028,23 @@ namespace ColumnTabs {
     // -------------------------------------------------------------------------
     // Per-document state
     // -------------------------------------------------------------------------
-    void ColumnTabs::CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept {
+    void CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept {
         if (has) detail::g_docHasPads[docPtr] = true;
         else     detail::g_docHasPads.erase(docPtr);
     }
 
-    bool ColumnTabs::CT_GetDocHasPads(sptr_t docPtr) noexcept {
+    bool CT_GetDocHasPads(sptr_t docPtr) noexcept {
         auto it = detail::g_docHasPads.find(docPtr);
         return it != detail::g_docHasPads.end();
     }
 
-    void ColumnTabs::CT_SetCurDocHasPads(HWND hSci, bool has) noexcept {
+    void CT_SetCurDocHasPads(HWND hSci, bool has) noexcept {
         const sptr_t doc = (sptr_t)::S(hSci, SCI_GETDOCPOINTER, 0, 0);
         if (!doc) return;
         CT_SetDocHasPads(doc, has);
     }
 
-    bool ColumnTabs::CT_GetCurDocHasPads(HWND hSci) noexcept {
+    bool CT_GetCurDocHasPads(HWND hSci) noexcept {
         const sptr_t doc = (sptr_t)::S(hSci, SCI_GETDOCPOINTER, 0, 0);
         if (!doc) return false;
         return CT_GetDocHasPads(doc);
@@ -1053,7 +1053,7 @@ namespace ColumnTabs {
     // -------------------------------------------------------------------------
     // Cleanup
     // -------------------------------------------------------------------------
-    bool ColumnTabs::CT_CleanupVisuals(HWND hSci) noexcept
+    bool CT_CleanupVisuals(HWND hSci) noexcept
     {
         if (!hSci) return false;
         CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
@@ -1061,7 +1061,7 @@ namespace ColumnTabs {
         return true;
     }
 
-    bool ColumnTabs::CT_CleanupAllForDoc(HWND hSci) noexcept
+    bool CT_CleanupAllForDoc(HWND hSci) noexcept
     {
         if (!hSci) return false;
 

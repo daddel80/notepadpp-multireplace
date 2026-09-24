@@ -25,6 +25,7 @@
 #include "ConfigManager.h"
 #include "CsvListFormat.h"
 #include "ListCodec.h"
+#include "DirectoryWalk.h"
 #include "DPIManager.h"
 #include "Encoding.h"
 #include "FileDialogUtil.h"
@@ -268,18 +269,20 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
         if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'H'
             && (GetKeyState(VK_CONTROL) & 0x8000)
             && (GetKeyState(VK_SHIFT) & 0x8000)) {
-            // Pickup only while the panel is visible; hidden -> let the key reach N++.
-            if (instance->_hSelf && IsWindowVisible(instance->_hSelf)) {
+            // Pickup only while the panel is visible and not frozen; otherwise let the key reach N++.
+            if (instance->_hSelf && IsWindowVisible(instance->_hSelf)
+                && IsWindowEnabled(GetDlgItem(instance->_hSelf, IDC_FIND_EDIT))) {
                 instance->pickupSelectionIntoFindEdit();
                 pMsg->message = WM_NULL;
                 return 1;
             }
         }
 
-        // Ctrl+L: Toggle list collapse/expand (focus-independent within panel)
+        // Ctrl+L: Toggle list collapse/expand (focus-independent within panel, not while frozen)
         if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'L' && (GetKeyState(VK_CONTROL) & 0x8000)) {
             HWND hFocus = GetFocus();
-            if (hFocus && (hFocus == instance->_hSelf || IsChild(instance->_hSelf, hFocus))) {
+            if (hFocus && (hFocus == instance->_hSelf || IsChild(instance->_hSelf, hFocus))
+                && IsWindowEnabled(GetDlgItem(instance->_hSelf, IDC_USE_LIST_BUTTON))) {
                 SendMessage(instance->_hSelf, WM_COMMAND, MAKEWPARAM(IDC_USE_LIST_BUTTON, BN_CLICKED), 0);
                 pMsg->message = WM_NULL;
                 return 1;
@@ -331,9 +334,10 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
         }
 
         if (pMsg->message == WM_SYSKEYDOWN && (GetKeyState(VK_MENU) & 0x8000)) {
-            // Only intercept when focus is inside our panel
+            // Only intercept when focus is inside our panel and the list is not frozen
             HWND hFocus = GetFocus();
-            if (hFocus && (hFocus == instance->_hSelf || IsChild(instance->_hSelf, hFocus))) {
+            if (hFocus && (hFocus == instance->_hSelf || IsChild(instance->_hSelf, hFocus))
+                && IsWindowEnabled(instance->_replaceListView)) {
                 if (pMsg->wParam == VK_UP) {
                     // Alt+Up: Transfer selected row -> input fields
                     int iItem = ListView_GetNextItem(instance->_replaceListView, -1, LVNI_SELECTED);
@@ -4343,6 +4347,11 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         return DefSubclassProc(hwnd, msg, wParam, lParam);
     }
     switch (msg) {
+    case WM_ENABLE:
+        // Kept from comctl32: it gives a disabled list a light system background, which breaks
+        // dark mode (N++ issue #13933). Input stays blocked; the custom draw dims the rows instead.
+        InvalidateRect(hwnd, nullptr, TRUE);
+        return 0;
     case WM_VSCROLL:
     case WM_MOUSEWHEEL:
     case WM_HSCROLL: {
@@ -4480,7 +4489,7 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
     case WM_MOUSEMOVE: {
 
         if (!pThis->isHoverTextEnabled || pThis->isHoverTextSuppressed) {
-            return CallWindowProc(pThis->originalListViewProc, hwnd, msg, wParam, lParam);
+            break;
         }
 
         POINT pt;
@@ -5706,10 +5715,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             closeEditField(true);
         }
 
-        if (_replaceListView && originalListViewProc) {
-            SetWindowLongPtr(_replaceListView, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(originalListViewProc));
-        }
-
         saveSettings(); // Save any settings before destroying
 
         // Unregister Drag-and-Drop (COM-correct cleanup)
@@ -5920,10 +5925,13 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
                 // Visual dimming: Library Mode inactive permanently dims;
                 // Ctrl+Shift bypass flips the dim state (active list dims,
-                // inactive list un-dims).
+                // inactive list un-dims). A disabled list always dims.
                 bool dimList = !useListEnabled && keepListVisible;
                 if (_altBypassActive && (useListEnabled || keepListVisible)) {
                     dimList = !dimList;
+                }
+                if (!IsWindowEnabled(_replaceListView)) {
+                    dimList = true;
                 }
                 if (dimList) {
                     COLORREF textClr = ListView_GetTextColor(_replaceListView);
@@ -6353,6 +6361,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_DRAWITEM:
     {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
+        const bool disabled = (pdis->itemState & ODS_DISABLED) != 0;
 
         if (pdis->CtlID == IDC_STATUS_MESSAGE) {
             // Read the full text. A fixed buffer would cut mid-word, without an
@@ -6378,7 +6387,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             wchar_t buffer[16];
             GetWindowTextW(pdis->hwndItem, buffer, 16);
 
-            SetTextColor(pdis->hDC, _filterHelpColor);
+            SetTextColor(pdis->hDC, disabled ? _disabledColor : _filterHelpColor);
             SetBkMode(pdis->hDC, TRANSPARENT);
 
             DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -6392,7 +6401,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             wchar_t buffer[16];
             GetWindowTextW(pdis->hwndItem, buffer, 16);
 
-            SetTextColor(pdis->hDC, _engineLinkColor);
+            SetTextColor(pdis->hDC, disabled ? _disabledColor : _engineLinkColor);
             SetBkMode(pdis->hDC, TRANSPARENT);
 
             DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem,
@@ -6407,7 +6416,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // line up exactly on pixel boundaries - sharper than a
             // GDI Polygon, which leaves jaggy diagonals.
             const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            const COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+            const COLORREF fg = disabled ? _disabledColor : (isDark ? RGB(220, 220, 220) : RGB(60, 60, 60));
 
             const int rcW = pdis->rcItem.right - pdis->rcItem.left;
             const int rcH = pdis->rcItem.bottom - pdis->rcItem.top;
@@ -6465,7 +6474,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             DeleteObject(hBg);
 
             // Same contrast as "+" so they read with equal weight.
-            const COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+            const COLORREF fg = disabled ? _disabledColor : (isDark ? RGB(220, 220, 220) : RGB(60, 60, 60));
             HBRUSH hFill = CreateSolidBrush(fg);
 
             const int rcW = pdis->rcItem.right - pdis->rcItem.left;
@@ -6497,7 +6506,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             GetWindowTextW(pdis->hwndItem, buffer, 8);
 
             const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            const COLORREF fg = isDark ? RGB(220, 220, 220) : RGB(60, 60, 60);
+            const COLORREF fg = disabled ? _disabledColor : (isDark ? RGB(220, 220, 220) : RGB(60, 60, 60));
             SetTextColor(pdis->hDC, fg);
             SetBkMode(pdis->hDC, TRANSPARENT);
 
@@ -9152,9 +9161,28 @@ bool MultiReplace::handleBrowseDirectoryButton()
     return true;  // always return TRUE so the dialog proc knows we handled it
 }
 
+namespace {
+    // Scan status (discovery count, file progress) is redrawn at most every 100 ms,
+    // the first time one interval in: a redraw per file costs more than searching a small one.
+    class ScanStatusThrottle {
+    public:
+        bool due()
+        {
+            const ULONGLONG now = GetTickCount64();
+            if (now < _next) return false;
+            _next = now + INTERVAL_MS;
+            return true;
+        }
+    private:
+        static constexpr ULONGLONG INTERVAL_MS = 100;
+        ULONGLONG _next = GetTickCount64() + INTERVAL_MS;
+    };
+}
+
 // Enumerates candidate files with N++ semantics: hidden FOLDERS are pruned
-// unless includeHidden is set, hidden files are always kept.
-// Returns false when the user canceled or the panel is shutting down.
+// unless includeHidden is set, hidden files are always kept. Folders that
+// cannot be read are skipped and counted in the guard.
+// Returns false when the root cannot be read, the user canceled or the panel is shutting down.
 bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool includeHidden,
     HiddenSciGuard& guard, std::vector<std::filesystem::path>& files)
 {
@@ -9166,38 +9194,44 @@ bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool 
         return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_HIDDEN);
         };
 
-    auto keepAlive = [this](size_t count) -> bool {
+    ScanStatusThrottle status;
+    auto keepAlive = [this, &status](size_t count) -> bool {
         MSG m;
         while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
         if (_isShuttingDown || _isCancelRequested) return false;
-        if ((count & 0x3FF) == 0)
+        if (status.due())
             showStatusMessage(LM.get(L"status_discovering_files", { StringUtils::formatNumber(count) }), MessageStatus::Info);
         return true;
         };
+
+    auto reportRootError = [this](const fs::path& folder, const std::error_code& error) -> bool {
+        showStatusMessage(LM.get(L"status_error_scanning_directory",
+            { folder.wstring() + L": " + Encoding::utf8ToWString(error.message()) }), MessageStatus::Error);
+        return false;
+        };
+
+    DirectoryWalk::Options options;
+    options.recurse = recurse;
+    options.enterFolder = [&](const fs::path& p) { return includeHidden || !isHiddenDir(p); };
+    options.keepFile = [&](const fs::path& p) { return guard.matchPath(p); };
+    options.keepGoing = keepAlive;
 
     try {
         // Absolute, backslash root: every scanned path inherits it, and
         // openDocPathKey compares those against the paths N++ reports for
         // open documents. A relative or forward-slash root would never match.
-        const fs::path root = fs::absolute(fs::path(dir)).lexically_normal();
-        size_t seen = 0;
-        if (recurse) {
-            auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied);
-            for (auto end = fs::recursive_directory_iterator(); it != end; ++it) {
-                if (!keepAlive(++seen)) { showStatusMessage(LM.get(L"status_canceled"), MessageStatus::Info); return false; }
-                if (it->is_directory() && !includeHidden && isHiddenDir(it->path())) {
-                    it.disable_recursion_pending();
-                    continue;
-                }
-                if (it->is_regular_file() && guard.matchPath(it->path())) files.push_back(it->path());
-            }
+        std::error_code ec;
+        const fs::path root = fs::absolute(fs::path(dir), ec).lexically_normal();
+        if (ec) return reportRootError(fs::path(dir), ec);
+
+        DirectoryWalk::Result walk = DirectoryWalk::collect(root, options);
+        if (walk.status == DirectoryWalk::Status::RootUnreadable) return reportRootError(root, walk.rootError);
+        if (walk.status == DirectoryWalk::Status::Canceled) {
+            showStatusMessage(LM.get(L"status_canceled"), MessageStatus::Info);
+            return false;
         }
-        else {
-            for (auto& e : fs::directory_iterator(root, fs::directory_options::skip_permission_denied)) {
-                if (!keepAlive(++seen)) { showStatusMessage(LM.get(L"status_canceled"), MessageStatus::Info); return false; }
-                if (e.is_regular_file() && guard.matchPath(e.path())) files.push_back(e.path());
-            }
-        }
+        guard.noteUnreadableFolders(walk.unreadableFolders);
+        files = std::move(walk.files);
     }
     catch (const std::exception& ex) {
         showStatusMessage(LM.get(L"status_error_scanning_directory", { Encoding::utf8ToWString(ex.what()) }), MessageStatus::Error);
@@ -9230,6 +9264,7 @@ std::wstring MultiReplace::buildSkipBreakdown(const HiddenSciGuard& guard) const
 // Dock header suffix, appended after "(N hits in M file(s))":
 //   " [7 file(s) searched]"
 //   " [1731 file(s) searched, 41 skipped: 38 binary, 2 too large, 1 unreadable]"
+//   " [1731 file(s) searched; 3 folder(s) unreadable]"
 // searchedCount must already exclude skipped files - they were never searched.
 std::wstring MultiReplace::buildScanSuffix(const HiddenSciGuard& guard, size_t searchedCount) const
 {
@@ -9239,18 +9274,28 @@ std::wstring MultiReplace::buildScanSuffix(const HiddenSciGuard& guard, size_t s
         skipClause = LM.get(L"dock_scan_skipped",
             { StringUtils::formatNumber(skipped), buildSkipBreakdown(guard) });
     }
+    const size_t folders = guard.getUnreadableFolderCount();
+    if (folders > 0)
+        skipClause += LM.get(L"dock_scan_unreadable_folders", { StringUtils::formatNumber(folders) });
     return LM.get(L"dock_scan_suffix", { StringUtils::formatNumber(searchedCount), skipClause });
 }
 
-// Standalone sentence for the status line, appended after the replace summary:
+// Standalone sentences for the status line, appended after the replace summary:
 //   "" when nothing was skipped
 //   " 41 file(s) skipped: 38 binary, 2 too large, 1 unreadable."
+//   " 3 folder(s) unreadable." (after the file sentence, if any)
 std::wstring MultiReplace::buildSkipSentence(const HiddenSciGuard& guard) const
 {
+    std::wstring sentence;
     const size_t skipped = guard.getSkippedTotalCount();
-    if (skipped == 0) return std::wstring();
-    return LM.get(L"status_scan_skipped",
-        { StringUtils::formatNumber(skipped), buildSkipBreakdown(guard) });
+    if (skipped > 0) {
+        sentence = LM.get(L"status_scan_skipped",
+            { StringUtils::formatNumber(skipped), buildSkipBreakdown(guard) });
+    }
+    const size_t folders = guard.getUnreadableFolderCount();
+    if (folders > 0)
+        sentence += LM.get(L"status_scan_unreadable_folders", { StringUtils::formatNumber(folders) });
+    return sentence;
 }
 
 // Codepage to bind the hidden buffer to for one loaded file. Text-kind
@@ -9422,8 +9467,9 @@ void MultiReplace::handleReplaceInFiles() {
         }
     }
 
-    // validate directory
-    if (wDir.empty() || !std::filesystem::exists(wDir)) {
+    // validate directory (non-throwing: a drive that is not ready or an unknown share must not escape)
+    std::error_code ec;
+    if (wDir.empty() || !std::filesystem::is_directory(wDir, ec)) {
         showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
         return;
     }
@@ -9438,6 +9484,8 @@ void MultiReplace::handleReplaceInFiles() {
     guard.setSkipBinaryEnabled(skipBinaryFilesEnabled);
     guard.setVerifyRoundtrip(true);
 
+    // Panel frozen from here on: the file discovery can run long and must stay cancelable
+    BatchUIGuard uiGuard(this, _hSelf);
     _isCancelRequested = false;
     std::vector<std::filesystem::path> files;
     if (!collectScanFiles(wDir, recurse, hide, guard, files)) return;
@@ -9458,10 +9506,6 @@ void MultiReplace::handleReplaceInFiles() {
     std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
     if (MessageBox(_hSelf, message.c_str(), LM.getW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
         return;
-
-    // RAII-based UI State Management
-    BatchUIGuard uiGuard(this, _hSelf);
-    _isCancelRequested = false;
 
     if (useListEnabled) {
         resetCountColumns();
@@ -9488,6 +9532,7 @@ void MultiReplace::handleReplaceInFiles() {
     bool activatedAny = false;
 
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
+    ScanStatusThrottle progress;
 
     // Per-file binding guards: the hidden buffer for files on disk, an editor
     // view for open documents. Both restore the previous binding on exit.
@@ -9586,11 +9631,8 @@ void MultiReplace::handleReplaceInFiles() {
         if (_isCancelRequested) { aborted = true; break; }
 
         ++idx;
-
-        int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
-        showStatusMessage(buildProgressStatus(
-            L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
-            MessageStatus::Info);
+        if (progress.due())
+            showScanProgress(idx, total, fp.wstring());
 
         DWORD attrs = GetFileAttributesW(fp.c_str());
         if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_READONLY)) {
@@ -10250,7 +10292,9 @@ void MultiReplace::handleFindInFiles() {
             return;
         }
     }
-    if (wDir.empty() || !std::filesystem::exists(wDir)) {
+    // validate directory (non-throwing: a drive that is not ready or an unknown share must not escape)
+    std::error_code ec;
+    if (wDir.empty() || !std::filesystem::is_directory(wDir, ec)) {
         showStatusMessage(LM.get(L"status_error_invalid_directory"), MessageStatus::Error);
         return;
     }
@@ -10260,6 +10304,8 @@ void MultiReplace::handleFindInFiles() {
     guard.setMaxFileSizeMB(maxFileSizeMB);
     guard.setSkipBinaryEnabled(skipBinaryFilesEnabled);
 
+    // Panel frozen from here on: the file discovery can run long and must stay cancelable
+    BatchUIGuard uiGuard(this, _hSelf);
     _isCancelRequested = false;
     std::vector<std::filesystem::path> files;
     if (!collectScanFiles(wDir, recurse, hide, guard, files)) return;
@@ -10325,11 +10371,10 @@ void MultiReplace::handleFindInFiles() {
 
     dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, false);
 
-    BatchUIGuard uiGuard(this, _hSelf);
-    _isCancelRequested = false;
     int idx = 0;
     const int total = static_cast<int>(files.size());
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
+    ScanStatusThrottle progress;
 
     struct SciBindingGuard {
         MultiReplace* self; HWND oldSci; SciFnDirect oldFn; sptr_t oldData; HiddenSciGuard& g;
@@ -10347,11 +10392,8 @@ void MultiReplace::handleFindInFiles() {
         if (_isShuttingDown || _isCancelRequested) { aborted = true; break; }
 
         ++idx;
-
-        const int percent = static_cast<int>((static_cast<double>(idx) / (std::max)(1, total)) * 100.0);
-        showStatusMessage(buildProgressStatus(
-            L"Progress: [" + std::to_wstring(percent) + L"%] ", fp.wstring()),
-            MessageStatus::Info);
+        if (progress.due())
+            showScanProgress(idx, total, fp.wstring());
 
         const OpenScanDoc* openDoc = nullptr;
         if (!openDocs.empty()) {
@@ -14925,6 +14967,7 @@ void MultiReplace::applyThemePalette()
         COLOR_INFO = DMODE_INFO;
         _filterHelpColor = DMODE_FILTER_HELP;
         _engineLinkColor = DMODE_ENGINE_LINK;
+        _disabledColor = DMODE_DISABLED;
     }
     else {
         COLOR_SUCCESS = LMODE_SUCCESS;
@@ -14932,6 +14975,7 @@ void MultiReplace::applyThemePalette()
         COLOR_INFO = LMODE_INFO;
         _filterHelpColor = LMODE_FILTER_HELP;
         _engineLinkColor = LMODE_ENGINE_LINK;
+        _disabledColor = LMODE_DISABLED;
     }
 
     // Update the active colour based on the last message status
@@ -14979,8 +15023,7 @@ void MultiReplace::refreshColumnStylesIfNeeded()
 
 // "Progress: [ 42%] C:\...\file.txt" for the status line during a file scan.
 // The path is shortened to the width the prefix leaves free in the status
-// control, measured with that control's own font. Shared by the Find in Files
-// and Replace in Files loops.
+// control, measured with that control's own font.
 std::wstring MultiReplace::buildProgressStatus(const std::wstring& prefix, const std::wstring& path)
 {
     HWND hStatus = GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
@@ -15005,6 +15048,13 @@ std::wstring MultiReplace::buildProgressStatus(const std::wstring& prefix, const
     if (oldFont) SelectObject(hdc, oldFont);
     ReleaseDC(hStatus, hdc);
     return prefix + shortPath;
+}
+
+// Progress line for the file a Find/Replace in Files scan is at
+void MultiReplace::showScanProgress(int done, int total, const std::wstring& path)
+{
+    const int percent = static_cast<int>((static_cast<double>(done) / (std::max)(1, total)) * 100.0);
+    showStatusMessage(buildProgressStatus(L"Progress: [" + std::to_wstring(percent) + L"%] ", path), MessageStatus::Info);
 }
 
 std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC) {

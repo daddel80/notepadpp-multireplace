@@ -24,6 +24,7 @@
 #include "menuCmdID.h"
 #include <windows.h>
 #include <commctrl.h>
+#include <cmath>
 #include <string>
 
 // Local singleton alias, matching MultiReplacePanel.cpp, so the

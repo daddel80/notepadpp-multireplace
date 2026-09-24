@@ -110,6 +110,7 @@
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
     <ClCompile Include="..\src\language_mapping.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
+    <ClCompile Include="..\src\DirectoryWalk.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />
@@ -118,6 +119,7 @@
     <ClCompile Include="..\src\IniFileCache.cpp" />
     <ClCompile Include="..\src\UndoRedoManager.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_BatchUI.cpp" />
+    <ClCompile Include="..\src\DialogFreeze.cpp" />
     <ClCompile Include="..\src\StringUtils.cpp" />
     <ClCompile Include="..\src\ColumnTabs.cpp" />
     <ClCompile Include="..\src\OnePassHits.cpp" />
@@ -257,6 +259,7 @@
     <ClInclude Include="..\src\StaticDialog\resource.h" />
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
     <ClInclude Include="..\src\DropTarget.h" />
+    <ClInclude Include="..\src\DirectoryWalk.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\image_data.h" />
@@ -270,6 +273,7 @@
     <ClInclude Include="..\src\language_mapping.h" />
     <ClInclude Include="..\src\UndoRedoManager.h" />
     <ClInclude Include="..\src\BatchUIGuard.h" />
+    <ClInclude Include="..\src\DialogFreeze.h" />
     <ClInclude Include="..\src\StringUtils.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
     <ClInclude Include="..\src\OnePassHits.h" />

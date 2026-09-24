@@ -709,6 +709,7 @@ public:
     static constexpr COLORREF LMODE_INFO = RGB(0, 0, 128);
     static constexpr COLORREF LMODE_FILTER_HELP = RGB(0, 0, 255);
     static constexpr COLORREF LMODE_ENGINE_LINK = RGB(0, 0, 255);
+    static constexpr COLORREF LMODE_DISABLED = RGB(109, 109, 109);
 
     // Dark Mode Colors for Message
     static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120);
@@ -716,6 +717,7 @@ public:
     static constexpr COLORREF DMODE_INFO = RGB(180, 180, 255);
     static constexpr COLORREF DMODE_FILTER_HELP = RGB(255, 235, 59);
     static constexpr COLORREF DMODE_ENGINE_LINK = RGB(100, 180, 255);
+    static constexpr COLORREF DMODE_DISABLED = RGB(128, 128, 128);
 
     inline static bool isWindowOpen = false;
     inline static bool textModified = true;
@@ -778,7 +780,7 @@ public:
 
     inline static HWND       hwndExpandBtn = nullptr;
     bool _keepOnTopDuringBatch = false;
-    void setBatchUIState(HWND hDlg, bool inProgress);
+    void setBatchWindowState(HWND hDlg, bool inProgress);
     static void loadLanguageGlobal();
     static void refreshUILanguage();
 
@@ -841,7 +843,6 @@ private:
     inline static HWND s_hDlg = nullptr;
     HWND hwndEdit = nullptr;
     bool _isClosingEdit = false; // Reentrancy guard for closeEditField()
-    WNDPROC originalListViewProc;
     inline static std::map<int, ControlInfo> ctrlMap{};
 
     // Instance-specific GUI-related variables
@@ -858,6 +859,7 @@ private:
     // applyThemePalette so the (L)/(E) marker renders in link blue
     // in both light and dark mode.
     COLORREF _engineLinkColor = LMODE_ENGINE_LINK;
+    COLORREF _disabledColor = LMODE_DISABLED; // owner-drawn controls while disabled
     MessageStatus _lastMessageStatus = MessageStatus::Info; // Holds the TYPE of the last message.
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
@@ -1511,6 +1513,7 @@ private:
     void refreshColumnStylesIfNeeded();
     std::wstring getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC = nullptr);
     std::wstring buildProgressStatus(const std::wstring& prefix, const std::wstring& path);
+    void showScanProgress(int done, int total, const std::wstring& path);
     std::wstring getSelectedText();
     std::wstring escapeForExtendedMode(const std::wstring& s);
     std::wstring escapeForRegexMode(const std::wstring& s);

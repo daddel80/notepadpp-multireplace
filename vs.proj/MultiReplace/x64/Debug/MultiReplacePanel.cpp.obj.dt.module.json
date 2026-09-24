@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "MultiReplace\\x64\\Debug\\MultiReplacePanel.obj",
+            "outputs": [
+                "MultiReplace\\x64\\Debug\\MultiReplacePanel.cpp.obj.dt.module.json",
+                "MultiReplace\\x64\\Debug\\MultiReplacePanel.cpp.obj.dt.d.json"
+            ],
+            "requires": []
+        }
+    ]
+}

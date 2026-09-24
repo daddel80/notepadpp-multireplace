@@ -128,6 +128,7 @@ public:
             fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
             fn(pData, SCI_SETUNDOCOLLECTION, 0, 0);
             fn(pData, SCI_EMPTYUNDOBUFFER, 0, 0);
+            fn(pData, SCI_SETMODEVENTMASK, SC_MOD_NONE, 0);   // N++ would pass every file load on to all plugins
             fn(pData, SCI_CLEARALL, 0, 0);
         }
 
@@ -386,11 +387,16 @@ public:
         _skippedReadOnlyCount = 0;
         _skippedOpenUnsavedCount = 0;
         _skippedUnencodableCount = 0;
+        _unreadableFolderCount = 0;
     }
 
     // For skips the caller decides: read-only, open with unsaved changes,
     // oversized live document, replacement not encodable in the file's codepage
     void noteSkip(SkipReason reason) { fail(reason); }
+
+    // Folders the directory scan could not read; not part of the file total
+    void noteUnreadableFolders(size_t count) { _unreadableFolderCount += count; }
+    size_t getUnreadableFolderCount() const  { return _unreadableFolderCount; }
 
     // ========================================================================
     // 4b) Attach a live N++ document for searching (N++'s findInFilelist
@@ -507,6 +513,7 @@ public:
         dbg << L"  Read-only Files:   " << _skippedReadOnlyCount << L"\n";
         dbg << L"  Open Unsaved:      " << _skippedOpenUnsavedCount << L"\n";
         dbg << L"  Unencodable Files: " << _skippedUnencodableCount << L"\n";
+        dbg << L"  Unreadable Dirs:   " << _unreadableFolderCount << L"\n";
 
         return dbg.str();
     }
@@ -548,6 +555,7 @@ private:
     size_t _skippedReadOnlyCount = 0;
     size_t _skippedOpenUnsavedCount = 0;
     size_t _skippedUnencodableCount = 0;
+    size_t _unreadableFolderCount = 0;
 
     // Configuration
     size_t _maxFileSizeMB = DEFAULT_MAX_FILE_SIZE_MB;

@@ -1,0 +1,14 @@
+{
+    "version": 1,
+    "revision": 0,
+    "rules": [
+        {
+            "primary-output": "MultiReplace\\x64\\Debug\\language_mapping.obj",
+            "outputs": [
+                "MultiReplace\\x64\\Debug\\language_mapping.cpp.obj.dt.module.json",
+                "MultiReplace\\x64\\Debug\\language_mapping.cpp.obj.dt.d.json"
+            ],
+            "requires": []
+        }
+    ]
+}

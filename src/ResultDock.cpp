@@ -27,6 +27,7 @@
 #include "image_data.h"
 #include "LanguageManager.h"
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <commctrl.h>
 #include <functional>

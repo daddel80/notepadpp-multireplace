@@ -21,6 +21,8 @@ static const std::string L_replace_summary =
 static const std::string L_scan_suffix   = " [$REPLACE_STRING1 file(s) searched$REPLACE_STRING2]";
 static const std::string L_scan_skipped  = ", $REPLACE_STRING1 skipped: $REPLACE_STRING2";
 static const std::string L_status_skipped= " $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2.";
+static const std::string L_scan_folders  = "; $REPLACE_STRING folder(s) unreadable";
+static const std::string L_status_folders= " $REPLACE_STRING folder(s) unreadable.";
 static const std::string L_open_unsaved  = " $REPLACE_STRING of them in open document(s), not saved.";
 static const std::string L_canceled      = "Canceled";
 static const std::string L_single_header =
@@ -60,6 +62,7 @@ static std::string LM_get(const std::string& tpl, const std::vector<std::string>
 struct Guard {
     size_t binary = 0, large = 0, unreadable = 0, undecodable = 0;
     size_t readOnly = 0, openUnsaved = 0, unencodable = 0;
+    size_t unreadableFolders = 0;   // folders, not files: never part of total()
     size_t total() const {
         return binary + large + unreadable + undecodable + readOnly + openUnsaved + unencodable;
     }
@@ -88,14 +91,20 @@ static std::string buildScanSuffix(const Guard& g, size_t searched, bool useOldW
     std::string clause;
     if (g.total() > 0)
         clause = LM_get(L_scan_skipped, { std::to_string(g.total()), buildSkipBreakdown(g) });
+    if (g.unreadableFolders > 0)
+        clause += LM_get(L_scan_folders, { std::to_string(g.unreadableFolders) });
     return LM_get(useOldWording ? OLD_scan_suffix : L_scan_suffix,
                   { std::to_string(searched), clause });
 }
 
 // VERBATIM: MultiReplace::buildSkipSentence
 static std::string buildSkipSentence(const Guard& g) {
-    if (g.total() == 0) return std::string();
-    return LM_get(L_status_skipped, { std::to_string(g.total()), buildSkipBreakdown(g) });
+    std::string sentence;
+    if (g.total() > 0)
+        sentence = LM_get(L_status_skipped, { std::to_string(g.total()), buildSkipBreakdown(g) });
+    if (g.unreadableFolders > 0)
+        sentence += LM_get(L_status_folders, { std::to_string(g.unreadableFolders) });
+    return sentence;
 }
 
 // ------------------------------------------------- call-site assembly (verbatim)
@@ -302,6 +311,40 @@ int main() {
         Guard g{};
         const std::string now = replaceStatusLine(10, 10, 3, g, false, 0);
         CHECK("N no addendum", now == "Replace in files: 3 of 10 file(s) modified.");
+    }
+
+    // O) unreadable folders: own sentence, the file denominator stays untouched
+    {
+        Guard g{}; g.unreadableFolders = 2;
+        const std::string now = replaceStatusLine(10, 10, 3, g, false);
+        std::printf("  now:    %s\n\n", now.c_str());
+        CHECK("O folders only", now == "Replace in files: 3 of 10 file(s) modified. 2 folder(s) unreadable.");
+        CHECK("O well formed", wellFormed(now));
+    }
+
+    // P) skipped files and unreadable folders together, canceled
+    {
+        Guard g{ 38, 2, 1, 0 }; g.unreadableFolders = 12;
+        const std::string now = replaceStatusLine(1772, 1772, 3, g, true);
+        std::printf("  now:    %s\n\n", now.c_str());
+        CHECK("P exact wording, folders do not touch the file counts",
+              now == "Replace in files: 3 of 1731 file(s) modified."
+                     " 41 file(s) skipped: 38 binary, 2 too large, 1 unreadable."
+                     " 12 folder(s) unreadable. - Canceled");
+        CHECK("P well formed", wellFormed(now));
+    }
+
+    // Q) Find in Files dock header with unreadable folders
+    {
+        Guard g{}; g.unreadableFolders = 3;
+        const std::string only = findDockHeader("Fi", 4, 2, 7, g);
+        Guard h{ 38, 2, 1, 0 }; h.unreadableFolders = 12;
+        const std::string both = findDockHeader("Fi", 900, 120, 1772, h);
+        std::printf("  now:    %s\n  now:    %s\n\n", only.c_str(), both.c_str());
+        CHECK("Q folders only inside the bracket", only.find("[7 file(s) searched; 3 folder(s) unreadable]") != std::string::npos);
+        CHECK("Q after the file breakdown, set off by a semicolon",
+              both.find("[1731 file(s) searched, 41 skipped: 38 binary, 2 too large, 1 unreadable; 12 folder(s) unreadable]") != std::string::npos);
+        CHECK("Q well formed", wellFormed(only) && wellFormed(both));
     }
 
     // I) placeholder safety: substitution must not corrupt multi-digit numbers
