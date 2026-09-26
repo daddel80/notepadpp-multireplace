@@ -7543,6 +7543,11 @@ void MultiReplace::replaceAllInOpenedDocs()
             return;
         }
     }
+    else {
+        // History once for the run, as in Replace in Files; the documents are not replaced standalone
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
+        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
+    }
 
     if (MessageBox(
         nppData._nppHandle,
@@ -7838,7 +7843,7 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
     return replaceSuccess;
 }
 
-bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std::filesystem::path* explicitPath) {
+bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem::path* explicitPath) {
 
     m_lastTotalReplaceCount = 0;
 
@@ -8005,8 +8010,11 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
         itemData.regex = (IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED);
         itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
-        addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
+        // A run over several documents records the history once, not per document
+        if (standalone) {
+            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
+            addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
+        }
 
         {
             const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
@@ -8043,7 +8051,7 @@ bool MultiReplace::handleReplaceAllButton(bool showCompletionMessage, const std:
 
     // Status message: replacement count plus optional engine summary.
     // ExprTk also emits a notice dialog when the user picked "Skip all NaN".
-    if (replaceSuccess && showCompletionMessage) {
+    if (replaceSuccess && standalone) {
         std::wstring msg = LM.get(usedOnePass
             ? L"status_occurrences_replaced_one_pass"
             : L"status_occurrences_replaced",
@@ -9179,11 +9187,29 @@ namespace {
         static constexpr ULONGLONG INTERVAL_MS = 100;
         ULONGLONG _next = GetTickCount64() + INTERVAL_MS;
     };
+
+    // A scan lets the message loop run at most every 50 ms: often enough for the cancel
+    // button and repaints, without a message round per file or folder entry.
+    class ScanMessagePump {
+    public:
+        void run()
+        {
+            const ULONGLONG now = GetTickCount64();
+            if (now < _next) return;
+            _next = now + INTERVAL_MS;
+            MSG m;
+            while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
+        }
+    private:
+        static constexpr ULONGLONG INTERVAL_MS = 50;
+        ULONGLONG _next = 0;   // the first call runs it
+    };
 }
 
 // Enumerates candidate files with N++ semantics: hidden FOLDERS are pruned
-// unless includeHidden is set, hidden files are always kept. Folders that
-// cannot be read are skipped and counted in the guard.
+// unless includeHidden is set, hidden files are always kept. The filter's folder
+// rules are decided once per folder, its file rules on the file name. Folders
+// that cannot be read are skipped and counted in the guard.
 // Returns false when the root cannot be read, the user canceled or the panel is shutting down.
 bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool includeHidden,
     HiddenSciGuard& guard, std::vector<std::filesystem::path>& files)
@@ -9191,15 +9217,10 @@ bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool 
     namespace fs = std::filesystem;
     files.clear();
 
-    auto isHiddenDir = [](const fs::path& p) -> bool {
-        const DWORD a = GetFileAttributesW(p.c_str());
-        return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_HIDDEN);
-        };
-
+    ScanMessagePump pump;
     ScanStatusThrottle status;
-    auto keepAlive = [this, &status](size_t count) -> bool {
-        MSG m;
-        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
+    auto keepAlive = [this, &pump, &status](size_t count) -> bool {
+        pump.run();
         if (_isShuttingDown || _isCancelRequested) return false;
         if (status.due())
             showStatusMessage(LM.get(L"status_discovering_files", { StringUtils::formatNumber(count) }), MessageStatus::Info);
@@ -9213,9 +9234,14 @@ bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool 
         };
 
     DirectoryWalk::Options options;
-    options.recurse = recurse;
-    options.enterFolder = [&](const fs::path& p) { return includeHidden || !isHiddenDir(p); };
-    options.keepFile = [&](const fs::path& p) { return guard.matchPath(p); };
+    // !+x prunes a folder with everything below it, !\x drops only the files directly inside it
+    options.subfolder = [&](const fs::path& folder, bool hidden) {
+        const std::wstring name = folder.filename().wstring();
+        if ((hidden && !includeHidden) || guard.excludesFolder(name))
+            return DirectoryWalk::Take{ false, false };
+        return DirectoryWalk::Take{ !guard.excludesFilesIn(name), true };
+        };
+    options.keepFile = [&](const wchar_t* name) { return guard.matchFileName(name); };
     options.keepGoing = keepAlive;
 
     try {
@@ -9223,8 +9249,16 @@ bool MultiReplace::collectScanFiles(const std::wstring& dir, bool recurse, bool 
         // openDocPathKey compares those against the paths N++ reports for
         // open documents. A relative or forward-slash root would never match.
         std::error_code ec;
-        const fs::path root = fs::absolute(fs::path(dir), ec).lexically_normal();
+        fs::path root = fs::absolute(fs::path(dir), ec).lexically_normal();
         if (ec) return reportRootError(fs::path(dir), ec);
+        if (!root.has_filename() && root.has_relative_path())
+            root = root.parent_path();   // "C:\data\" is the folder named data
+
+        // The root itself is never hidden-checked (N++); !+x also looks above it
+        if (guard.excludesRoot(root))
+            options.root = { false, false };
+        else
+            options.root = { !guard.excludesFilesIn(root.filename().wstring()), recurse };
 
         DirectoryWalk::Result walk = DirectoryWalk::collect(root, options);
         if (walk.status == DirectoryWalk::Status::RootUnreadable) return reportRootError(root, walk.rootError);
@@ -9532,9 +9566,11 @@ void MultiReplace::handleReplaceInFiles() {
         liveDocs ? OpenDocProbe::Enumerate : OpenDocProbe::Dirty);
     const ActiveDocs savedDocs = captureActiveDocs();
     bool activatedAny = false;
+    const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
     ScanStatusThrottle progress;
+    ScanMessagePump pump;
 
     // Per-file binding guards: the hidden buffer for files on disk, an editor
     // view for open documents. Both restore the previous binding on exit.
@@ -9622,15 +9658,10 @@ void MultiReplace::handleReplaceInFiles() {
             ++changedOpenUnsaved;
     };
 
+    std::string u8in;   // file after file loads into the same string
     for (const auto& fp : files) {
-        MSG m = {};
-        while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
-            ::TranslateMessage(&m);
-            ::DispatchMessage(&m);
-        }
-
-        if (_isShuttingDown) { aborted = true; break; }
-        if (_isCancelRequested) { aborted = true; break; }
+        pump.run();
+        if (_isShuttingDown || _isCancelRequested) { aborted = true; break; }
 
         ++idx;
         if (progress.due())
@@ -9659,7 +9690,6 @@ void MultiReplace::handleReplaceInFiles() {
             guard.noteSkip(HiddenSciGuard::SkipReason::OpenUnsaved); continue;
         }
 
-        std::string u8in;
         Encoding::EncodingInfo enc;
         HiddenSciGuard::LoadKind loadKind;
         if (guard.loadTextFile(fp, u8in, enc, loadKind) != HiddenSciGuard::SkipReason::None) { continue; }
@@ -9672,10 +9702,7 @@ void MultiReplace::handleReplaceInFiles() {
                 guard.noteSkip(HiddenSciGuard::SkipReason::TooLarge); continue;
             }
 
-            // Hidden-buffer content is not tracked by the editor's change log -
-            // force a fresh delimiter scan for every file.
-            _delimiterPositionsStale = true;
-            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnMode && !loadDelimitersForScan()) { aborted = true; break; }
 
             if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
 
@@ -10355,25 +10382,42 @@ void MultiReplace::handleFindInFiles() {
     int maxListSlots = calcMaxListSlots();
     bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
 
-    if (useListEnabled) {
+    // The search is read once; per file only a pattern's bytes can change, with the codepage
+    struct FilePattern {
+        size_t critIdx;
+        int colorIndex;
+        std::wstring findW;
+        std::wstring label;      // for the dock
+        bool extended;
+        int searchFlags;
+        int codepage = -1;       // of bytes, converted again for a document with another codepage
+        std::string bytes{};
+    };
+    std::vector<FilePattern> patterns;
+    std::wstring singleLabel;
 
-        // Define Colors (Clean loop)
+    if (useListEnabled) {
         for (size_t idx : workIndices) {
-            int slot = static_cast<int>(idx);
-            if (slot >= maxListSlots) slot = maxListSlots - 1;
-            COLORREF c = ResultDock::generateColorFromText(replaceListData[idx].findText, isDark);
-            dock.defineSlotColor(slot, c);
+            const ReplaceItemData& item = replaceListData[idx];
+            const int slot = (std::min)(static_cast<int>(idx), maxListSlots - 1);
+            dock.defineSlotColor(slot, ResultDock::generateColorFromText(item.findText, isDark));
+            patterns.push_back({ idx, slot, item.findText, sanitizeSearchPattern(item.findText), item.extended,
+                buildSearchFlags(item.wholeWord, item.matchCase, item.regex, /*dotMatchesNL=*/false, /*isReplaceAll=*/false) });
         }
     }
     else {
-        std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-        COLORREF c = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
-        dock.defineSlotColor(0, c);
+        dock.defineSlotColor(0, isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT);
+        const ReplaceItemData item = buildItemDataFromDialogFields();
+        singleLabel = sanitizeSearchPattern(item.findText);
+        if (!item.findText.empty())
+            patterns.push_back({ 0, 0, item.findText, singleLabel, item.extended,
+                buildSearchFlags(item.wholeWord, item.matchCase, item.regex, /*dotMatchesNL=*/false, /*isReplaceAll=*/false) });
     }
+    const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
     std::wstring placeholder = useListEnabled
         ? LM.get(L"dock_list_header", { L"0", L"0" })
-        : LM.get(L"dock_single_header", { sanitizeSearchPattern(getTextFromDialogItem(_hSelf, IDC_FIND_EDIT)), L"0", L"0" });
+        : LM.get(L"dock_single_header", { singleLabel, L"0", L"0" });
 
     dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, false);
 
@@ -10381,6 +10425,7 @@ void MultiReplace::handleFindInFiles() {
     const int total = static_cast<int>(files.size());
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
     ScanStatusThrottle progress;
+    ScanMessagePump pump;
 
     struct SciBindingGuard {
         MultiReplace* self; HWND oldSci; SciFnDirect oldFn; sptr_t oldData; HiddenSciGuard& g;
@@ -10392,9 +10437,10 @@ void MultiReplace::handleFindInFiles() {
     };
 
     bool aborted = false;
+    std::string content;   // file after file loads into the same string
 
     for (const auto& fp : files) {
-        MSG m; while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
+        pump.run();
         if (_isShuttingDown || _isCancelRequested) { aborted = true; break; }
 
         ++idx;
@@ -10407,7 +10453,6 @@ void MultiReplace::handleFindInFiles() {
             if (od != openDocs.end() && od->second.docPtr) openDoc = &od->second;
         }
 
-        std::string content;
         Encoding::EncodingInfo enc;
         HiddenSciGuard::LoadKind loadKind = HiddenSciGuard::LoadKind::Text;
         if (!openDoc && guard.loadTextFile(fp, content, enc, loadKind) != HiddenSciGuard::SkipReason::None) continue;
@@ -10428,19 +10473,17 @@ void MultiReplace::handleFindInFiles() {
             guard.noteSkip(HiddenSciGuard::SkipReason::TooLarge); continue;
         }
 
-        // Hidden/attached content is not tracked by the editor's change log -
-        // force a fresh delimiter scan for every file.
-        _delimiterPositionsStale = true;
-        handleDelimiterPositions(DelimiterOperation::LoadAll);
+        if (columnMode && !loadDelimitersForScan()) { aborted = true; break; }
 
         const std::wstring wPath = fp.wstring();
         const std::string  u8Path = Encoding::wstringToUtf8(wPath);
-        bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+        const LRESULT docLength = send(SCI_GETLENGTH);
+        const UINT codepage = getCurrentDocCodePage();
 
         ResultDock::FileMap fileMap;
         int hitsInFile = 0;
 
-        auto collect = [&](size_t critIdx, const std::wstring& pattW, SearchContext& ctx) {
+        auto collect = [&](const FilePattern& pattern, SearchContext& ctx) {
             std::vector<ResultDock::Hit> raw;
             LRESULT pos = 0;
             while (true) {
@@ -10454,13 +10497,8 @@ void MultiReplace::handleFindInFiles() {
                 h.docLine = static_cast<int>(send(SCI_LINEFROMPOSITION, r.pos, 0));
                 h.searchFlags = ctx.searchFlags;
                 this->trimHitToFirstLine([this](UINT m, WPARAM w, LPARAM l)->LRESULT { return send(m, w, l); }, h);
-                h.findTextW = pattW;
-                if (useListEnabled) {
-                    int slot = static_cast<int>(critIdx);
-                    if (slot >= maxListSlots) slot = maxListSlots - 1;
-                    h.colorIndex = slot;
-                }
-                else { h.colorIndex = 0; }
+                h.findTextW = pattern.findW;
+                h.colorIndex = pattern.colorIndex;
                 raw.push_back(std::move(h));
             }
             const int n = static_cast<int>(raw.size());
@@ -10468,39 +10506,23 @@ void MultiReplace::handleFindInFiles() {
             auto& agg = fileMap[u8Path];
             agg.wPath = wPath;
             agg.hitCount += n;
-            agg.crits.push_back({ sanitizeSearchPattern(pattW), std::move(raw) });
+            agg.crits.push_back({ pattern.label, std::move(raw) });
             hitsInFile += n;
             totalHits += n;
-            if (useListEnabled && critIdx < listHitTotals.size()) listHitTotals[critIdx] += n;
+            if (useListEnabled && pattern.critIdx < listHitTotals.size()) listHitTotals[pattern.critIdx] += n;
             };
 
-        if (useListEnabled) {
-            for (size_t entryIdx : workIndices) {
-                const auto& it = replaceListData[entryIdx];
-                SearchContext ctx{};
-                ctx.docLength = send(SCI_GETLENGTH); ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
-                ctx.findText = convertAndExtendW(it.findText, it.extended);
-                ctx.searchFlags = buildSearchFlags(it.wholeWord, it.matchCase, it.regex,
-                    /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
-                send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
-                collect(entryIdx, it.findText, ctx);
+        for (FilePattern& pattern : patterns) {
+            if (pattern.codepage != static_cast<int>(codepage)) {
+                pattern.bytes = convertAndExtendW(pattern.findW, pattern.extended, codepage);
+                pattern.codepage = static_cast<int>(codepage);
             }
-        }
-        else {
-            // Single Mode
-            std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
-            if (!findW.empty()) {
-                SearchContext ctx{};
-                ctx.docLength = send(SCI_GETLENGTH); ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
-                ctx.findText = convertAndExtendW(findW, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
-                ctx.searchFlags = buildSearchFlags(
-                    IsDlgButtonChecked(_hSelf, IDC_WHOLE_WORD_CHECKBOX) == BST_CHECKED,
-                    IsDlgButtonChecked(_hSelf, IDC_MATCH_CASE_CHECKBOX) == BST_CHECKED,
-                    IsDlgButtonChecked(_hSelf, IDC_REGEX_RADIO) == BST_CHECKED,
-                    /*dotMatchesNL=*/false, /*isReplaceAll=*/false);
-                send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
-                collect(0, findW, ctx);
-            }
+            SearchContext ctx{};
+            ctx.docLength = docLength; ctx.isColumnMode = columnMode; ctx.isSelectionMode = false;
+            ctx.findText = pattern.bytes;
+            ctx.searchFlags = pattern.searchFlags;
+            send(SCI_SETSEARCHFLAGS, ctx.searchFlags, 0);
+            collect(pattern, ctx);
         }
 
         if (hitsInFile > 0) {
@@ -13812,6 +13834,17 @@ bool MultiReplace::validateDelimiterData() {
         return parseColumnAndDelimiterData();
     }
 
+    return true;
+}
+
+// Column mode in a file scan: the delimiters of the bound document (hidden buffer or attached
+// open document), settings converted to its codepage. The editor's column state (document
+// switch, highlighting) is not touched; handleDelimiterPositions would rebind to the editor.
+bool MultiReplace::loadDelimitersForScan() {
+    if (!parseColumnAndDelimiterData()) {
+        return false;
+    }
+    findAllDelimitersInDocument();
     return true;
 }
 

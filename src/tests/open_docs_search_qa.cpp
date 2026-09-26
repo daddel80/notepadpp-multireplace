@@ -2,17 +2,19 @@
 //
 //   1. Source switch in Find in Files: files open in N++ are searched via
 //      their live Scintilla document; everything else takes the disk path.
-//   2. AttachedDoc / probe AddRef / DocPtrReleaser reference protocol -
-//      modeled against Scintilla's documented SETDOCPOINTER semantics
-//      (release current, set new, ref new; 0 creates a fresh document).
+//   2. AttachedDoc / probe AddRef / DocPtrReleaser reference protocol and the
+//      hidden buffer's own document (create()) - modeled against Scintilla's
+//      documented semantics (CREATEDOCUMENT refs the new document once;
+//      SETDOCPOINTER releases current, sets new, refs new; 0 creates a fresh one).
 //   3. Visibility gate: hidden views are not probed (NPPM_ACTIVATEDOC would
 //      be refused and doc state read from the wrong document).
 //   4. Size-limit policy for attached documents (noteSkip -> TooLarge) and
 //      its effect on the searched-files denominator.
 //   5. Replace uses only dirty entries (skip), Find uses every docPtr.
-//   6. Per-file delimiter rescan in the scan loops: hidden/attached content
-//      is not tracked by the editor's change log, so each file must set
-//      _delimiterPositionsStale before handleDelimiterPositions(LoadAll).
+//   6. Column mode in the scan loops: every file loads its delimiters with
+//      loadDelimitersForScan (parse, full scan of the bound document). The
+//      editor path handleDelimiterPositions is not used there: a pending
+//      document switch made it rebind the scan to the active editor view.
 //
 // Mirrors the panel/guard logic verbatim where mirrorable; Scintilla calls
 // are replaced by a reference-counting mock that asserts protocol violations.
@@ -36,16 +38,26 @@ static void CHECK(const std::string& d, bool ok) {
 
 // ------------------------------------------------ Scintilla document mock
 // Implements the documented semantics of SCI_GETDOCPOINTER / SCI_SETDOCPOINTER /
-// SCI_ADDREFDOCUMENT / SCI_RELEASEDOCUMENT for one view. Asserts misuse.
-struct MockSci {
+// SCI_ADDREFDOCUMENT / SCI_RELEASEDOCUMENT / SCI_CREATEDOCUMENT for one view.
+// Documents are shared by all views (one refcount each). Asserts misuse.
+struct DocSpace {
     std::map<int, int> ref;          // docId -> refcount
     std::set<int> destroyed;
-    int current = 0;
     int nextId = 100;
     bool protocolError = false;
+};
 
+struct MockSci {
+    std::map<int, int>& ref;
+    std::set<int>& destroyed;
+    int& nextId;
+    bool& protocolError;
+    int current = 0;
+
+    explicit MockSci(DocSpace& s) : ref(s.ref), destroyed(s.destroyed), nextId(s.nextId), protocolError(s.protocolError) {}
     int freshDoc() { int id = nextId++; ref[id] = 0; return id; }
     void init() { current = freshDoc(); addref(current); }   // view holds its doc
+    int createDocument() { int id = freshDoc(); addref(id); return id; }   // SCI_CREATEDOCUMENT: held once by the caller
 
     void addref(int d) {
         if (!ref.count(d) || destroyed.count(d)) { protocolError = true; return; }
@@ -64,6 +76,15 @@ struct MockSci {
     int getDoc() const { return current; }
     bool alive(int d) const { return ref.count(d) && !destroyed.count(d) && ref.at(d) > 0; }
 };
+
+// -------------------------- MIRROR: HiddenSciGuard::create(), own document (in mock terms)
+static int createOwnDocM(MockSci& hidden) {
+    const int doc = hidden.createDocument();   // SCI_CREATEDOCUMENT
+    if (!doc) return 0;
+    hidden.setDoc(doc);                        // SCI_SETDOCPOINTER: the view holds it as well
+    hidden.release(doc);                       // SCI_RELEASEDOCUMENT: the view alone
+    return doc;
+}
 
 // -------------------------- MIRROR: AttachedDoc (HiddenSciGuard.h, in mock terms)
 struct AttachedDocM {
@@ -163,10 +184,14 @@ int main() {
     std::printf("\n=== S2 reference protocol (attach/detach/release) ===\n\n");
     {
         // Normal scan: probe -> attach -> search -> detach -> releaser.
-        MockSci userView;   userView.init();
-        MockSci hidden;     hidden.init();
+        DocSpace docSpace;
+        MockSci userView(docSpace);   userView.init();
+        MockSci hidden(docSpace);     hidden.init();
         const int F = userView.getDoc();                 // user's live doc, refcount 1
-        const int H = hidden.getDoc();                   // hidden view's own doc
+        const int first = hidden.getDoc();               // the document the view was created with
+        const int H = createOwnDocM(hidden);             // hidden view's own doc
+        CHECK("S2 create(): the view's first document is gone, its own one held by the view alone",
+              !hidden.alive(first) && hidden.getDoc() == H && hidden.ref[H] == 1);
 
         auto docs = probeM(userView, { { L"k", F } }, { L"k" }, {}, /*grab*/true);
         CHECK("S2 probe AddRef'd the foreign doc once", userView.ref[F] == 2);
@@ -187,8 +212,10 @@ int main() {
     }
     {
         // Tab closed mid-scan while attached: doc must survive until detach+release.
-        MockSci userView;   userView.init();
-        MockSci hidden;     hidden.init();
+        DocSpace docSpace;
+        MockSci userView(docSpace);   userView.init();
+        MockSci hidden(docSpace);     hidden.init();
+        const int H = createOwnDocM(hidden);
         const int F = userView.getDoc();
         auto docs = probeM(userView, { { L"k", F } }, { L"k" }, {}, true);
         {
@@ -201,10 +228,12 @@ int main() {
         }
         CHECK("S2 after detach + releaser: doc destroyed exactly once, no leak",
               !userView.alive(F) && !userView.protocolError && !hidden.protocolError);
+        CHECK("S2 and the hidden view is back on its own document", hidden.getDoc() == H && hidden.ref[H] == 1);
     }
     {
         // Clone open in both views: deduped -> exactly one AddRef, one release.
-        MockSci userView;   userView.init();
+        DocSpace docSpace;
+        MockSci userView(docSpace);   userView.init();
         const int F = userView.getDoc();
         auto docs = probeM(userView, { { L"k", F }, { L"k", F } }, { L"k" }, {}, true);
         CHECK("S2 clone in both views: one entry, one AddRef",
@@ -236,7 +265,8 @@ int main() {
 
     std::printf("\n=== S5 dirty policy: Replace skips, Find attaches ===\n\n");
     {
-        MockSci userView; userView.init();
+        DocSpace docSpace;
+        MockSci userView(docSpace); userView.init();
         const int F1 = userView.getDoc();
         userView.setDoc(0); const int F2 = userView.getDoc(); (void)F1;
 
@@ -258,20 +288,27 @@ int main() {
         CHECK("S5 Find: refs balanced after release", userView.ref[F2] == 1 && !userView.protocolError);
     }
 
-    std::printf("\n=== S6 per-file delimiter rescan gate ===\n\n");
+    std::printf("\n=== S6 column mode: delimiters per file, on the scanned document ===\n\n");
     {
-        // MIRROR of the rescan gate in handleDelimiterPositions(LoadAll):
-        // isValid && (delimiterChanged || quoteCharChanged || stale || listEmpty)
-        auto rescanRuns = [](bool isValid, bool delimChanged, bool quoteChanged,
-                             bool stale, bool listEmpty) {
-            return isValid && (delimChanged || quoteChanged || stale || listEmpty);
+        // Where the panel's Scintilla calls go: the scanned document (0) or the active editor (1)
+        struct PanelM { int bound = 0; bool documentSwitched = false; int scans = 0; };
+        // MIRROR (before): handleDelimiterPositions(LoadAll) in the scan loop. A pending
+        // document switch ran handleClearDelimiterState -> pointerToScintilla.
+        auto editorPath = [](PanelM& p) {
+            if (p.documentSwitched) { p.bound = 1; p.documentSwitched = false; }
+            ++p.scans;
         };
-        CHECK("S6 file 2 without invalidation inherits file 1's snapshot (the bug)",
-              !rescanRuns(true, false, false, /*stale*/false, /*empty*/false));
-        CHECK("S6 per-file stale flag forces a fresh scan (the fix)",
-              rescanRuns(true, false, false, /*stale*/true, /*empty*/false));
-        CHECK("S6 first file after a clear scans via the empty-list path",
-              rescanRuns(true, false, false, false, /*empty*/true));
+        // MIRROR (now): loadDelimitersForScan - parse, scan the bound document, nothing else
+        auto scanPath = [](PanelM& p) { ++p.scans; };
+
+        PanelM before; before.documentSwitched = true;   // a tab switch since the last column operation
+        editorPath(before);
+        CHECK("S6 before: the first file after a tab switch was searched in the active editor (the bug)",
+              before.bound == 1);
+        PanelM now; now.documentSwitched = true;
+        for (int file = 0; file < 3; ++file) scanPath(now);
+        CHECK("S6 now: every file scanned on its own document, the switch left to the editor",
+              now.bound == 0 && now.scans == 3 && now.documentSwitched);
     }
 
     std::printf("\n%s (%d failure%s)\n",

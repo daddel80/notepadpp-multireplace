@@ -8,7 +8,8 @@
 //
 // Mirrors verbatim:
 //   StringUtils::splitFilterPatterns        (StringUtils.cpp)
-//   HiddenSciGuard::parseFilter + matchPath (HiddenSciGuard.h, file-level part)
+//   HiddenSciGuard::parseFilter + matchFileName (HiddenSciGuard.h; the folder rules
+//   are tested on real folders in directory_walk_qa)
 //   MultiReplace::matchesDocFilter          (MultiReplacePanel.cpp)
 //
 // PathMatchSpecW is replaced by a plain '*'/'?' glob. Test data avoids the
@@ -108,13 +109,20 @@ struct Guard {
         }
     }
 
-    // file-level part of matchPath (folder rules need a real path, tested separately)
-    bool matchFile(const std::wstring& fname) const {
+    // VERBATIM: HiddenSciGuard::matchFileName
+    bool matchFileName(const wchar_t* fileName) const
+    {
         for (const auto& pat : exclude_patterns)
-            if (PathMatchSpecW(fname, pat)) return false;
-        if (include_patterns.empty()) return true;
+            if (PathMatchSpecW(fileName, pat.c_str()))
+                return false;
+
+        if (include_patterns.empty())
+            return true;
+
         for (const auto& pat : include_patterns)
-            if (PathMatchSpecW(fname, pat)) return true;
+            if (PathMatchSpecW(fileName, pat.c_str()))
+                return true;
+
         return false;
     }
 };
@@ -166,25 +174,25 @@ int main() {
               before.size() == 2);
 
         Guard g; g.parseFilter(f);
-        CHECK("B2 the file itself matches", g.matchFile(L"my report.txt"));
+        CHECK("B2 the file itself matches", g.matchFileName(L"my report.txt"));
         CHECK("B2 a file named just 'report.txt' does NOT match",
-              !g.matchFile(L"report.txt"));
+              !g.matchFileName(L"report.txt"));
     }
     {
         const std::wstring f = L"*.*; !my report.txt";
         Guard g; g.parseFilter(f);
         CHECK("B3 exclusion with a space excludes exactly that file",
-              !g.matchFile(L"my report.txt"));
+              !g.matchFileName(L"my report.txt"));
         CHECK("B3 and does not swallow every 'report.txt'",
-              g.matchFile(L"report.txt"));
+              g.matchFileName(L"report.txt"));
     }
 
     std::printf("\n=== ordinary filters keep working ===\n\n");
     {
         Guard g; g.parseFilter(L"*.cpp; *.h; *.txt");
         CHECK("O1 three include patterns", g.include_patterns.size() == 3);
-        CHECK("O1 *.cpp matches", g.matchFile(L"a.cpp"));
-        CHECK("O1 *.bak does not", !g.matchFile(L"a.bak"));
+        CHECK("O1 *.cpp matches", g.matchFileName(L"a.cpp"));
+        CHECK("O1 *.bak does not", !g.matchFileName(L"a.bak"));
     }
     {
         CHECK("O2 spaces around separators are ignored",
@@ -228,10 +236,10 @@ int main() {
             Guard g; g.parseFilter(f);
             for (const auto& n : names) {
                 ++compared;
-                if (g.matchFile(n) != matchesDocFilter(n, f)) {
+                if (g.matchFileName(n.c_str()) != matchesDocFilter(n, f)) {
                     ++disagreed;
                     std::printf("     divergence: filter='%ls' file='%ls' files=%d docs=%d\n",
-                                f.c_str(), n.c_str(), g.matchFile(n), matchesDocFilter(n, f));
+                                f.c_str(), n.c_str(), g.matchFileName(n.c_str()), matchesDocFilter(n, f));
                 }
             }
         }

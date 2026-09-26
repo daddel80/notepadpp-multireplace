@@ -20,10 +20,12 @@
 #include <shlwapi.h>           // For PathMatchSpecW
 #include <algorithm>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <cstdint>
 #include <cstring>             // For std::memchr
 #include <new>                 // For std::bad_alloc
 #include "Encoding.h"
@@ -111,6 +113,8 @@ public:
             pData = 0;
         }
 
+        resetSkipCounters();
+
         // Create new hidden Scintilla via Notepad++
         hSci = reinterpret_cast<HWND>(
             ::SendMessage(nppData._nppHandle,
@@ -122,20 +126,21 @@ public:
         fn = reinterpret_cast<SciFnDirect>(
             ::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0));
         pData = ::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
+        if (!fn || !pData)
+            return false;
 
-        if (fn && pData)
-        {
-            // set safe default and avoid unnecessary memory usage
-            fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-            fn(pData, SCI_SETUNDOCOLLECTION, 0, 0);
-            fn(pData, SCI_EMPTYUNDOBUFFER, 0, 0);
-            fn(pData, SCI_SETMODEVENTMASK, SC_MOD_NONE, 0);   // N++ would pass every file load on to all plugins
-            fn(pData, SCI_CLEARALL, 0, 0);
-        }
+        // Own document: a scan never styles, so no style byte per character, and 64-bit
+        // line positions for binaries over 2 GB. The view holds the only reference.
+        const sptr_t doc = fn(pData, SCI_CREATEDOCUMENT, 0, SC_DOCUMENTOPTION_STYLES_NONE | SC_DOCUMENTOPTION_TEXT_LARGE);
+        if (!doc)
+            return false;
+        fn(pData, SCI_SETDOCPOINTER, 0, doc);
+        fn(pData, SCI_RELEASEDOCUMENT, 0, doc);
 
-        resetSkipCounters();
-
-        return fn && pData;
+        fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+        fn(pData, SCI_SETUNDOCOLLECTION, 0, 0);
+        fn(pData, SCI_SETMODEVENTMASK, SC_MOD_NONE, 0);   // N++ would pass every file load on to all plugins
+        return true;
     }
 
     // ========================================================================
@@ -175,49 +180,54 @@ public:
     }
 
     // ========================================================================
-    // 2) Test a path against the filter
+    // 2) Apply the filter: folder rules once per folder, file rules on the name
+    //    (hidden-folder handling lives in the directory enumeration)
     // ========================================================================
 
-    // Pattern-only match; hidden-folder handling lives in the directory
-    // enumeration (N++ semantics: prune hidden folders, keep hidden files).
-    bool matchPath(const std::filesystem::path& path) const
+    // !+x: the folder is left out with everything below it
+    bool excludesFolder(const std::wstring& folderName) const
     {
-        const std::wstring fname = path.filename().wstring();
-        const std::filesystem::path parentPath = path.parent_path();
+        for (const auto& rawPat : exclude_folders_recursive) {
+            std::wstring_view pat = rawPat;
+            if (!pat.empty() && (pat.front() == L'\\' || pat.front() == L'/'))
+                pat.remove_prefix(1);
 
-        // 1) Non-recursive folder excludes (!) – only the *direct* parent folder
-        if (!parentPath.empty()) {
-            const std::wstring parentName = parentPath.filename().wstring();
-            for (const auto& pat : exclude_folders)
-                if (PathMatchSpecW(parentName.c_str(), pat.c_str()))
-                    return false;
+            if (PathMatchSpecW(folderName.c_str(), std::wstring{ pat }.c_str()))
+                return true;
         }
+        return false;
+    }
 
-        // 2) Recursive folder excludes (!+) – walk every ancestor folder
-        for (auto dir = parentPath; !dir.empty() && dir != dir.root_path(); dir = dir.parent_path()) {
-            const std::wstring dirName = dir.filename().wstring();
+    // !+x on the scan root: the root and every folder above it count, up to the drive
+    bool excludesRoot(const std::filesystem::path& root) const
+    {
+        for (auto dir = root; !dir.empty() && dir != dir.root_path(); dir = dir.parent_path())
+            if (excludesFolder(dir.filename().wstring()))
+                return true;
+        return false;
+    }
 
-            for (const auto& rawPat : exclude_folders_recursive) {
-                std::wstring_view pat = rawPat;
-                if (!pat.empty() && (pat.front() == L'\\' || pat.front() == L'/'))
-                    pat.remove_prefix(1);
+    // !\x: the files directly inside the folder are left out, its subfolders are not
+    bool excludesFilesIn(const std::wstring& folderName) const
+    {
+        for (const auto& pat : exclude_folders)
+            if (PathMatchSpecW(folderName.c_str(), pat.c_str()))
+                return true;
+        return false;
+    }
 
-                if (PathMatchSpecW(dirName.c_str(), std::wstring{ pat }.c_str()))
-                    return false;
-            }
-        }
-
-        // 3) File-level excludes (!*.log)
+    // !*.log excludes, *.cpp includes: the file name alone decides
+    bool matchFileName(const wchar_t* fileName) const
+    {
         for (const auto& pat : exclude_patterns)
-            if (PathMatchSpecW(fname.c_str(), pat.c_str()))
+            if (PathMatchSpecW(fileName, pat.c_str()))
                 return false;
 
-        // 4) File-level includes (*.cpp…)
         if (include_patterns.empty())
             return true;
 
         for (const auto& pat : include_patterns)
-            if (PathMatchSpecW(fname.c_str(), pat.c_str()))
+            if (PathMatchSpecW(fileName, pat.c_str()))
                 return true;
 
         return false;
@@ -288,47 +298,44 @@ public:
     // header -> BOM/UTF-16 detection -> binary check -> text size -> full read -> decode.
     // Text: content holds UTF-8, enc describes the source encoding.
     // RawBytes: content holds the raw file bytes (binary skip disabled).
+    // content keeps its capacity: a caller loading file after file passes the same string.
     SkipReason loadTextFile(const std::filesystem::path& fp, std::string& content,
         Encoding::EncodingInfo& enc, LoadKind& kind)
     {
         content.clear();
         enc = Encoding::EncodingInfo{};
         kind = LoadKind::Text;
+        auto skip = [&](SkipReason reason) { content.clear(); return fail(reason); };
 
         try {
-            std::error_code ec;
-            const auto fileSize = std::filesystem::file_size(fp, ec);
-            if (ec) return fail(SkipReason::Unreadable);
+            InputFile in(fp);
+            uint64_t fileSize = 0;
+            if (!in.isOpen() || !in.size(fileSize)) return fail(SkipReason::Unreadable);
 
             const size_t maxSize = getEffectiveMaxFileSize();
             if (maxSize > 0 && fileSize > maxSize) return fail(SkipReason::TooLarge);
             if (fileSize > content.max_size()) return fail(SkipReason::TooLarge);   // 32-bit build
 
-            std::ifstream in(fp, std::ios::binary);
-            if (!in) return fail(SkipReason::Unreadable);
-
             // Read header for the binary/encoding decision
-            const size_t headerSize = (fileSize < BINARY_CHECK_SIZE)
-                ? static_cast<size_t>(fileSize)
-                : BINARY_CHECK_SIZE;
-            std::string raw(headerSize, '\0');
-            in.read(raw.data(), static_cast<std::streamsize>(headerSize));
-            const std::streamsize headerLen = in.gcount();
-            if (headerLen <= 0 && fileSize > 0) return fail(SkipReason::Unreadable);
-            raw.resize(static_cast<size_t>((std::max)(headerLen, std::streamsize(0))));
+            const size_t headerSize = static_cast<size_t>((std::min)(fileSize, uint64_t{ BINARY_CHECK_SIZE }));
+            content.resize(headerSize);
+            size_t headerLen = 0;
+            if (!in.read(content.data(), headerSize, headerLen)) return skip(SkipReason::Unreadable);
+            content.resize(headerLen);
 
-            const bool binary = shouldSkipAsBinary(raw.data(), raw.size());
-            if (binary && _skipBinaryFiles) return fail(SkipReason::Binary);
+            const bool binary = shouldSkipAsBinary(content.data(), content.size());
+            if (binary && _skipBinaryFiles) return skip(SkipReason::Binary);
 
             // Text beyond the converters' reach is refused before the full read
-            if (!binary && fileSize > Encoding::MAX_CONVERT_LENGTH) return fail(SkipReason::TooLarge);
+            if (!binary && fileSize > Encoding::MAX_CONVERT_LENGTH) return skip(SkipReason::TooLarge);
 
-            // Append remainder
-            if (fileSize > headerSize) {
-                const size_t offset = raw.size();
-                raw.resize(offset + (static_cast<size_t>(fileSize) - headerSize));
-                in.read(raw.data() + offset, static_cast<std::streamsize>(raw.size() - offset));
-                raw.resize(offset + static_cast<size_t>((std::max)(in.gcount(), std::streamsize(0))));
+            // Append remainder (a file that shrank since the size query ends where it ends now)
+            if (headerLen == headerSize && fileSize > headerSize) {
+                content.resize(static_cast<size_t>(fileSize));
+                size_t restLen = 0;
+                if (!in.read(content.data() + headerLen, content.size() - headerLen, restLen))
+                    return skip(SkipReason::Unreadable);
+                content.resize(headerLen + restLen);
             }
 
             if (binary) {
@@ -342,35 +349,39 @@ public:
                 // disk (write-back stays verbatim). Deliberately NOT
                 // detectEncoding: its CJK/UTF-16 heuristics are tuned for
                 // text files and would guess confidently wrong here.
-                if (Encoding::isValidUtf8(raw.data(), raw.size())) {
+                if (Encoding::isValidUtf8(content.data(), content.size())) {
                     enc.kind = Encoding::Kind::UTF8;
                     enc.withBOM = false;
                     enc.bomBytes = 0;
                 }
-                content = std::move(raw);
                 kind = LoadKind::RawBytes;
                 return SkipReason::None;
             }
 
-            enc = Encoding::detectEncoding(raw.data(), raw.size());
+            enc = Encoding::detectEncoding(content.data(), content.size());
+
+            // UTF-8 is searched as it is: decoding would copy the same bytes, and they write back unchanged
+            if (enc.kind == Encoding::Kind::UTF8) {
+                content.erase(0, static_cast<size_t>(enc.bomBytes));
+                return SkipReason::None;
+            }
+
             std::string u8;
-            if (!Encoding::convertBufferToUtf8(raw.data(), raw.size(), enc, u8))
-                return fail(SkipReason::Undecodable);
+            if (!Encoding::convertBufferToUtf8(content.data(), content.size(), enc, u8))
+                return skip(SkipReason::Undecodable);
 
             // Replace path: refuse files whose decode would not write back losslessly
-            if (_verifyRoundtrip && !Encoding::verifyLosslessDecode(raw.data(), raw.size(), enc, u8))
-                return fail(SkipReason::Undecodable);
+            if (_verifyRoundtrip && !Encoding::verifyLosslessDecode(content.data(), content.size(), enc, u8))
+                return skip(SkipReason::Undecodable);
 
-            content = std::move(u8);
+            content.swap(u8);
             return SkipReason::None;
         }
         catch (const std::bad_alloc&) {
-            content.clear();
-            return fail(SkipReason::TooLarge);
+            return skip(SkipReason::TooLarge);
         }
         catch (...) {
-            content.clear();
-            return fail(SkipReason::Unreadable);
+            return skip(SkipReason::Unreadable);
         }
     }
 
@@ -548,6 +559,42 @@ public:
     sptr_t      pData = 0;
 
 private:
+    // Read access that leaves the file to others meanwhile (they may write, rename or delete it)
+    class InputFile {
+    public:
+        explicit InputFile(const std::filesystem::path& fp)
+            : _h(::CreateFileW(fp.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)) {}
+        ~InputFile() { if (_h != INVALID_HANDLE_VALUE) ::CloseHandle(_h); }
+        InputFile(const InputFile&) = delete;
+        InputFile& operator=(const InputFile&) = delete;
+
+        bool isOpen() const { return _h != INVALID_HANDLE_VALUE; }
+
+        bool size(uint64_t& bytes) const {
+            LARGE_INTEGER s{};
+            if (!::GetFileSizeEx(_h, &s)) return false;
+            bytes = static_cast<uint64_t>(s.QuadPart);
+            return true;
+        }
+
+        // Up to count bytes, fewer only at the end of the file; false on a read error
+        bool read(char* dst, size_t count, size_t& got) {
+            got = 0;
+            while (got < count) {
+                const DWORD chunk = static_cast<DWORD>((std::min)(count - got, size_t{ 1 } << 30));
+                DWORD n = 0;
+                if (!::ReadFile(_h, dst + got, chunk, &n, nullptr)) return false;
+                if (n == 0) break;
+                got += n;
+            }
+            return true;
+        }
+
+    private:
+        HANDLE _h;
+    };
+
     // Counts the skip and hands the reason back to the caller
     SkipReason fail(SkipReason reason) {
         switch (reason) {

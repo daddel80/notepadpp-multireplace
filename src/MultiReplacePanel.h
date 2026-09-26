@@ -1308,7 +1308,8 @@ private:
 
 #pragma region Replace
     void replaceAllInOpenedDocs();
-    bool handleReplaceAllButton(bool showCompletionMessage = true, const std::filesystem::path* explicitPath = nullptr);
+    // standalone false: one document of a run over several, which records history and reports itself
+    bool handleReplaceAllButton(bool standalone = true, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1, Sci_Position verifyFrom = -1); // verifyFrom: start of the confirming search, default the match itself
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX, bool fileScope = false);
@@ -1475,6 +1476,7 @@ private:
 #pragma region Scope
     bool parseColumnAndDelimiterData();
     bool validateDelimiterData();
+    bool loadDelimitersForScan();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
     ColumnInfo getColumnInfo(LRESULT startPosition);
