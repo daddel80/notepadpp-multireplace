@@ -19,7 +19,7 @@ $u16le = [System.Text.Encoding]::Unicode
 $u16be = [System.Text.Encoding]::BigEndianUnicode
 $ansi  = [System.Text.Encoding]::GetEncoding(1252)
 
-[System.IO.File]::WriteAllBytes("$Dir\ansi.txt",         (Bytes ($text + "Gruesse: äöü`r`n") $ansi $null))
+[System.IO.File]::WriteAllBytes("$Dir\ansi.txt",         (Bytes ($text + "Gruesse: $([char]0xE4)$([char]0xF6)$([char]0xFC)`r`n") $ansi $null))
 [System.IO.File]::WriteAllBytes("$Dir\utf8.txt",         (Bytes $text $u8 $null))
 [System.IO.File]::WriteAllBytes("$Dir\utf8-bom.txt",     (Bytes $text $u8 @(0xEF,0xBB,0xBF)))
 [System.IO.File]::WriteAllBytes("$Dir\utf16le-bom.txt",  (Bytes $text $u16le @(0xFF,0xFE)))
@@ -47,13 +47,16 @@ Write-Host "EXPECTED for search 'Fi' (Regex + Match case, filter *.*, subfolders
 Write-Host "Each text file contains 4 hits. 'noext' counts only if PathMatchSpecW matches it for *.*;"
 Write-Host "that behavior is identical in N++ (same API) - note the outcome, it settles finding K2."
 Write-Host ""
-Write-Host "  Skip binary ON : 32 hits in 8 files, [of 11 searched, 3 skipped: 2 binary, 1 not decodable]"
-Write-Host "                   files: ansi, utf8, utf8-bom, utf16le-bom, utf16be-bom, utf16le-nobom, noext, hidden.txt"
-Write-Host "                   skipped: binary.bin + utf16be-nobom (binary; BE-noBOM undetected = N++ parity), utf16-odd (not decodable)"
-Write-Host "                   (without noext: 28 hits in 7 files, of 10 searched)"
+Write-Host "  Skip binary ON : 36 hits in 9 files [9 file(s) searched, 2 skipped: 2 binary]"
+Write-Host "                   files: ansi, utf8, utf8-bom, utf16le-bom, utf16be-bom, utf16le-nobom, utf16-odd, noext, hidden.txt"
+Write-Host "                   skipped: binary.bin + utf16be-nobom (binary; BE-noBOM undetected = N++ parity)"
+Write-Host "                   utf16-odd: the dangling last byte is ignored, as in N++"
+Write-Host "                   (without noext: 32 hits in 8 files, 8 file(s) searched)"
 Write-Host "  Skip binary OFF: +binary.bin as raw bytes (1 hit) and +utf16be-nobom raw (0 hits)"
-Write-Host "                   -> 33 hits in 9 files, [of 11 searched, 1 skipped: 1 not decodable]"
+Write-Host "                   -> 37 hits in 10 files [11 file(s) searched]"
 Write-Host "  Hidden folders ON: additionally hiddendir\inside.txt (+4 hits, +1 file)."
 Write-Host "  Cross-check vs. N++ native Find in Files (same folder, *.*): with skip OFF the FILE SET"
 Write-Host "  must be identical; hit deltas are acceptable only inside binary.bin and utf16be-nobom."
+Write-Host "  Replace in Files on this folder: utf16-odd is skipped as not decodable (its dangling"
+Write-Host "  byte cannot be written back) and stays untouched."
 Write-Host "  Zero-length check: regex search '^' must report one hit per line, same count as N++."

@@ -124,14 +124,14 @@ namespace Encoding {
         return ei;
     }
 
-    // VERBATIM gates of convertBufferToUtf8 (INT_MAX + BOM skip + even-length)
-    bool convertBufferToUtf8_wouldAccept(const char* data, size_t len, const EncodingInfo& src) {
-        if (!data || len == 0) return true;
-        if (len > static_cast<size_t>(INT_MAX)) return false;
-        if (src.bomBytes > 0 && static_cast<size_t>(src.bomBytes) <= len) { data += src.bomBytes; len -= src.bomBytes; }
-        if (src.kind == Kind::UTF8) return true;
-        if (src.kind == Kind::UTF16LE || src.kind == Kind::UTF16BE) return (len % 2) == 0;
-        return true;
+    // VERBATIM: Encoding::MAX_CONVERT_LENGTH
+    constexpr size_t MAX_CONVERT_LENGTH = static_cast<size_t>(INT_MAX);
+
+    // VERBATIM structure of convertBufferToUtf8 for UTF-16: whole code units after
+    // the BOM, a dangling last byte is dropped (N++ does the same)
+    size_t utf16UnitsDecoded(size_t len, const EncodingInfo& src) {
+        if (src.bomBytes > 0 && static_cast<size_t>(src.bomBytes) <= len) len -= src.bomBytes;
+        return len / 2;
     }
 }
 
@@ -145,24 +145,34 @@ struct PipelineResult {
     SkipReason reason = SkipReason::None;
     LoadKind kind = LoadKind::Text;
     Encoding::Kind encKind = Encoding::Kind::ANSI;
+    size_t units = 0;   // UTF-16 code units decoded
 };
 
 struct Counters { size_t binary = 0, tooLarge = 0, unreadable = 0, undecodable = 0; };
 
-PipelineResult loadTextFile_decide(const std::string& fileBytes, bool skipBinaryFiles, Counters& c)
+// fileSize: size on disk (0 = fileBytes.size()); verifyRoundtrip: Replace in Files, modeled
+// for its UTF-16 length aspect (only whole code units are written back)
+PipelineResult loadTextFile_decide(const std::string& fileBytes, bool skipBinaryFiles, Counters& c,
+                                   bool verifyRoundtrip = false, size_t fileSize = 0)
 {
     PipelineResult r;
+    if (fileSize == 0) fileSize = fileBytes.size();
     const size_t headerSize = (fileBytes.size() < BINARY_CHECK_SIZE) ? fileBytes.size() : BINARY_CHECK_SIZE;
 
     const bool binary = shouldSkipAsBinary(fileBytes.data(), headerSize);
     if (binary && skipBinaryFiles) { ++c.binary; r.reason = SkipReason::Binary; return r; }
 
+    if (!binary && fileSize > Encoding::MAX_CONVERT_LENGTH) { ++c.tooLarge; r.reason = SkipReason::TooLarge; return r; }
+
     if (binary) { r.kind = LoadKind::RawBytes; return r; }
 
     const auto enc = Encoding::detectEncoding(fileBytes.data(), fileBytes.size());
     r.encKind = enc.kind;
-    if (!Encoding::convertBufferToUtf8_wouldAccept(fileBytes.data(), fileBytes.size(), enc)) {
-        ++c.undecodable; r.reason = SkipReason::Undecodable; return r;
+    if (enc.kind == Encoding::Kind::UTF16LE || enc.kind == Encoding::Kind::UTF16BE) {
+        r.units = Encoding::utf16UnitsDecoded(fileBytes.size(), enc);
+        if (verifyRoundtrip && static_cast<size_t>(enc.bomBytes) + 2 * r.units != fileBytes.size()) {
+            ++c.undecodable; r.reason = SkipReason::Undecodable; return r;
+        }
     }
     return r;
 }
@@ -205,13 +215,32 @@ int main() {
               rb.reason == SkipReason::Binary && c.binary == 1);
     }
 
-    // ---------- F4 fixed: odd-length UTF-16 is counted as undecodable ----------
+    // ---------- Odd-length UTF-16: Find reads it like N++, Replace refuses it ----------
     {
         Counters c{};
         std::string odd = utf16le(text, true); odd += 'X';
         auto r = loadTextFile_decide(odd, true, c);
-        CHECK("F4' odd-length UTF-16 -> Undecodable, counter incremented",
-              r.reason == SkipReason::Undecodable && c.undecodable == 1);
+        CHECK("F4'' odd-length UTF-16 (Find) -> Text/UTF16LE, dangling byte dropped like N++",
+              r.reason == SkipReason::None && r.kind == LoadKind::Text && r.encKind == Encoding::Kind::UTF16LE
+              && r.units == text.size() && c.undecodable == 0);
+        auto rr = loadTextFile_decide(odd, true, c, true);
+        CHECK("F4'' odd-length UTF-16 (Replace) -> Undecodable, the byte cannot be written back",
+              rr.reason == SkipReason::Undecodable && c.undecodable == 1);
+        auto re = loadTextFile_decide(utf16le(text, true), true, c, true);
+        CHECK("F4'' even-length UTF-16 (Replace) -> roundtrip passes",
+              re.reason == SkipReason::None && c.undecodable == 1);
+    }
+
+    // ---------- Text beyond the converters' reach is refused before the full read ----------
+    {
+        Counters c{};
+        auto r = loadTextFile_decide(text, true, c, false, Encoding::MAX_CONVERT_LENGTH + 1);
+        CHECK("R3' text file over MAX_CONVERT_LENGTH -> TooLarge, counted",
+              r.reason == SkipReason::TooLarge && c.tooLarge == 1);
+        const std::string bin = std::string("\x4D\x5A\x00\x00", 4) + std::string(64, '\x07');
+        auto rb = loadTextFile_decide(bin, false, c, false, Encoding::MAX_CONVERT_LENGTH + 1);
+        CHECK("R3' binary over the limit, skip OFF -> RawBytes (raw search needs no converter)",
+              rb.reason == SkipReason::None && rb.kind == LoadKind::RawBytes && c.tooLarge == 1);
     }
 
     // ---------- Binary option matrix ----------

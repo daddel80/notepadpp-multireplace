@@ -16,7 +16,6 @@
 
 #include "Encoding.h"
 #include <algorithm>
-#include <climits>
 #include <cstring>
 #include <windows.h>
 #pragma comment(lib, "Advapi32.lib") // IsTextUnicode
@@ -248,11 +247,12 @@ namespace Encoding {
     // ---------- string conversions ----------
 
     std::wstring bytesToWString(const char* data, size_t len, UINT cp) {
-        if (!data || len == 0) return std::wstring();
-        int wlen = MultiByteToWideChar(cp, 0, data, static_cast<int>(len), nullptr, 0);
+        if (!data || len == 0 || len > MAX_CONVERT_LENGTH) return std::wstring();
+        const int n = static_cast<int>(len);
+        int wlen = MultiByteToWideChar(cp, 0, data, n, nullptr, 0);
         if (wlen <= 0) return std::wstring();
         std::wstring w(static_cast<size_t>(wlen), L'\0');
-        MultiByteToWideChar(cp, 0, data, static_cast<int>(len), w.data(), wlen);
+        if (MultiByteToWideChar(cp, 0, data, n, w.data(), wlen) != wlen) return std::wstring();
         return w;
     }
 
@@ -263,13 +263,13 @@ namespace Encoding {
     // Permissive mode (flags=0): strict WC_NO_BEST_FIT_CHARS fails on
     // certain codepages (CP866, CP1251, etc.) even for simple ASCII roundtrips.
     std::string wstringToBytes(const std::wstring& w, UINT cp) {
-        if (w.empty()) return std::string();
-        int mlen = WideCharToMultiByte(cp, 0, w.data(), static_cast<int>(w.size()),
-            nullptr, 0, nullptr, nullptr);
+        if (w.empty() || w.size() > MAX_CONVERT_LENGTH) return std::string();
+        const int n = static_cast<int>(w.size());
+        int mlen = WideCharToMultiByte(cp, 0, w.data(), n, nullptr, 0, nullptr, nullptr);
         if (mlen <= 0) return std::string();
         std::string out(static_cast<size_t>(mlen), '\0');
-        WideCharToMultiByte(cp, 0, w.data(), static_cast<int>(w.size()),
-            out.data(), mlen, nullptr, nullptr);
+        if (WideCharToMultiByte(cp, 0, w.data(), n, out.data(), mlen, nullptr, nullptr) != mlen)
+            return std::string();
         return out;
     }
 
@@ -278,24 +278,23 @@ namespace Encoding {
     }
 
     std::string wstringToUtf8(const std::wstring& w) {
-        if (w.empty()) return std::string();
-        int mlen = WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()),
-            nullptr, 0, nullptr, nullptr);
+        if (w.empty() || w.size() > MAX_CONVERT_LENGTH) return std::string();
+        const int n = static_cast<int>(w.size());
+        int mlen = WideCharToMultiByte(CP_UTF8, 0, w.data(), n, nullptr, 0, nullptr, nullptr);
         if (mlen <= 0) return std::string();
         std::string out(static_cast<size_t>(mlen), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()),
-            out.data(), mlen, nullptr, nullptr);
+        if (WideCharToMultiByte(CP_UTF8, 0, w.data(), n, out.data(), mlen, nullptr, nullptr) != mlen)
+            return std::string();
         return out;
     }
 
     std::wstring utf8ToWString(const std::string& u8) {
-        if (u8.empty()) return std::wstring();
-        int wlen = MultiByteToWideChar(CP_UTF8, 0, u8.data(), static_cast<int>(u8.size()),
-            nullptr, 0);
+        if (u8.empty() || u8.size() > MAX_CONVERT_LENGTH) return std::wstring();
+        const int n = static_cast<int>(u8.size());
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, u8.data(), n, nullptr, 0);
         if (wlen <= 0) return std::wstring();
         std::wstring w(static_cast<size_t>(wlen), L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, u8.data(), static_cast<int>(u8.size()),
-            w.data(), wlen);
+        if (MultiByteToWideChar(CP_UTF8, 0, u8.data(), n, w.data(), wlen) != wlen) return std::wstring();
         return w;
     }
 
@@ -323,7 +322,6 @@ namespace Encoding {
     bool convertBufferToUtf8(const char* data, size_t len, const EncodingInfo& src, std::string& outUtf8) {
         outUtf8.clear();
         if (!data || len == 0) return true;
-        if (len > static_cast<size_t>(INT_MAX)) return false; // Win32 converters take int lengths
 
         // Skip BOM bytes if present
         if (src.bomBytes > 0 && static_cast<size_t>(src.bomBytes) <= len) {
@@ -337,15 +335,13 @@ namespace Encoding {
         }
 
         if (src.kind == Kind::UTF16LE || src.kind == Kind::UTF16BE) {
-            // UTF-16 requires even number of bytes
-            if (len % 2 != 0) return false;
-
+            // A dangling last byte belongs to no character; N++ drops it as well
             size_t wcharCount = len / sizeof(wchar_t);
             std::wstring wstr(wcharCount, L'\0');
 
             if (src.kind == Kind::UTF16LE) {
                 // UTF-16LE is native wchar_t on Windows - use memcpy for alignment safety
-                std::memcpy(wstr.data(), data, len);
+                std::memcpy(wstr.data(), data, wcharCount * sizeof(wchar_t));
             }
             else {
                 // UTF-16BE requires byte swapping
@@ -357,7 +353,7 @@ namespace Encoding {
             }
 
             outUtf8 = wstringToUtf8(wstr);
-            return true;
+            return !outUtf8.empty() || wstr.empty();
         }
 
         // ANSI
@@ -375,6 +371,7 @@ namespace Encoding {
         }
 
         std::wstring w = utf8ToWString(u8);
+        if (w.empty() && !u8.empty()) return false;
 
         if (dst.kind == Kind::UTF16LE || dst.kind == Kind::UTF16BE) {
             if (dst.withBOM) appendBOM(dst.kind, outBytes);

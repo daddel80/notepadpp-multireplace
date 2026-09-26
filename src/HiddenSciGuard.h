@@ -25,6 +25,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>             // For std::memchr
+#include <new>                 // For std::bad_alloc
 #include "Encoding.h"
 #include "StringUtils.h"       // For splitFilterPatterns
 #include "Notepad_plus_msgs.h" // For NPPM_*
@@ -284,7 +285,7 @@ public:
     // ========================================================================
 
     // Loads a file and decides ONCE how it is to be searched:
-    // header -> BOM/UTF-16 detection -> binary check -> full read -> decode.
+    // header -> BOM/UTF-16 detection -> binary check -> text size -> full read -> decode.
     // Text: content holds UTF-8, enc describes the source encoding.
     // RawBytes: content holds the raw file bytes (binary skip disabled).
     SkipReason loadTextFile(const std::filesystem::path& fp, std::string& content,
@@ -301,6 +302,7 @@ public:
 
             const size_t maxSize = getEffectiveMaxFileSize();
             if (maxSize > 0 && fileSize > maxSize) return fail(SkipReason::TooLarge);
+            if (fileSize > content.max_size()) return fail(SkipReason::TooLarge);   // 32-bit build
 
             std::ifstream in(fp, std::ios::binary);
             if (!in) return fail(SkipReason::Unreadable);
@@ -317,6 +319,9 @@ public:
 
             const bool binary = shouldSkipAsBinary(raw.data(), raw.size());
             if (binary && _skipBinaryFiles) return fail(SkipReason::Binary);
+
+            // Text beyond the converters' reach is refused before the full read
+            if (!binary && fileSize > Encoding::MAX_CONVERT_LENGTH) return fail(SkipReason::TooLarge);
 
             // Append remainder
             if (fileSize > headerSize) {
@@ -358,6 +363,10 @@ public:
 
             content = std::move(u8);
             return SkipReason::None;
+        }
+        catch (const std::bad_alloc&) {
+            content.clear();
+            return fail(SkipReason::TooLarge);
         }
         catch (...) {
             content.clear();
@@ -453,10 +462,22 @@ public:
     // 6) Hidden-buffer helpers
     // ========================================================================
 
-    void setText(const std::string& txt) {
-        if (!fn || !pData) return;
+    // Caret ends at 0 (SCI_ADDTEXT leaves it at the end): a defined scan start.
+    // False if Scintilla could not take the whole text (out of memory).
+    bool setText(const std::string& txt, int codepage) {
+        if (!fn || !pData) return false;
+        fn(pData, SCI_SETSTATUS, SC_STATUS_OK, 0);
         fn(pData, SCI_CLEARALL, 0, 0);
+        fn(pData, SCI_SETCODEPAGE, codepage, 0);
         fn(pData, SCI_ADDTEXT, txt.length(), reinterpret_cast<sptr_t>(txt.data()));
+        fn(pData, SCI_GOTOPOS, 0, 0);
+        return bufferIntact() && static_cast<size_t>(fn(pData, SCI_GETLENGTH, 0, 0)) == txt.length();
+    }
+
+    // False once Scintilla failed an operation on the buffer; regex warnings do not count
+    bool bufferIntact() const {
+        const sptr_t status = fn(pData, SCI_GETSTATUS, 0, 0);
+        return !(status > SC_STATUS_OK && status < SC_STATUS_WARN_START);
     }
 
     std::string getText() const

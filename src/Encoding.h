@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <climits>
 #include <windows.h>
 
 namespace Encoding {
@@ -65,6 +66,8 @@ namespace Encoding {
     bool roundtripLossless(const char* data, int len, UINT cp);
 
     // ---------- String conversions ----------
+    // Longest input the Win32 converters take (int lengths); longer input converts to empty
+    constexpr size_t MAX_CONVERT_LENGTH = static_cast<size_t>(INT_MAX);
     std::wstring bytesToWString(const std::string& bytes, UINT cp);
     std::wstring bytesToWString(const char* data, size_t len, UINT cp);
     std::string  wstringToBytes(const std::wstring& w, UINT cp);

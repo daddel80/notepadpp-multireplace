@@ -9668,10 +9668,9 @@ void MultiReplace::handleReplaceInFiles() {
         {
             SciBindingGuard bind(this, guard);
 
-            send(SCI_CLEARALL, 0, 0);
-            send(SCI_SETCODEPAGE, codepageForLoadedFile(loadKind, enc), 0);
-            send(SCI_ADDTEXT, (WPARAM)u8in.length(), reinterpret_cast<sptr_t>(u8in.data()));
-            send(SCI_GOTOPOS, 0, 0); // SCI_ADDTEXT leaves the caret at the end; define the scan start
+            if (!guard.setText(u8in, codepageForLoadedFile(loadKind, enc))) {
+                guard.noteSkip(HiddenSciGuard::SkipReason::TooLarge); continue;
+            }
 
             // Hidden-buffer content is not tracked by the editor's change log -
             // force a fresh delimiter scan for every file.
@@ -9679,6 +9678,11 @@ void MultiReplace::handleReplaceInFiles() {
             handleDelimiterPositions(DelimiterOperation::LoadAll);
 
             if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
+
+            // A buffer Scintilla failed on is never written back
+            if (!guard.bufferIntact()) {
+                guard.noteSkip(HiddenSciGuard::SkipReason::TooLarge); continue;
+            }
 
             accumulateListTotals();
 
@@ -10420,10 +10424,8 @@ void MultiReplace::handleFindInFiles() {
                 continue;
             }
         }
-        else {
-            send(SCI_CLEARALL, 0, 0);
-            send(SCI_SETCODEPAGE, codepageForLoadedFile(loadKind, enc), 0);
-            send(SCI_ADDTEXT, (WPARAM)content.size(), reinterpret_cast<sptr_t>(content.data()));
+        else if (!guard.setText(content, codepageForLoadedFile(loadKind, enc))) {
+            guard.noteSkip(HiddenSciGuard::SkipReason::TooLarge); continue;
         }
 
         // Hidden/attached content is not tracked by the editor's change log -
