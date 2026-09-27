@@ -15,6 +15,12 @@
 //      loadDelimitersForScan (parse, full scan of the bound document). The
 //      editor path handleDelimiterPositions is not used there: a pending
 //      document switch made it rebind the scan to the active editor view.
+//   7. A run that cycles tabs holds a DocCycleGuard: the switches are MR's own,
+//      so the FlowTabs cleanup machine stays out of the run (no posted hop, the
+//      editor ends on the user's tab) and the panel's column state survives.
+//      A later real user switch still cleans the padding. Every activation
+//      drops the view's flow tab stops and column styles, so the guard has to
+//      rebuild them for the document it returns to.
 //
 // Mirrors the panel/guard logic verbatim where mirrorable; Scintilla calls
 // are replaced by a reference-counting mock that asserts protocol violations.
@@ -309,6 +315,147 @@ int main() {
         for (int file = 0; file < 3; ++file) scanPath(now);
         CHECK("S6 now: every file scanned on its own document, the switch left to the editor",
               now.bound == 0 && now.scans == 3 && now.documentSwitched);
+    }
+
+    std::printf("\n=== S7 a run cycles tabs: the FlowTabs cleanup machine stays out ===\n\n");
+    {
+        struct Panel {
+            int  prevBuf = 0;                  // g_prevBufId
+            std::unordered_set<int> padBufs;   // g_padBufs: buffers carrying flow padding
+            bool cleanInProgress = false;      // g_cleanInProgress
+            int  pendingCleanId = 0;           // g_pendingCleanId
+            int  returnBufId = 0;              // g_returnBufId
+            bool docSwitched = false;          // documentSwitched
+            bool cycleActive = false;          // DocCycleGuard::active()
+            std::unordered_set<int> marks;     // buffers with painted column highlight
+            bool sorted = true;                // the user's sort state
+            bool viewStops = true;             // per-line flow tab stops (view state)
+            bool viewStyles = true;            // column styles, redefined per language
+            int  delimMapOf = 0;               // buffer the delimiter map describes
+            std::vector<int> scannedWith;      // map used per searched document
+        };
+        struct Editor {
+            std::vector<int> tabs;
+            int active = 0;
+            std::vector<int> posted;           // queued NPPM_ACTIVATEDOC (PostMessage)
+            int buf() const { return tabs[static_cast<size_t>(active)]; }
+            int indexOf(int bufId) const {
+                for (size_t i = 0; i < tabs.size(); ++i)
+                    if (tabs[i] == bufId) return static_cast<int>(i);
+                return -1;
+            }
+        };
+        // MIRROR: onDocumentSwitched(). The guard's early return keeps the
+        // per-view undo mask (not modeled) and skips everything below it.
+        auto onDocumentSwitched = [](Editor& ed, Panel& p) {
+            if (p.cycleActive) return;
+            const int cur = ed.buf();
+            if (p.prevBuf == 0) p.prevBuf = cur;
+            if (p.cleanInProgress && p.pendingCleanId == cur) {          // PHASE A
+                p.padBufs.erase(cur);
+                p.cleanInProgress = false;
+                p.pendingCleanId = 0;
+                ed.posted.push_back(p.returnBufId);
+                return;
+            }
+            if (!p.cleanInProgress && p.prevBuf != cur                   // PHASE B
+                && p.padBufs.count(p.prevBuf) != 0) {
+                p.returnBufId = cur;
+                p.pendingCleanId = p.prevBuf;
+                p.cleanInProgress = true;
+                ed.posted.push_back(p.prevBuf);
+                return;
+            }
+            p.docSwitched = true;                                        // arrival
+            p.marks.erase(cur);
+            p.sorted = false;
+            p.prevBuf = cur;
+        };
+        auto activate = [&](Editor& ed, Panel& p, int index) {
+            ed.active = index;
+            p.viewStops = false;               // SCI_SETDOCPOINTER + defineDocType
+            p.viewStyles = false;
+            onDocumentSwitched(ed, p);
+        };
+        auto drain = [&](Editor& ed, Panel& p) {                 // message loop
+            while (!ed.posted.empty()) {
+                const int target = ed.posted.front();
+                ed.posted.erase(ed.posted.begin());
+                const int idx = ed.indexOf(target);
+                if (idx >= 0) activate(ed, p, idx);
+            }
+        };
+        // MIRROR (before): handleDelimiterPositions(LoadAll) rescans only when the
+        // switch flagged a new document (clear -> empty map) or the map is empty.
+        auto loadEditorPath = [](Panel& p, int cur) {
+            if (p.docSwitched) { p.delimMapOf = 0; p.docSwitched = false; }
+            if (p.delimMapOf == 0) p.delimMapOf = cur;
+            p.scannedWith.push_back(p.delimMapOf);
+        };
+        // MIRROR (now): loadDelimitersForScan always scans the bound document
+        auto loadScanPath = [](Panel& p, int cur) {
+            p.delimMapOf = cur;
+            p.scannedWith.push_back(cur);
+        };
+        // MIRROR: restoreColumnVisuals() in the guard's restore
+        auto restoreVisuals = [](Panel& p) {
+            if (!p.padBufs.empty()) p.viewStops = true;
+            if (!p.marks.empty()) p.viewStyles = true;
+        };
+        auto run = [&](Editor& ed, Panel& p, bool gated, bool rebuild = true) {
+            const int savedIdx = ed.active;
+            p.cycleActive = gated;                               // DocCycleGuard
+            for (size_t i = 0; i < ed.tabs.size(); ++i) {
+                activate(ed, p, static_cast<int>(i));
+                if (gated) loadScanPath(p, ed.buf()); else loadEditorPath(p, ed.buf());
+            }
+            activate(ed, p, savedIdx);                           // cycle.restore()
+            if (gated && rebuild) restoreVisuals(p);
+            p.cycleActive = false;
+            drain(ed, p);
+        };
+
+        // The user sits on the last tab: flow padding on, column highlight painted, sorted
+        const std::vector<int> tabs{ 11, 22, 33 };
+        Editor edB{ tabs, 2, {} };
+        Panel  pB;
+        pB.prevBuf = 33; pB.padBufs = { 33 }; pB.marks = { 33 }; pB.delimMapOf = 33;
+        run(edB, pB, /*gated=*/false);
+        CHECK("S7 before: the run ends on the first tab, not the user's",
+              edB.buf() == 11);
+        CHECK("S7 before: two documents were searched with a foreign delimiter map",
+              pB.scannedWith == std::vector<int>({ 33, 22, 22 }));
+        CHECK("S7 before: highlight, sort state and padding of the user's document are gone",
+              pB.marks.empty() && !pB.sorted && pB.padBufs.empty());
+
+        Editor edN{ tabs, 2, {} };
+        Panel  pN;
+        pN.prevBuf = 33; pN.padBufs = { 33 }; pN.marks = { 33 }; pN.delimMapOf = 33;
+        run(edN, pN, /*gated=*/true);
+        CHECK("S7 now: nothing was posted, the run ends on the user's tab",
+              edN.posted.empty() && edN.buf() == 33);
+        CHECK("S7 now: every document was searched with its own delimiters",
+              pN.scannedWith == tabs);
+        CHECK("S7 now: highlight, sort state and padding of the user's document survive",
+              pN.marks.count(33) == 1 && pN.sorted && pN.padBufs.count(33) == 1);
+        CHECK("S7 now: the run left no document switch behind",
+              pN.prevBuf == 33 && !pN.docSwitched && !pN.cleanInProgress);
+
+        // Without the rebuild the flags would lie: padding in the text, no stops
+        Editor edL{ tabs, 2, {} };
+        Panel  pL;
+        pL.prevBuf = 33; pL.padBufs = { 33 }; pL.marks = { 33 }; pL.delimMapOf = 33;
+        run(edL, pL, /*gated=*/true, /*rebuild=*/false);
+        CHECK("S7 trap: padding kept but stops and styles dropped by the cycle",
+              pL.padBufs.count(33) == 1 && !pL.viewStops && !pL.viewStyles);
+        CHECK("S7 now: stops and styles are rebuilt for the document returned to",
+              pN.viewStops && pN.viewStyles);
+
+        // The machine itself still works: a real switch cleans the padding
+        activate(edN, pN, 0);
+        drain(edN, pN);
+        CHECK("S7 now: a later user switch still cleans the padding",
+              pN.padBufs.empty() && edN.buf() == 11 && pN.docSwitched);
     }
 
     std::printf("\n%s (%d failure%s)\n",

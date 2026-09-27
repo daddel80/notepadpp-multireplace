@@ -1046,6 +1046,39 @@ void MultiReplace::initializeDragAndDrop() {
     }
 }
 
+namespace {
+    // A combo box selects its whole text when it is resized. Keeps the edit
+    // selection of every combo box across a layout pass.
+    class ComboSelectionGuard {
+    public:
+        ComboSelectionGuard(HWND hDlg, const std::map<int, ControlInfo>& controls)
+        {
+            for (const auto& [id, info] : controls) {
+                if (!info.className || wcscmp(info.className, WC_COMBOBOX) != 0) continue;
+                COMBOBOXINFO cbi = { sizeof(COMBOBOXINFO) };
+                const HWND hCombo = GetDlgItem(hDlg, id);
+                if (!hCombo || !GetComboBoxInfo(hCombo, &cbi) || !cbi.hwndItem) continue;
+                Selection sel{ cbi.hwndItem, 0, 0 };
+                SendMessage(sel.hEdit, EM_GETSEL, reinterpret_cast<WPARAM>(&sel.start), reinterpret_cast<LPARAM>(&sel.end));
+                _selections.push_back(sel);
+            }
+        }
+
+        ~ComboSelectionGuard()
+        {
+            for (const Selection& sel : _selections)
+                SendMessage(sel.hEdit, EM_SETSEL, static_cast<WPARAM>(sel.start), static_cast<LPARAM>(sel.end));
+        }
+
+        ComboSelectionGuard(const ComboSelectionGuard&) = delete;
+        ComboSelectionGuard& operator=(const ComboSelectionGuard&) = delete;
+
+    private:
+        struct Selection { HWND hEdit; DWORD start; DWORD end; };
+        std::vector<Selection> _selections;
+    };
+}
+
 void MultiReplace::moveAndResizeControls(bool moveStatic) {
     int moveCount = 0;
     for (const auto& pair : ctrlMap) {
@@ -1056,7 +1089,8 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
     HDWP hdwp = BeginDeferWindowPos(moveCount);
     if (!hdwp) return;
 
-    bool anyLayoutChanged = false;
+    // Restores on return, after EndDeferWindowPos has run the moves
+    const ComboSelectionGuard comboSelections(_hSelf, ctrlMap);
 
     for (const auto& pair : ctrlMap) {
         int ctrlId = pair.first;
@@ -1087,33 +1121,12 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
             }
         }
 
-        // Save selection
-        bool isComboBox = (ctrlInfo.className && wcscmp(ctrlInfo.className, WC_COMBOBOX) == 0);
-        bool isSelectionSensitive = isComboBox || ctrlId == IDC_REPLACE_HIT_EDIT ||
-            ctrlId == IDC_COLUMN_NUM_EDIT || ctrlId == IDC_DELIMITER_EDIT ||
-            ctrlId == IDC_QUOTECHAR_EDIT;
-
-        DWORD startSelection = 0, endSelection = 0;
-        if (isSelectionSensitive) {
-            SendMessage(resizeHwnd, CB_GETEDITSEL, reinterpret_cast<WPARAM>(&startSelection), reinterpret_cast<LPARAM>(&endSelection));
-        }
-
         // Queue Move
         hdwp = DeferWindowPos(hdwp, resizeHwnd, nullptr, targetX, targetY, targetW, targetH,
             SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
-
-        // Restore selection
-        if (isSelectionSensitive) {
-            SendMessage(resizeHwnd, CB_SETEDITSEL, 0, MAKELPARAM(startSelection, endSelection));
-        }
-
-        anyLayoutChanged = true;
     }
 
     EndDeferWindowPos(hdwp);
-
-    if (anyLayoutChanged) {
-    }
 
     // The New-List "+" anchors to the last tab's right edge, computed
     // dynamically. Running this at the end of every layout pass keeps it
@@ -1372,10 +1385,6 @@ void MultiReplace::updateFilesPanel()
 
             // Showing: repaint panel (title + frame + children) safely
             repaintPanelContents(hGrp, titleText);
-            // Clear selection in edit fields after opening the panel
-            SendMessage(GetDlgItem(_hSelf, IDC_FILTER_EDIT), CB_SETEDITSEL, 0, 0);
-            if (inFilesMode)
-                SendMessage(GetDlgItem(_hSelf, IDC_DIR_EDIT), CB_SETEDITSEL, 0, 0);
         }
         else {
 
@@ -1718,19 +1727,22 @@ void MultiReplace::refreshUILanguage()
     _MultiReplace.positionAndResizeControls(rc.right, rc.bottom);
 
     // Update all controls - SetWindowPos forces Windows to recalculate text extent
-    for (auto& pair : _MultiReplace.ctrlMap) {
-        HWND hCtrl = GetDlgItem(_MultiReplace._hSelf, pair.first);
-        if (!hCtrl) continue;
+    {
+        const ComboSelectionGuard comboSelections(_MultiReplace._hSelf, _MultiReplace.ctrlMap);
+        for (auto& pair : _MultiReplace.ctrlMap) {
+            HWND hCtrl = GetDlgItem(_MultiReplace._hSelf, pair.first);
+            if (!hCtrl) continue;
 
-        // Only controls with a windowName (skip edit fields/comboboxes)
-        if (pair.second.windowName && pair.second.windowName[0] != L'\0') {
-            SetWindowTextW(hCtrl, pair.second.windowName);
+            // Only controls with a windowName (skip edit fields/comboboxes)
+            if (pair.second.windowName && pair.second.windowName[0] != L'\0') {
+                SetWindowTextW(hCtrl, pair.second.windowName);
+            }
+
+            SetWindowPos(hCtrl, nullptr,
+                pair.second.x, pair.second.y,
+                pair.second.cx, pair.second.cy,
+                SWP_NOZORDER | SWP_NOACTIVATE);
         }
-
-        SetWindowPos(hCtrl, nullptr,
-            pair.second.x, pair.second.y,
-            pair.second.cx, pair.second.cy,
-            SWP_NOZORDER | SWP_NOACTIVATE);
     }
 
     // The ctrlMap loop above resets split-button labels to their defaults
@@ -7573,26 +7585,9 @@ void MultiReplace::replaceAllInOpenedDocs()
     bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
     bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
 
-    // Remember which doc was active in each view, and which view had focus
-    LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-    // lParam must be MAIN_VIEW(0)/SUB_VIEW(1); SECOND_VIEW(2) would read the MAIN index.
-    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
-    int savedView = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
-
-    // Local lambda to rebind _hScintilla to a specific view.
-    // Cannot use pointerToScintilla() here because NPPM_GETCURRENTSCINTILLA
-    // returns the *focused* view, not the one we just activated via NPPM_ACTIVATEDOC.
-    auto bindToView = [&](int view) {
-        _hScintilla = (view == MAIN_VIEW)
-            ? nppData._scintillaMainHandle
-            : nppData._scintillaSecondHandle;
-        s_hScintilla = _hScintilla;
-        pSciMsg = reinterpret_cast<SciFnDirect>(
-            ::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0));
-        pSciWndData = static_cast<sptr_t>(
-            ::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
-        };
+    // The run switches tabs itself: the editor returns to its documents on exit
+    DocCycleGuard cycle;
+    const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
     // Read document filter: when "All documents" is unchecked in the
     // Open Documents panel, skip files that don't match the filter.
@@ -7626,7 +7621,11 @@ void MultiReplace::replaceAllInOpenedDocs()
         ++docsSearched;
 
         bindToView(view);  // rebind _hScintilla to the activated view
-        handleDelimiterPositions(DelimiterOperation::LoadAll);
+
+        // Every document brings its own delimiters and its own selection
+        if (columnMode && !loadDelimitersForScan()) return false;
+        m_selectionScope.clear();
+
         if (!handleReplaceAllButton(false)) return false; // aborted via Stop/Error
         grandTotalReplace += m_lastTotalReplaceCount;
 
@@ -7654,18 +7653,8 @@ void MultiReplace::replaceAllInOpenedDocs()
         }
     }
 
-    // Restore the originally active document in each view
-    if (visibleMain)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
-    if (visibleSecond)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
-
-    // Restore focus to the view that was originally active
-    int restoreView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
-    LRESULT restoreIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
-    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, restoreView, restoreIdx);
-    bindToView(restoreView);
-    ::SetFocus(_hScintilla);  // give keyboard focus back to the original view
+    discardDelimiterSnapshot();
+    cycle.restore();
 
     // Write back only the enabled entries
     for (size_t j = 0; j < replaceListData.size(); ++j) {
@@ -7682,13 +7671,6 @@ void MultiReplace::replaceAllInOpenedDocs()
         docsSummary += LM.get(L"status_docs_filtered",
             { StringUtils::formatNumber(docsSearched), StringUtils::formatNumber(docsFilteredOut) });
     showStatusMessage(docsSummary, MessageStatus::Success);
-
-    // Refresh column highlighting on the active doc (suppressed during bulk replace)
-    if (isColumnHighlighted) {
-        findAllDelimitersInDocument();
-        reapplyColumnHighlighting();
-    }
-
 }
 
 // One-pass Replace All: single sweep, the nearest match of any enabled
@@ -9364,31 +9346,6 @@ static std::wstring openDocPathKey(std::wstring s) {
     return s;
 }
 
-// The active document of each view plus the focused view, for restoring
-// the editor after a scan switched tabs.
-struct ActiveDocs { LRESULT mainIdx; LRESULT subIdx; int focusView; };
-
-static ActiveDocs captureActiveDocs()
-{
-    ActiveDocs a{ -1, -1, -1 };
-    a.mainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-    a.subIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&a.focusView));
-    return a;
-}
-
-static void restoreActiveDocs(const ActiveDocs& a)
-{
-    if (a.mainIdx >= 0)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, a.mainIdx);
-    if (a.subIdx >= 0)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, a.subIdx);
-    const int focusView = (a.focusView == 0) ? MAIN_VIEW : SUB_VIEW;
-    const LRESULT focusIdx = (a.focusView == 0) ? a.mainIdx : a.subIdx;
-    if (focusIdx >= 0)   // focused view last
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
-}
-
 static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
     const std::vector<std::filesystem::path>& files, OpenDocProbe probe)
 {
@@ -9440,7 +9397,7 @@ static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
         return result;
     }
 
-    const ActiveDocs saved = captureActiveDocs();
+    const MultiReplace::DocCycleGuard cycle;
 
     for (const auto& d : toProbe) {
         ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, d.view, d.index);
@@ -9458,8 +9415,22 @@ static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
         result.emplace(d.key, entry);
     }
 
-    restoreActiveDocs(saved);
     return result;
+}
+
+MultiReplace::SciBindingGuard::SciBindingGuard(MultiReplace* s, HiddenSciGuard& g)
+    : self(s), guard(g), oldSci(s->_hScintilla), oldFn(s->pSciMsg), oldData(s->pSciWndData)
+{
+    self->_hScintilla = guard.hSci;
+    self->pSciMsg = guard.fn;
+    self->pSciWndData = guard.pData;
+}
+
+MultiReplace::SciBindingGuard::~SciBindingGuard()
+{
+    self->_hScintilla = oldSci;
+    self->pSciMsg = oldFn;
+    self->pSciWndData = oldData;
 }
 
 void MultiReplace::handleReplaceInFiles() {
@@ -9562,40 +9533,26 @@ void MultiReplace::handleReplaceInFiles() {
     // because a disk write under unsaved edits would fork the file: skip and
     // report.
     const bool liveDocs = searchOpenDocsEnabled;
+
+    // Probe and run switch tabs: one cycle for both
+    DocCycleGuard cycle;
     const auto openDocs = collectOpenScanDocs(files,
         liveDocs ? OpenDocProbe::Enumerate : OpenDocProbe::Dirty);
-    const ActiveDocs savedDocs = captureActiveDocs();
-    bool activatedAny = false;
     const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
     showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
     ScanStatusThrottle progress;
     ScanMessagePump pump;
 
-    // Per-file binding guards: the hidden buffer for files on disk, an editor
-    // view for open documents. Both restore the previous binding on exit.
-    struct SciBindingGuard {
-        MultiReplace* self;
-        HWND oldSci; SciFnDirect oldFn; sptr_t oldData;
-        HiddenSciGuard& g;
-        SciBindingGuard(MultiReplace* s, HiddenSciGuard& guard) : self(s), g(guard) {
-            oldSci = s->_hScintilla; oldFn = s->pSciMsg; oldData = s->pSciWndData;
-            s->_hScintilla = g.hSci; s->pSciMsg = g.fn; s->pSciWndData = g.pData;
-        }
-        ~SciBindingGuard() {
-            self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData;
-        }
-    };
+    // Per-file binding: the hidden buffer for files on disk (SciBindingGuard),
+    // an editor view for open documents. Both restore the previous binding.
     struct ViewBindingGuard {
         MultiReplace* self;
         HWND oldSci; HWND oldShared; SciFnDirect oldFn; sptr_t oldData;
         ViewBindingGuard(MultiReplace* s, int view) : self(s) {
             oldSci = s->_hScintilla; oldShared = MultiReplace::s_hScintilla;
             oldFn = s->pSciMsg; oldData = s->pSciWndData;
-            s->_hScintilla = (view == MAIN_VIEW) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-            MultiReplace::s_hScintilla = s->_hScintilla;
-            s->pSciMsg = reinterpret_cast<SciFnDirect>(::SendMessage(s->_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0));
-            s->pSciWndData = static_cast<sptr_t>(::SendMessage(s->_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
+            s->bindToView(view);
         }
         ~ViewBindingGuard() {
             self->_hScintilla = oldSci; MultiReplace::s_hScintilla = oldShared;
@@ -9634,15 +9591,17 @@ void MultiReplace::handleReplaceInFiles() {
     // is ever saved behind their back.
     auto replaceInOpenDoc = [&](int view, int index, const std::filesystem::path& fp) {
         ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, view, index);
-        activatedAny = true;
         ViewBindingGuard bind(this, view);
 
         if (send(SCI_GETREADONLY, 0, 0)) { guard.noteSkip(HiddenSciGuard::SkipReason::ReadOnly); return; }
         const bool wasDirty = (send(SCI_GETMODIFY, 0, 0) != 0);
 
         StrictReplaceCodepage strict(this);
-        _delimiterPositionsStale = true;
-        handleDelimiterPositions(DelimiterOperation::LoadAll);
+
+        // Every document brings its own delimiters and its own selection
+        if (columnMode && !loadDelimitersForScan()) { aborted = true; return; }
+        m_selectionScope.clear();
+
         if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
 
         if (m_lastTotalReplaceCount > 0 && strict.lossy()) {
@@ -9734,7 +9693,8 @@ void MultiReplace::handleReplaceInFiles() {
         if (aborted) break; // ensures RAII restored before leaving loop
     }
 
-    if (activatedAny) restoreActiveDocs(savedDocs);
+    discardDelimiterSnapshot();
+    cycle.restore();
 
     if (useListEnabled) {
         for (size_t i = 0; i < replaceListData.size(); ++i) {
@@ -9743,9 +9703,6 @@ void MultiReplace::handleReplaceInFiles() {
         }
         refreshUIListView();
     }
-
-    // Invalidate the last scanned file's delimiter snapshot (see Find in Files).
-    _delimiterPositionsStale = true;
 
     // status line
     if (!_isShuttingDown) {
@@ -10087,22 +10044,10 @@ void MultiReplace::handleFindAllInDocsButton()
 
     dock.startSearchBlock(placeholder, useListEnabled ? groupResultsEnabled : false, false);
 
-    // Rebind _hScintilla to a specific view (not focus-dependent).
-    // NPPM_GETCURRENTSCINTILLA follows keyboard focus, not NPPM_ACTIVATEDOC,
-    // so we must bind explicitly when iterating across views.
-    auto bindToView = [&](int view) {
-        _hScintilla = (view == MAIN_VIEW)
-            ? nppData._scintillaMainHandle
-            : nppData._scintillaSecondHandle;
-        s_hScintilla = _hScintilla;
-        pSciMsg = reinterpret_cast<SciFnDirect>(
-            ::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0));
-        pSciWndData = static_cast<sptr_t>(
-            ::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
-        };
+    const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
     auto processCurrentBuffer = [&](int view) {
-        bindToView(view);
+        bindToView(view);   // rebind _hScintilla to the activated view
         auto sciSend = [this](UINT m, WPARAM w = 0, LPARAM l = 0)->LRESULT { return send(m, w, l); };  // Direct-Function
 
         wchar_t wBuf[MAX_PATH] = {};
@@ -10114,7 +10059,6 @@ void MultiReplace::handleFindAllInDocsButton()
         SelectionInfo sel = getSelectionInfo(false);
         if (selMode && sel.length == 0) return;
         Sci_Position scanStart = selMode ? sel.startPos : 0;
-        const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
         ResultDock::FileMap fileMap;
         int hitsInFile = 0;
@@ -10195,11 +10139,8 @@ void MultiReplace::handleFindAllInDocsButton()
         }
         };
 
-    LRESULT savedMainIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW);
-    // lParam must be MAIN_VIEW(0)/SUB_VIEW(1); SECOND_VIEW(2) would read the MAIN index.
-    LRESULT savedSubIdx = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW);
-    int savedView = -1;
-    ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&savedView));
+    // The run switches tabs itself: the editor returns to its documents on exit
+    DocCycleGuard cycle;
     const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
     const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
 
@@ -10230,7 +10171,7 @@ void MultiReplace::handleFindAllInDocsButton()
                     reinterpret_cast<LPARAM>(fnBuf));
                 if (!matchesDocFilter(fnBuf, docFilter)) { ++docsFilteredOut; continue; }
             }
-            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnMode && !loadDelimitersForScan()) break;   // own delimiters per document
             processCurrentBuffer(MAIN_VIEW);
             ++docsSearched;
         }
@@ -10245,23 +10186,13 @@ void MultiReplace::handleFindAllInDocsButton()
                     reinterpret_cast<LPARAM>(fnBuf));
                 if (!matchesDocFilter(fnBuf, docFilter)) { ++docsFilteredOut; continue; }
             }
-            handleDelimiterPositions(DelimiterOperation::LoadAll);
+            if (columnMode && !loadDelimitersForScan()) break;   // own delimiters per document
             processCurrentBuffer(SUB_VIEW);
             ++docsSearched;
         }
     }
-    // Restore the originally active document in each view
-    if (mainVis)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, savedMainIdx);
-    if (subVis)
-        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, savedSubIdx);
-
-    // Restore focus to the view that was originally active
-    int restoreView = (savedView == 0) ? MAIN_VIEW : SUB_VIEW;
-    LRESULT restoreIdx = (savedView == 0) ? savedMainIdx : savedSubIdx;
-    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, restoreView, restoreIdx);
-    bindToView(restoreView);
-    ::SetFocus(_hScintilla);  // give keyboard focus back to the original view
+    discardDelimiterSnapshot();
+    cycle.restore();
 
     if (useListEnabled) {
         for (size_t i = 0; i < listHitTotals.size(); ++i) {
@@ -10427,15 +10358,6 @@ void MultiReplace::handleFindInFiles() {
     ScanStatusThrottle progress;
     ScanMessagePump pump;
 
-    struct SciBindingGuard {
-        MultiReplace* self; HWND oldSci; SciFnDirect oldFn; sptr_t oldData; HiddenSciGuard& g;
-        SciBindingGuard(MultiReplace* s, HiddenSciGuard& guard) : self(s), g(guard) {
-            oldSci = s->_hScintilla; oldFn = s->pSciMsg; oldData = s->pSciWndData;
-            s->_hScintilla = g.hSci; s->pSciMsg = g.fn; s->pSciWndData = g.pData;
-        }
-        ~SciBindingGuard() { self->_hScintilla = oldSci; self->pSciMsg = oldFn; self->pSciWndData = oldData; }
-    };
-
     bool aborted = false;
     std::string content;   // file after file loads into the same string
 
@@ -10541,9 +10463,7 @@ void MultiReplace::handleFindInFiles() {
     dock.ensureCreatedAndVisible(nppData);
     if (ResultDock::purgeEnabled()) dock.clear();
 
-    // The loop left lineDelimiterPositions describing the last scanned file -
-    // invalidate so the next editor CSV operation rescans the live document.
-    _delimiterPositionsStale = true;
+    discardDelimiterSnapshot();
 
     // Report what was actually searched: files the loop reached (idx falls short
     // of files.size() when canceled), minus everything the guard skipped.
@@ -13848,6 +13768,17 @@ bool MultiReplace::loadDelimitersForScan() {
     return true;
 }
 
+// After a run over other documents the cached delimiters and the change log
+// describe a foreign document. The editor's column state stays untouched.
+void MultiReplace::discardDelimiterSnapshot() {
+    lineDelimiterPositions.clear();
+    invalidateCsvRowCache();
+    logChanges.clear();
+    isLoggingEnabled = false;
+    textModified = false;
+    _delimiterPositionsStale = true;
+}
+
 void MultiReplace::findAllDelimitersInDocument() {
 
     lineDelimiterPositions.clear();
@@ -14151,6 +14082,24 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     // --- Viewport restore
     restoreViewStateExact(vs);
+}
+
+// A document cycle drops what the view holds: the per-line flow tab stops, and
+// the column styles, which Notepad++ redefines per language on every activation
+// (ScintillaEditView::activateBuffer -> defineDocType). Rebuild both for the
+// document the cycle returned to; the aligned padding itself is text and stays.
+void MultiReplace::restoreColumnVisuals() {
+    if (!_flowTabsActive && !isColumnHighlighted) return;
+
+    findAllDelimitersInDocument();
+
+    if (_flowTabsActive)
+        applyFlowTabStops();
+
+    if (isColumnHighlighted) {
+        initializeColumnStyles();
+        reapplyColumnHighlighting();
+    }
 }
 
 void MultiReplace::reapplyColumnHighlighting() {
@@ -20279,6 +20228,9 @@ void MultiReplace::onDocumentSwitched()
     // Re-arm container-undo notify for the now-active view (mask is per view).
     self->ensureContainerUndoNotify();
 
+    // MR is cycling documents itself: no user switch, only the mask above applies
+    if (DocCycleGuard::active()) return;
+
     const BufferId currBufId =
         (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
@@ -20402,6 +20354,19 @@ void MultiReplace::onDocumentSwitched()
 
     // This buffer is now the "previous" for the *next* user switch
     g_prevBufId = currBufId;
+}
+
+// Bind to one view explicitly. pointerToScintilla() cannot do this:
+// NPPM_GETCURRENTSCINTILLA returns the focused view, not the activated one.
+void MultiReplace::bindToView(int view) {
+    _hScintilla = (view == MAIN_VIEW)
+        ? nppData._scintillaMainHandle
+        : nppData._scintillaSecondHandle;
+    s_hScintilla = _hScintilla;
+    pSciMsg = reinterpret_cast<SciFnDirect>(
+        ::SendMessage(_hScintilla, SCI_GETDIRECTFUNCTION, 0, 0));
+    pSciWndData = static_cast<sptr_t>(
+        ::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
 }
 
 void MultiReplace::pointerToScintilla() {

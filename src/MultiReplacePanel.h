@@ -537,6 +537,72 @@ public:
         ScopedRedrawLock& operator=(const ScopedRedrawLock&) = delete;
     };
 
+    // RAII guard for a run that drives the tab bar itself (Find/Replace in
+    // Docs, the open-document probes of the Files runs). The editor returns to
+    // its documents, focused view and column visuals, and while the guard is
+    // held onDocumentSwitched skips the state resets of a real user switch.
+    class DocCycleGuard {
+        LRESULT _mainIdx;
+        LRESULT _subIdx;
+        int     _focusView;
+        bool    _prev;
+        bool    _done;
+        inline static bool _active = false;
+    public:
+        DocCycleGuard()
+            : _mainIdx(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW)),
+            _subIdx(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW)),
+            _focusView(-1), _prev(_active), _done(false)
+        {
+            ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&_focusView));
+            _active = true;
+        }
+        ~DocCycleGuard() { restore(); }
+
+        // Re-activates the saved documents, focused view last, and ends the guard
+        void restore() {
+            if (_done) return;
+            _done = true;
+            if (_mainIdx >= 0)
+                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, _mainIdx);
+            if (_subIdx >= 0)
+                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, _subIdx);
+            const int focusView = (_focusView == 0) ? MAIN_VIEW : SUB_VIEW;
+            const LRESULT focusIdx = (_focusView == 0) ? _mainIdx : _subIdx;
+            if (focusIdx >= 0) {
+                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
+                if (instance) {
+                    instance->bindToView(focusView);
+                    ::SetFocus(instance->_hScintilla);
+                    if (!_prev) instance->restoreColumnVisuals();   // outermost cycle only
+                }
+            }
+            _active = _prev;
+        }
+
+        static bool active() { return _active; }
+
+        DocCycleGuard(const DocCycleGuard&) = delete;
+        DocCycleGuard& operator=(const DocCycleGuard&) = delete;
+    };
+
+    // RAII guard: binds the panel to the hidden scan buffer and restores the
+    // previous binding on exit. Defined in the .cpp, HiddenSciGuard is only
+    // forward declared here.
+    class SciBindingGuard {
+        MultiReplace* self;
+        HiddenSciGuard& guard;
+        HWND oldSci;
+        SciFnDirect oldFn;
+        sptr_t oldData;
+    public:
+        SciBindingGuard(MultiReplace* s, HiddenSciGuard& g);
+        ~SciBindingGuard();
+
+        SciBindingGuard(const SciBindingGuard&) = delete;
+        SciBindingGuard& operator=(const SciBindingGuard&) = delete;
+    };
+
     // RAII bool guard: sets a flag on construction, restores it on scope exit
     // (also on early return or exception). Used to make the FlowTab undo-replay
     // flag self-healing so the normal toggle path can never get stuck.
@@ -1444,6 +1510,7 @@ private:
     void handleColumnGridTabsButton();
     void flowTabsFinalizeUndo();
     void ensureContainerUndoNotify();
+    void bindToView(int view);
     void handleDuplicatesButton();
     void findAndMarkDuplicates(bool showDialog = true);
     bool scanForDuplicates();
@@ -1477,6 +1544,7 @@ private:
     bool parseColumnAndDelimiterData();
     bool validateDelimiterData();
     bool loadDelimitersForScan();
+    void discardDelimiterSnapshot();
     void findAllDelimitersInDocument();
     void findDelimitersInLine(LRESULT line);
     ColumnInfo getColumnInfo(LRESULT startPosition);
@@ -1488,6 +1556,7 @@ private:
     void initializeColumnStyles();
     void handleHighlightColumnsInDocument();
     void reapplyColumnHighlighting();
+    void restoreColumnVisuals();
     void highlightColumnsInLine(LRESULT line);
     void fixHighlightAtDocumentEnd();
     void handleClearColumnMarks();
