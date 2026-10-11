@@ -146,13 +146,6 @@ void ResultDock::clear()
     for (int l = 0; l < lineCount; ++l)
         S(SCI_SETFOLDLEVEL, l, SC_FOLDLEVELBASE);;
 
-    // Clear every indicator used by the dock
-    for (int ind : { INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE })
-    {
-        S(SCI_SETINDICATORCURRENT, ind);
-        S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
-    }
-
     // Clear per-entry background color indicators
     for (int i = 0; i < MAX_ENTRY_COLORS; ++i) {
         S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + i);
@@ -244,20 +237,13 @@ void ResultDock::applyStyling() const
 {
     if (!_hSci) return;
 
-    // 1) Clear fixed indicators
-    const std::vector<int> indicatorsToClear = { INDIC_LINENUMBER_FORE, INDIC_MATCH_FORE };
-    for (int id : indicatorsToClear) {
-        S(SCI_SETINDICATORCURRENT, id);
-        S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
-    }
-
-    // 2) Clear dynamic entry indicators (Range 0 to MAX_ENTRY_COLORS)
+    // 1) Clear dynamic entry indicators (Range 0 to MAX_ENTRY_COLORS)
     for (int i = 0; i < MAX_ENTRY_COLORS; ++i) {
         S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + i);
         S(SCI_INDICATORCLEARRANGE, 0, S(SCI_GETLENGTH));
     }
 
-    // 3) Configure Dynamic Indicators based on _slotToColor map
+    // 2) Configure Dynamic Indicators based on _slotToColor map
     const bool dark = ::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
     const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
     const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
@@ -277,8 +263,11 @@ void ResultDock::applyStyling() const
         }
     }
 
-    // 4) Line numbers and matches of all hits
-    applyHitIndicators(_hits);
+    // 3) Styles of the whole text: headers, line numbers, matches
+    const Sci_Position length = S(SCI_GETLENGTH);
+    const char* text = reinterpret_cast<const char*>(S(SCI_GETCHARACTERPOINTER));
+    if (text && length > 0)
+        applyStylingRange(0, std::string_view(text, static_cast<size_t>(length)), _hits);
     markAllStyled();
 }
 void ResultDock::onThemeChanged() {
@@ -565,7 +554,8 @@ void ResultDock::create(const NppData& npp)
     ::SendMessageW(_hSci, SCI_SETUNDOCOLLECTION, FALSE, 0);   // no undo stack
     ::SendMessageW(_hSci, SCI_SETMODEVENTMASK, 0, 0);         // no mod events
     ::SendMessageW(_hSci, SCI_SETSCROLLWIDTHTRACKING, TRUE, 0);
-    ::SendMessageW(_hSci, SCI_SETWRAPMODE, wrapEnabled() ? SC_WRAP_WORD : SC_WRAP_NONE, 0);
+    // Whitespace only: SC_WRAP_WORD would also break where a match style starts or ends
+    ::SendMessageW(_hSci, SCI_SETWRAPMODE, wrapEnabled() ? SC_WRAP_WHITESPACE : SC_WRAP_NONE, 0);
 
     // 3a) **Performance/caching**: keep layout cached for whole doc + buffered drawing
     ::SendMessageW(_hSci, SCI_SETBUFFEREDDRAW, TRUE, 0);
@@ -740,14 +730,14 @@ void ResultDock::applyTheme()
     S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
     S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);
 
-    // Line number indicator
-    S(SCI_INDICSETSTYLE, INDIC_LINENUMBER_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_LINENUMBER_FORE, theme.lineNr);
-
-    // Red match color
-    S(SCI_INDICSETSTYLE, INDIC_MATCH_FORE, INDIC_TEXTFORE);
-    S(SCI_INDICSETFORE, INDIC_MATCH_FORE, theme.matchFg);
-    S(SCI_INDICSETUNDER, INDIC_MATCH_FORE, TRUE);
+    // Line numbers and matches: the default text in their own color
+    for (const auto& [style, fore] : { std::pair<int, COLORREF>{ STYLE_HIT_NUMBER, theme.lineNr },
+                                       std::pair<int, COLORREF>{ STYLE_HIT_MATCH, theme.matchFg } }) {
+        S(SCI_STYLESETFONT, style, reinterpret_cast<LPARAM>("Consolas"));
+        S(SCI_STYLESETSIZE, style, 10);
+        S(SCI_STYLESETFORE, style, fore);
+        S(SCI_STYLESETBACK, style, editorBg);
+    }
 
     // Per-entry background color indicators
     // Text color remains standard (matchFg), only background varies per entry
@@ -785,73 +775,65 @@ void ResultDock::applyTheme()
 
 // -------- Range styling / folding (partial updates) -------
 
-void ResultDock::applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const
+// Styles of text that starts at document position pos0, set in one call: every line by its
+// indent as SCI_GETLINEINDENTATION counts it, the line numbers of the hits and, without
+// per-entry colors, their matches. Then the per-entry backgrounds of the hits.
+void ResultDock::applyStylingRange(Sci_Position pos0, std::string_view text, const std::vector<Hit>& hits) const
 {
-    if (!_hSci || len <= 0) return;
-
-    const Sci_Position endPos = pos0 + len;
-    const int firstLine = static_cast<int>(S(SCI_LINEFROMPOSITION, pos0));
-    const int lastLine = static_cast<int>(S(SCI_LINEFROMPOSITION, endPos));
-
-    // Base styling using indentation (no GETLINE)
-    Sci_Position lineStartPos = S(SCI_POSITIONFROMLINE, firstLine);
-    S(SCI_STARTSTYLING, lineStartPos, 0);
+    if (!_hSci || text.empty()) return;
 
     const int IND_SRCH = INDENT_SPACES[(int)LineLevel::SearchHdr];
     const int IND_FILE = INDENT_SPACES[(int)LineLevel::FileHdr];
     const int IND_CRIT = INDENT_SPACES[(int)LineLevel::CritHdr];
+    const int tabWidth = (std::max)(1, static_cast<int>(S(SCI_GETTABWIDTH)));
 
-    for (int line = firstLine; line <= lastLine; ++line) {
-        const int ll = static_cast<int>(S(SCI_LINELENGTH, line));
-
+    std::string styles(text.size(), static_cast<char>(STYLE_DEFAULT));
+    for (size_t lineStart = 0; lineStart < text.size();) {
+        const size_t eol = text.find_first_of("\r\n", lineStart);
+        const size_t next = (eol == std::string_view::npos) ? text.size()
+            : (text[eol] == '\r' && eol + 1 < text.size() && text[eol + 1] == '\n') ? eol + 2 : eol + 1;
+        int indent = 0;
+        for (size_t i = lineStart; i < text.size() && (text[i] == ' ' || text[i] == '\t'); ++i)
+            indent = (text[i] == ' ') ? indent + 1 : (indent / tabWidth + 1) * tabWidth;
         int style = STYLE_DEFAULT;
-        if (ll > 0) {
-            const int indent = static_cast<int>(S(SCI_GETLINEINDENTATION, line));
-            if (indent == IND_SRCH) style = STYLE_HEADER;
-            else if (indent == IND_CRIT) style = STYLE_CRITHDR;
-            else if (indent == IND_FILE) style = STYLE_FILEPATH;
-        }
-        if (ll > 0) S(SCI_SETSTYLING, ll, style);
+        if (indent == IND_SRCH) style = STYLE_HEADER;
+        else if (indent == IND_CRIT) style = STYLE_CRITHDR;
+        else if (indent == IND_FILE) style = STYLE_FILEPATH;
+        if (style != STYLE_DEFAULT)
+            std::fill(styles.begin() + static_cast<ptrdiff_t>(lineStart), styles.begin() + static_cast<ptrdiff_t>(next), static_cast<char>(style));
+        lineStart = next;
     }
 
-    // Indicators only on the freshly added hits
-    applyHitIndicators(newHits);
-    markAllStyled();
+    auto paint = [&](Sci_Position docPos, Sci_Position len, int style) {
+        const Sci_Position from = docPos - pos0;
+        if (from < 0 || len <= 0 || static_cast<size_t>(from) >= styles.size()) return;
+        const size_t n = (std::min)(static_cast<size_t>(len), styles.size() - static_cast<size_t>(from));
+        std::fill_n(styles.begin() + from, n, static_cast<char>(style));
+    };
+    for (const Hit& h : hits) {
+        if (h.displayLineStart < 0) continue;
+        paint(h.displayLineStart + h.numberStart, h.numberLen, STYLE_HIT_NUMBER);
+        if (_perEntryColorsEnabled) continue;
+        for (const RowMatch& m : h.matches)
+            if (m.dispStart >= 0) paint(h.displayLineStart + m.dispStart, m.dispLen, STYLE_HIT_MATCH);
+    }
+
+    S(SCI_STARTSTYLING, pos0, 0);
+    S(SCI_SETSTYLINGEX, styles.size(), reinterpret_cast<LPARAM>(styles.data()));
+
+    applyHitIndicators(hits);
 }
 
-// Line-number and match indicators of the given hits
+// Per-entry background colors of the hits' matches; without per-entry colors the styles show them
 void ResultDock::applyHitIndicators(const std::vector<Hit>& hits) const
 {
-    S(SCI_SETINDICATORCURRENT, INDIC_LINENUMBER_FORE);
-    for (const auto& h : hits)
-        if (h.displayLineStart >= 0)
-            S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.numberStart, h.numberLen);
-
-    // Match Highlighting (Exclusive Logic)
-    if (_perEntryColorsEnabled) {
-        // CASE A: Colorful Backgrounds -> Apply ONLY background indicators (Text remains standard/white)
-        for (const auto& h : hits) {
-            if (h.displayLineStart < 0) continue;
-            for (size_t i = 0; i < h.matchStarts.size(); ++i) {
-                const int colorIdx = (i < h.matchColors.size())
-                    ? h.matchColors[i]
-                    : h.colorIndex;  // fallback
-
-                if (colorIdx >= 0 && colorIdx < MAX_ENTRY_COLORS) {
-                    S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + colorIdx);
-                    S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
-                }
-            }
-        }
-    }
-    else {
-        // CASE B: Standard Mode -> Apply ONLY text color indicator (e.g. Orange/Green)
-        S(SCI_SETINDICATORCURRENT, INDIC_MATCH_FORE);
-        for (const auto& h : hits) {
-            if (h.displayLineStart < 0) continue;
-            for (size_t i = 0; i < h.matchStarts.size(); ++i) {
-                S(SCI_INDICATORFILLRANGE, h.displayLineStart + h.matchStarts[i], h.matchLens[i]);
-            }
+    if (!_perEntryColorsEnabled) return;
+    for (const auto& h : hits) {
+        if (h.displayLineStart < 0) continue;
+        for (const RowMatch& m : h.matches) {
+            if (m.dispStart < 0 || m.colorIndex < 0 || m.colorIndex >= MAX_ENTRY_COLORS) continue;
+            S(SCI_SETINDICATORCURRENT, INDIC_ENTRY_BG_BASE + m.colorIndex);
+            S(SCI_INDICATORFILLRANGE, h.displayLineStart + m.dispStart, m.dispLen);
         }
     }
 }
@@ -968,9 +950,6 @@ void ResultDock::prependBlock(const std::string& dockTextU8, std::vector<Hit>& n
     ::SendMessage(_hSci, WM_SETREDRAW, TRUE, 0);
 
 
-    const Sci_Position pos0 = 0;
-    const Sci_Position len = (Sci_Position)dockTextU8.size();
-
     int newBlockLines = 0;
     for (char c : dockTextU8) if (c == '\n') ++newBlockLines;
     const int firstLine = 0;
@@ -978,8 +957,12 @@ void ResultDock::prependBlock(const std::string& dockTextU8, std::vector<Hit>& n
 
     rebuildFoldingRange(firstLine, lastLine, dockTextU8);
 
-
-    applyStylingRange(pos0, len, newHits);
+    applyStylingRange(0, dockTextU8, newHits);
+    if (sepBytes && S(SCI_GETLENGTH) >= (Sci_Position)dockTextU8.size() + sepBytes) {
+        S(SCI_STARTSTYLING, (Sci_Position)dockTextU8.size(), 0);
+        S(SCI_SETSTYLING, sepBytes, STYLE_DEFAULT);
+    }
+    markAllStyled();
 
 
     if (oldLen > 0) {
@@ -1032,6 +1015,7 @@ void ResultDock::buildListText(
         appendIndented(LineLevel::SearchHdr, header);
     }
 
+    std::vector<SourceHit> source;
     for (auto& [path, f] : files)
     {
         appendIndented(LineLevel::FileHdr, f.wPath + L" " + LM.get(L"dock_hits_suffix", { StringUtils::formatNumber(static_cast<size_t>(f.hitCount)) }));
@@ -1039,71 +1023,50 @@ void ResultDock::buildListText(
         if (groupView)
         {
             // grouped: first the file header, then each criterion block
-            for (auto& c : f.crits)
+            for (const auto& c : f.crits)
             {
                 appendIndented(LineLevel::CritHdr, LM.get(L"dock_crit_header", { c.text, StringUtils::formatNumber(c.hits.size()) }));
-
-                // Move c.hits into hitsCopy: each crit is processed once,
-                // and c.hits is not used afterwards.
-                std::vector<Hit> hitsCopy = std::move(c.hits);
-
-                // pass the copy to formatHitsLines instead of const c.hits
-                formatHitsLines(sciSend, hitsCopy, body);
-
-                // move results from hitsCopy into outHits
-                outHits.insert(outHits.end(),
-                    std::make_move_iterator(hitsCopy.begin()),
-                    std::make_move_iterator(hitsCopy.end()));
+                source.clear();
+                source.reserve(c.hits.size());
+                for (const RawHit& h : c.hits) source.push_back({ &h, &c });
+                formatHitsLines(sciSend, path, source, body, outHits);
             }
         }
         else
         {
-            // Fast path: a single criterion means hits are already in pos-order
-            // (sequential forward search) with no possible duplicates. Move the
-            // hits vector to avoid the copy of 200k+ elements.
-            // The FileMap is a local in the caller and is not used after this call.
-            std::vector<Hit> merged;
-            if (f.crits.size() == 1) {
-                merged = std::move(f.crits.front().hits);
-            }
-            else {
-                // Multi-criterion: collect, sort by position, dedup overlaps
-                size_t total = 0;
-                for (const auto& c : f.crits) total += c.hits.size();
-                merged.reserve(total);
-                for (auto& c : f.crits) {
-                    // Move from each crit (still safe: iterating once, c.hits not used again)
-                    for (auto& hit : c.hits) {
-                        merged.push_back(std::move(hit));
-                    }
-                }
-                std::sort(merged.begin(), merged.end(),
-                    [](auto const& a, auto const& b) {
-                        if (a.pos != b.pos) return a.pos < b.pos;
-                        if (a.length != b.length) return a.length < b.length;
-
-                        return a.findTextW < b.findTextW;
+            // A single criterion is in position order already (sequential forward search).
+            // Several: by position, a match found by more than one criterion shown once.
+            size_t total = 0;
+            for (const auto& c : f.crits) total += c.hits.size();
+            source.clear();
+            source.reserve(total);
+            for (const auto& c : f.crits)
+                for (const RawHit& h : c.hits) source.push_back({ &h, &c });
+            if (f.crits.size() > 1) {
+                std::sort(source.begin(), source.end(),
+                    [](const SourceHit& a, const SourceHit& b) {
+                        if (a.hit->pos != b.hit->pos) return a.hit->pos < b.hit->pos;
+                        if (a.hit->length != b.hit->length) return a.hit->length < b.hit->length;
+                        return *a.crit->findTextW < *b.crit->findTextW;
                     });
-                merged.erase(
-                    std::unique(merged.begin(), merged.end(),
-                        [](const Hit& a, const Hit& b) { return a.pos == b.pos && a.length == b.length; }),
-                    merged.end());
+                source.erase(
+                    std::unique(source.begin(), source.end(),
+                        [](const SourceHit& a, const SourceHit& b) { return a.hit->pos == b.hit->pos && a.hit->length == b.hit->length; }),
+                    source.end());
             }
-
-            formatHitsLines(sciSend, merged, body);
-
-            outHits.insert(outHits.end(),
-                std::make_move_iterator(merged.begin()),
-                std::make_move_iterator(merged.end()));
+            formatHitsLines(sciSend, path, source, body, outHits);
         }
     }
 
     outTextU8 = std::move(body);
 }
 
+// One dock line per document line with hits; the hits must be in position order
 void ResultDock::formatHitsLines(const SciSendFn& sciSend,
-    std::vector<Hit>& hits,
-    std::string& out) const
+    const std::string& pathUtf8,
+    const std::vector<SourceHit>& hits,
+    std::string& out,
+    std::vector<Hit>& rows) const
 {
     const UINT docCp = (UINT)sciSend(SCI_GETCODEPAGE, 0, 0);
     const bool isUtf8Doc = (docCp == SC_CP_UTF8);
@@ -1129,8 +1092,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
     std::vector<int> lineNumbers; lineNumbers.reserve(hits.size());
     size_t maxDigits = 0;
-    for (const Hit& h : hits) {
-        int line1 = static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.pos, 0)) + 1;
+    for (const SourceHit& h : hits) {
+        const int line0 = (h.hit->docLine >= 0) ? h.hit->docLine
+            : static_cast<int>(sciSend(SCI_LINEFROMPOSITION, h.hit->pos, 0));
+        const int line1 = line0 + 1;
         lineNumbers.push_back(line1);
         // Count digits without creating temporary string
         int temp = line1;
@@ -1163,7 +1128,6 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         };
 
     int   prevDocLine = -1;
-    Hit* firstHitOnRow = nullptr;
     size_t hitIdx = 0;
 
     std::string  cachedRaw;
@@ -1376,7 +1340,9 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         return val;
         };
 
-    for (Hit& h : hits) {
+    for (const SourceHit& source : hits) {
+        const RawHit& h = *source.hit;
+        const CritAgg& crit = *source.crit;
         int line1 = lineNumbers[hitIdx++];
         int line0 = line1 - 1;
 
@@ -1403,10 +1369,10 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         size_t dispEnd = mapToDisp(hitStartU8_orig + hitLenU8_orig);
         size_t dispLen = (dispEnd > dispStart ? dispEnd - dispStart : 0);
 
+        const size_t prefixU8Len = indentHitU8 + kLineU8 + maxDigits + kColonSpaceU8;
         if (line0 != prevDocLine) {
             const size_t line1Digits = countDigits(line1);
             const size_t padCount = (maxDigits > line1Digits) ? (maxDigits - line1Digits) : 0;
-            const size_t prefixU8Len = indentHitU8 + kLineU8 + maxDigits + kColonSpaceU8;
 
             // out.size() before appending is the UTF-8 byte position where this row starts.
             const size_t rowStartPos = out.size();
@@ -1422,83 +1388,42 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             out.append("\r\n", 2);
 
             // Look ahead: how many subsequent hits share this line1?
-            // We know lineNumbers[] is in pos-order, and pos-order matches
-            // by-line aggregation. Reserve exact capacity to avoid reallocations
-            // in the per-hit push_back chain below.
+            // lineNumbers[] is in pos-order, so the matches of a row are adjacent.
             size_t lineHitCount = 1;
             for (size_t j = hitIdx; j < lineNumbers.size() && lineNumbers[j] == line1; ++j)
                 ++lineHitCount;
 
-            h.displayLineStart = (int)rowStartPos;
-            h.numberStart = (int)(indentHitU8 + kLineU8 + maxDigits - line1Digits);
-            h.numberLen = (int)line1Digits;
-
-            h.matchStarts.clear();
-            h.matchLens.clear();
-            h.matchColors.clear();
-            h.matchStarts.reserve(lineHitCount);
-            h.matchLens.reserve(lineHitCount);
-            h.matchColors.reserve(lineHitCount);
-
-            firstHitOnRow = &h;
-            firstHitOnRow->allFindTexts.clear();
-            firstHitOnRow->allPositions.clear();
-            firstHitOnRow->allLengths.clear();
-            firstHitOnRow->allSearchFlags.clear();
-            firstHitOnRow->allFindTexts.reserve(lineHitCount);
-            firstHitOnRow->allPositions.reserve(lineHitCount);
-            firstHitOnRow->allLengths.reserve(lineHitCount);
-            firstHitOnRow->allSearchFlags.reserve(lineHitCount);
-            firstHitOnRow->allFindTexts.push_back(h.findTextW);
-            firstHitOnRow->allPositions.push_back(h.pos);
-            firstHitOnRow->allLengths.push_back(h.length);
-            firstHitOnRow->allSearchFlags.push_back(h.searchFlags);
-
-            if (dispStart < displayU8.size()) {
-                size_t safeLen = dispLen;
-                if (dispStart + safeLen > displayU8.size()) safeLen = displayU8.size() - dispStart;
-                if (safeLen > 0) {
-                    h.matchStarts.push_back((int)(prefixU8Len + dispStart));
-                    h.matchLens.push_back((int)safeLen);
-
-                    h.matchColors.push_back(h.colorIndex);
-                }
-            }
+            Hit& row = rows.emplace_back();
+            row.fullPathUtf8 = pathUtf8;
+            row.pos = h.pos;
+            row.length = h.length;
+            row.docLine = h.docLine;
+            row.searchFlags = crit.searchFlags;
+            row.findTextW = *crit.findTextW;
+            row.displayLineStart = (int)rowStartPos;
+            row.numberStart = (int)(indentHitU8 + kLineU8 + maxDigits - line1Digits);
+            row.numberLen = (int)line1Digits;
+            row.matches.reserve(lineHitCount);
 
             prevDocLine = line0;
         }
-        else {
-            if (firstHitOnRow) {
-                const size_t line1Digits = countDigits(line1);
-                const size_t prefixU8Len = indentHitU8 + kLineU8
-                    + line1Digits
-                    + (maxDigits - line1Digits)
-                    + kColonSpaceU8;
 
-                if (dispStart < displayU8.size()) {
-                    size_t safeLen = dispLen;
-                    if (dispStart + safeLen > displayU8.size()) safeLen = displayU8.size() - dispStart;
-                    if (safeLen > 0) {
-                        firstHitOnRow->matchStarts.push_back((int)(prefixU8Len + dispStart));
-                        firstHitOnRow->matchLens.push_back((int)safeLen);
-
-                        firstHitOnRow->matchColors.push_back(h.colorIndex);
-                    }
-                }
-
-                firstHitOnRow->allFindTexts.push_back(h.findTextW);
-                firstHitOnRow->allPositions.push_back(h.pos);
-                firstHitOnRow->allLengths.push_back(h.length);
-                firstHitOnRow->allSearchFlags.push_back(h.searchFlags);
+        // The match on the current row, shown when it starts within the displayed text
+        RowMatch& m = rows.back().matches.emplace_back();
+        m.findTextW = crit.findTextW;
+        m.pos = h.pos;
+        m.length = h.length;
+        m.searchFlags = crit.searchFlags;
+        m.colorIndex = crit.colorIndex;
+        if (dispStart < displayU8.size()) {
+            size_t safeLen = dispLen;
+            if (dispStart + safeLen > displayU8.size()) safeLen = displayU8.size() - dispStart;
+            if (safeLen > 0) {
+                m.dispStart = (int)(prefixU8Len + dispStart);
+                m.dispLen = (int)safeLen;
             }
-            h.displayLineStart = -1;
         }
     }
-
-    hits.erase(std::remove_if(hits.begin(), hits.end(),
-        [](const Hit& e) { return e.displayLineStart < 0; }),
-        hits.end());
-
 }
 
 // --------------------- Line helpers -----------------------
@@ -1952,11 +1877,11 @@ void ResultDock::adjustHitPositionsForFlowTab(
         if (hit.pos < 0) hit.pos = 0;
 
         // Adjust merged positions (multiple hits on same display row)
-        for (auto& aPos : hit.allPositions)
+        for (RowMatch& m : hit.matches)
         {
-            d = computeDelta(aPos);
-            aPos += sign * d;
-            if (aPos < 0) aPos = 0;
+            d = computeDelta(m.pos);
+            m.pos += sign * d;
+            if (m.pos < 0) m.pos = 0;
         }
     }
 }
@@ -2944,7 +2869,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
         case IDM_RD_TOGGLE_WRAP:
             ResultDock::_wrapEnabled = !ResultDock::_wrapEnabled;
             ::SendMessage(hwnd, SCI_SETWRAPMODE,
-                ResultDock::_wrapEnabled ? SC_WRAP_WORD : SC_WRAP_NONE, 0);
+                ResultDock::_wrapEnabled ? SC_WRAP_WHITESPACE : SC_WRAP_NONE, 0);
             return 0;
 
             // ── toggle purge-flag ─────────────────────────

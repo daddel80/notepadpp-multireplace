@@ -5,7 +5,7 @@ ends in a decision point and can be shipped or reverted on its own. Work top to
 bottom; do not start a stage before the previous one meets its exit criteria.
 
 > **Status: ready for release.** Stage 7, the manual checklist
-> (`ONEPASS-CHECKLIST.md`), has been run by the owner in real Notepad++: all 20
+> (`ONEPASS-CHECKLIST.md`), has been run in real Notepad++: all 20
 > numbered cases green, including one live catch mid-run (an unrebuilt DLL made
 > C3 look like a regression - a fresh build cleared it, confirmed by both the
 > on-pass and the reference run). J5 (undo: one Ctrl+Z restores the whole run in
@@ -325,7 +325,7 @@ the single entry on a copy of the file and compare text and count.
 | 19 | entry `a\Kb` to `K` on `abc abx ab` | same as Replace All with that entry (this did not replace anything before F7) |
 | 20 | one-pass off (the tab's own option): the same list must still run one Replace All per entry from the start of the file | unchanged behaviour |
 
-Exit: all 20 pass on both line endings. **Run, by the owner, in real Notepad++: all 20 numbered cases (A1-J2 in the superseding `ONEPASS-CHECKLIST.md`, which is what was actually executed - one .mrl/.txt pair per case) plus J5 (undo) came back green.** One live catch on the way: C3 (`a\Kb`) first looked like the F7 regression had returned - Find 3, Replace 0 - which turned out to be an unrebuilt DLL older than the source fix; a fresh build produced the correct `aKc aKx aK`, 3/3, on both the on-pass and the off-pass reference run. Not run: J3/J4 (formula skip/error - build-dependent) and multi-document "Replace All in Open Documents", which calls `onePassReplaceAll` once per open document and was never exercised by any harness or the checklist - see Open Items.
+Exit: all 20 pass on both line endings. **Run in real Notepad++: all 20 numbered cases (A1-J2 in the superseding `ONEPASS-CHECKLIST.md`, which is what was actually executed - one .mrl/.txt pair per case) plus J5 (undo) came back green.** One live catch on the way: C3 (`a\Kb`) first looked like the F7 regression had returned - Find 3, Replace 0 - which turned out to be an unrebuilt DLL older than the source fix; a fresh build produced the correct `aKc aKx aK`, 3/3, on both the on-pass and the off-pass reference run. Not run: J3/J4 (formula skip/error - build-dependent) and multi-document "Replace All in Open Documents", which calls `onePassReplaceAll` once per open document and was never exercised by any harness or the checklist - see Open Items.
 
 ## Stage 8: ship
 
@@ -411,10 +411,10 @@ than examples. A defect from here on has to be an assumption nobody wrote down
 Verdict from the analysis: ship it, remembering on, no switch. The one-pass mode
 stays the option it always was.
 
-Decision by the owner: ship. The manual checklist has been run in real
+Decision: ship. The manual checklist has been run in real
 Notepad++ (Stage 7, all 20 cases plus J5/undo green, one live catch along the
-way - see the status note at the top), and the owner reviewed the findings in
-`ONEPASS-HANDOVER.md` before deciding. It goes into the codebase, not a side
+way - see the status note at the top), and the findings in
+`ONEPASS-HANDOVER.md` were reviewed before deciding. It goes into the codebase, not a side
 branch. Not run before this decision: J3/J4 (formula skip/error) and
 multi-document Replace All in Open Documents; that gap is recorded rather than
 closed, and either surface is where a next defect is most likely to be found -

@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// QA harness for the Find/Replace in Files loader (HiddenSciGuard::loadTextFile) on real
-// files, with the expected text worked out independently here:
+// QA harness for the Find/Replace in Files loader (FileLoad::load, through HiddenSciGuard::loadTextFile)
+// on real files, with the expected text worked out independently here:
 //   U. UTF-8 is taken as it is, a BOM dropped
 //   W. UTF-16 LE/BE with BOM and LE without BOM are decoded; an odd length is read like
 //      N++ in Find and refused in Replace (the dangling byte cannot be written back)
@@ -27,15 +27,22 @@
 //   M. one string reused for file after file: exact content, capacity kept
 //   T. text over 2 GB is refused before the full read (needs a sparse file, else SKIP)
 //   C. every skip is counted once
+//   O. a worker's options: read-only files left out before opening, the file's state stamped
+//   K. changed since loaded: another size, a later write time, a new file in its place (atomic
+//      write) or a file that is gone; a hard link keeps the old file, a link to a file follows
+//   P. a worker's pace: it gets the size before the full read and may hold it back, a stop ends it
+//   D. kind of drive: the folder of the test files is on a local drive, a drive letter that is not
+//      there counts as fast
 // Windows only. The file_search_qa replica covers the same decisions portably.
 //
 // Build (from src/tests):
-//   cl /std:c++20 /EHsc /I.. file_load_qa.cpp ..\Encoding.cpp ..\StringUtils.cpp shlwapi.lib advapi32.lib /Fe:file_load_qa.exe
-//   x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -static -I.. -o file_load_qa.exe file_load_qa.cpp ../Encoding.cpp ../StringUtils.cpp -lshlwapi
+//   cl /std:c++20 /EHsc /I.. file_load_qa.cpp ..\FileLoad.cpp ..\Encoding.cpp ..\StringUtils.cpp shlwapi.lib advapi32.lib /Fe:file_load_qa.exe
+//   x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -static -I.. -o file_load_qa.exe file_load_qa.cpp ../FileLoad.cpp ../Encoding.cpp ../StringUtils.cpp -lshlwapi
 #include <windows.h>
 #include "../PluginInterface.h"
 #include "../HiddenSciGuard.h"
 
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -256,6 +263,153 @@ int main()
             const Loaded l = load(g, p);
             const ULONGLONG ms = GetTickCount64() - t0;
             CHECK("T1 TooLarge before the full read (" + std::to_string(ms) + " ms)", l.reason == Skip::TooLarge && l.content.empty() && ms < 2000);
+        }
+    }
+
+    std::printf("\n=== O) options of a worker ===\n");
+    {
+        FileLoad::Options readOnlySkip;
+        readOnlySkip.skipReadOnly = true;
+        const fs::path ro = write("readonly.txt", text8);
+        SetFileAttributesW(ro.c_str(), FILE_ATTRIBUTE_READONLY);
+        std::string content;
+        const FileLoad::Result a = FileLoad::load(ro, readOnlySkip, content);
+        const FileLoad::Result b = FileLoad::load(ro, FileLoad::Options{}, content);
+        SetFileAttributesW(ro.c_str(), FILE_ATTRIBUTE_NORMAL);
+        CHECK("O1 read-only: left out when asked, loaded otherwise", a.skip == Skip::ReadOnly && b.skip == Skip::None && content == text8);
+
+        FileLoad::Options stamped;
+        stamped.stamp = true;
+        const fs::path u8 = g_dir / "u8.txt";
+        const FileLoad::Result s = FileLoad::load(u8, stamped, content);
+        const FileLoad::Result n = FileLoad::load(u8, FileLoad::Options{}, content);
+        CHECK("O2 stamped: valid, the file's size, unchanged since", s.skip == Skip::None && s.stamp.valid
+            && s.stamp.size == fs::file_size(u8) && FileLoad::unchangedSince(u8, s.stamp));
+        CHECK("O3 stamped only when asked", !n.stamp.valid && !FileLoad::unchangedSince(u8, n.stamp));
+    }
+
+    std::printf("\n=== K) changed since loaded ===\n");
+    {
+        FileLoad::Options stamped;
+        stamped.stamp = true;
+        std::string content;
+        HiddenSciGuard g;   // writeFile: temp file and replace, as Replace in Files writes
+
+        auto lastWrite = [](const fs::path& p) {
+            FILETIME t{};
+            const HANDLE h = CreateFileW(p.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+            if (h != INVALID_HANDLE_VALUE) { GetFileTime(h, nullptr, nullptr, &t); CloseHandle(h); }
+            return t;
+        };
+        auto setLastWrite = [](const fs::path& p, FILETIME t) {
+            const HANDLE h = CreateFileW(p.c_str(), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+            if (h == INVALID_HANDLE_VALUE) return false;
+            const bool ok = SetFileTime(h, nullptr, nullptr, &t) != FALSE;
+            CloseHandle(h);
+            return ok;
+        };
+
+        const fs::path a = write("k_size.txt", text8);
+        const FileLoad::Stamp s1 = FileLoad::load(a, stamped, content).stamp;
+        write("k_size.txt", text8 + "x");
+        CHECK("K1 written again with another size: changed", s1.valid && !FileLoad::unchangedSince(a, s1));
+
+        const fs::path b = write("k_time.txt", text8);
+        const FileLoad::Stamp s2 = FileLoad::load(b, stamped, content).stamp;
+        {
+            std::fstream f(b, std::ios::binary | std::ios::in | std::ios::out);
+            f.seekp(0);
+            f.put('X');
+        }
+        FILETIME later = lastWrite(b);
+        ULARGE_INTEGER t;
+        t.LowPart = later.dwLowDateTime;
+        t.HighPart = later.dwHighDateTime;
+        t.QuadPart += 10000000;   // one second on, whatever the file system's resolution
+        later.dwLowDateTime = t.LowPart;
+        later.dwHighDateTime = t.HighPart;
+        const bool timeSet = setLastWrite(b, later);
+        CHECK("K2 same size, written in place later: changed", timeSet && !FileLoad::unchangedSince(b, s2));
+
+        const fs::path c = write("k_id.txt", text8);
+        const FILETIME original = lastWrite(c);
+        const FileLoad::Stamp s3 = FileLoad::load(c, stamped, content).stamp;
+        const bool replaced = g.writeFile(c, text8) && setLastWrite(c, original);
+        const FileLoad::Stamp now3 = FileLoad::load(c, stamped, content).stamp;
+        CHECK("K3 an atomic write with the same bytes and time: a new file in its place, changed",
+            replaced && now3.size == s3.size && now3.lastWrite == s3.lastWrite && now3.fileId != s3.fileId
+            && !FileLoad::unchangedSince(c, s3));
+
+        const fs::path d = write("k_hard_a.txt", text8);
+        const fs::path e = g_dir / "k_hard_b.txt";
+        if (CreateHardLinkW(e.c_str(), d.c_str(), nullptr)) {
+            const FileLoad::Stamp s4 = FileLoad::load(e, stamped, content).stamp;
+            g.writeFile(d, text8 + "changed");
+            std::string other;
+            FileLoad::load(e, FileLoad::Options{}, other);
+            CHECK("K4 hard link: an atomic write of one name leaves the other with the old file, unchanged",
+                FileLoad::unchangedSince(e, s4) && other == text8);
+        }
+        else {
+            std::printf("SKIP K4 (no hard links here)\n");
+        }
+
+        const fs::path target = write("k_sym_target.txt", text8);
+        const fs::path link = g_dir / "k_sym_link.txt";
+        const bool linked = (CreateSymbolicLinkW(link.c_str(), target.c_str(), 0x2 /* allow unprivileged */)
+            || CreateSymbolicLinkW(link.c_str(), target.c_str(), 0)) && GetFileAttributesW(link.c_str()) != INVALID_FILE_ATTRIBUTES;
+        if (linked) {
+            const FileLoad::Stamp s5 = FileLoad::load(link, stamped, content).stamp;
+            g.writeFile(target, text8 + "changed");
+            CHECK("K5 link to a file: after an atomic write of the target it shows a changed file", s5.valid && !FileLoad::unchangedSince(link, s5));
+        }
+        else {
+            std::printf("SKIP K5 (no symbolic links without privilege here)\n");
+        }
+
+        CHECK("K6 a file that is gone: changed", !FileLoad::unchangedSince(g_dir / "does_not_exist.txt", s1));
+    }
+
+    std::printf("\n=== P) a worker's pace ===\n");
+    {
+        std::string content;
+        const fs::path big = g_dir / "size3145728.txt";
+        uint64_t seen = 0;
+        FileLoad::Pace refuse;
+        refuse.beforeRead = [&seen](uint64_t size) { seen = size; return false; };
+        const FileLoad::Result a = FileLoad::load(big, FileLoad::Options{}, content, &refuse);
+        CHECK("P1 the size before the full read; held back: unreadable, nothing loaded",
+            seen == fs::file_size(big) && a.skip == Skip::Unreadable && content.empty());
+
+        seen = 0;
+        const FileLoad::Result bin = FileLoad::load(g_dir / "bin.exe", FileLoad::Options{}, content, &refuse);
+        CHECK("P2 a binary file is skipped before that point, nothing to hold back", bin.skip == Skip::Binary && seen == 0);
+
+        std::atomic<bool> stop{ true };
+        FileLoad::Pace stopped;
+        stopped.stop = &stop;
+        const FileLoad::Result b = FileLoad::load(big, FileLoad::Options{}, content, &stopped);
+        const FileLoad::Result small = FileLoad::load(g_dir / "u8.txt", FileLoad::Options{}, content, &stopped);
+        CHECK("P3 a stop ends the full read: unreadable; a file within the header still loads",
+            b.skip == Skip::Unreadable && small.skip == Skip::None && content == text8);
+    }
+
+    std::printf("\n=== D) kind of drive ===\n");
+    {
+        const FileLoad::DriveKind local = FileLoad::driveKind(g_dir);
+        const char* name = local == FileLoad::DriveKind::Fast ? "fast" : local == FileLoad::DriveKind::Slow ? "slow" : "network";
+        CHECK(std::string("D1 the folder of the test files is on a local drive (") + name + ")", local != FileLoad::DriveKind::Network);
+
+        const DWORD used = GetLogicalDrives();
+        int unused = -1;
+        for (int i = 25; i >= 2 && unused < 0; --i)
+            if (!(used & (DWORD{ 1 } << i))) unused = i;
+        if (unused < 0) {
+            std::printf("SKIP D2 (every drive letter in use)\n");
+        }
+        else {
+            const std::wstring missing = std::wstring(1, static_cast<wchar_t>(L'A' + unused)) + L":\\folder";
+            CHECK("D2 a path on a drive letter that is not there: fast", FileLoad::driveKind(missing) == FileLoad::DriveKind::Fast);
         }
     }
 

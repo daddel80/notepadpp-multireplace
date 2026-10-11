@@ -18,17 +18,14 @@
 
 #include <windows.h>
 #include <shlwapi.h>           // For PathMatchSpecW
-#include <algorithm>
 #include <string>
 #include <string_view>
 #include <vector>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <cstdint>
-#include <cstring>             // For std::memchr
-#include <new>                 // For std::bad_alloc
 #include "Encoding.h"
+#include "FileLoad.h"
 #include "StringUtils.h"       // For splitFilterPatterns
 #include "Notepad_plus_msgs.h" // For NPPM_*
 #include "Scintilla.h"         // For SCI_*
@@ -42,17 +39,11 @@ public:
     // Configuration
     // ========================================================================
 
-    // Bytes to check for binary detection (8 KB - sufficient and fast)
-    static constexpr size_t BINARY_CHECK_SIZE = 8192;
-
     // Default max file size in MB (0 = unlimited, same as N++)
     static constexpr size_t DEFAULT_MAX_FILE_SIZE_MB = 0;
 
-    // How a loaded file should be fed into the hidden buffer
-    enum class LoadKind { Text, RawBytes };
-
-    // Why a file was skipped (None = processed)
-    enum class SkipReason { None, Binary, TooLarge, Unreadable, Undecodable, ReadOnly, OpenUnsaved, Unencodable };
+    using LoadKind = FileLoad::LoadKind;
+    using SkipReason = FileLoad::SkipReason;
 
     // ========================================================================
     // Configuration setters/getters (for INI/Config Panel)
@@ -86,61 +77,55 @@ public:
     // ========================================================================
 
     HiddenSciGuard() = default;
-    ~HiddenSciGuard()
-    {
-        if (hSci) {
-            ::DestroyWindow(hSci);
-            hSci = nullptr;
-        }
-        fn = nullptr;
-        pData = 0;
-    }
+    ~HiddenSciGuard() { release(); }
 
     HiddenSciGuard(const HiddenSciGuard&) = delete;
     HiddenSciGuard& operator=(const HiddenSciGuard&) = delete;
 
     // ========================================================================
-    // 0) Create the hidden Scintilla buffer
+    // 0) Bind the hidden Scintilla buffer
     // ========================================================================
 
+    // Notepad++ frees the Scintillas it creates for plugins only on exit, so one hidden
+    // view serves all runs, one run at a time; each run gets a document of its own
     bool create()
     {
-        // Destroy existing hidden Scintilla if any (safe when null)
-        if (hSci) {
-            ::DestroyWindow(hSci);
-            hSci = nullptr;
-            fn = nullptr;
-            pData = 0;
-        }
-
+        release();
         resetSkipCounters();
 
-        // Create new hidden Scintilla via Notepad++
-        hSci = reinterpret_cast<HWND>(
-            ::SendMessage(nppData._nppHandle,
-                NPPM_CREATESCINTILLAHANDLE,
-                0, 0));
-        if (!hSci)
+        View& view = sharedView();
+        if (view.busy)
             return false;
+        if (!view.hSci || !::IsWindow(view.hSci)) {
+            view = View{};
+            const HWND h = reinterpret_cast<HWND>(::SendMessage(nppData._nppHandle, NPPM_CREATESCINTILLAHANDLE, 0, 0));
+            if (!h)
+                return false;
+            const auto f = reinterpret_cast<SciFnDirect>(::SendMessage(h, SCI_GETDIRECTFUNCTION, 0, 0));
+            const sptr_t d = ::SendMessage(h, SCI_GETDIRECTPOINTER, 0, 0);
+            if (!f || !d)
+                return false;
+            f(d, SCI_SETMODEVENTMASK, SC_MOD_NONE, 0);   // N++ would pass every file load on to all plugins
+            view = View{ h, f, d, false };
+        }
 
-        fn = reinterpret_cast<SciFnDirect>(
-            ::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0));
-        pData = ::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
-        if (!fn || !pData)
-            return false;
+        view.busy = true;
+        hSci = view.hSci;
+        fn = view.fn;
+        pData = view.pData;
+        return newDocument();
+    }
 
-        // Own document: a scan never styles, so no style byte per character, and 64-bit
-        // line positions for binaries over 2 GB. The view holds the only reference.
-        const sptr_t doc = fn(pData, SCI_CREATEDOCUMENT, 0, SC_DOCUMENTOPTION_STYLES_NONE | SC_DOCUMENTOPTION_TEXT_LARGE);
-        if (!doc)
-            return false;
-        fn(pData, SCI_SETDOCPOINTER, 0, doc);
-        fn(pData, SCI_RELEASEDOCUMENT, 0, doc);
-
-        fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
-        fn(pData, SCI_SETUNDOCOLLECTION, 0, 0);
-        fn(pData, SCI_SETMODEVENTMASK, SC_MOD_NONE, 0);   // N++ would pass every file load on to all plugins
-        return true;
+    // Ends the run: its document is freed, the view stays for the next run
+    void release()
+    {
+        if (!fn)
+            return;
+        fn(pData, SCI_SETDOCPOINTER, 0, 0);
+        sharedView().busy = false;
+        hSci = nullptr;
+        fn = nullptr;
+        pData = 0;
     }
 
     // ========================================================================
@@ -234,155 +219,27 @@ public:
     }
 
     // ========================================================================
-    // 3) Binary Detection
+    // 3) File Loading Pipeline (shared by Find in Files and Replace in Files)
     // ========================================================================
 
-    // Check for BOM (Byte Order Mark) - files with BOM are definitely text
-    bool hasBOM(const char* data, size_t len) const
-    {
-        if (len < 2) return false;
-
-        const unsigned char* u = reinterpret_cast<const unsigned char*>(data);
-
-        // UTF-8 BOM: EF BB BF
-        if (len >= 3 && u[0] == 0xEF && u[1] == 0xBB && u[2] == 0xBF)
-            return true;
-
-        // UTF-16 LE BOM: FF FE
-        if (u[0] == 0xFF && u[1] == 0xFE)
-            return true;
-
-        // UTF-16 BE BOM: FE FF
-        if (u[0] == 0xFE && u[1] == 0xFF)
-            return true;
-
-        return false;
-    }
-
-    // Check if content is binary by looking for NULL bytes
-    // This is the industry standard approach (same as grep)
-    bool hasNullBytes(const char* data, size_t len) const
-    {
-        const size_t checkLen = (len < BINARY_CHECK_SIZE) ? len : BINARY_CHECK_SIZE;
-        // std::memchr is highly optimized (uses SIMD on modern CPUs)
-        return std::memchr(data, '\0', checkLen) != nullptr;
-    }
-
-    // UTF-16 LE without BOM: same pre-checks and probe as N++ and Encoding::detectEncoding
-    bool isUtf16NoBomLE(const char* data, size_t len) const
-    {
-        const unsigned char* u = reinterpret_cast<const unsigned char*>(data);
-        if (!(len > 1 && (len % 2) == 0 && u[0] != 0 && u[1] == 0))
-            return false;
-        INT uniTest = IS_TEXT_UNICODE_STATISTICS;
-        return ::IsTextUnicode(data, static_cast<int>(len), &uniTest) != FALSE;
-    }
-
-    // Combined check: returns true if content is binary (no BOM, not UTF-16, NUL bytes)
-    bool shouldSkipAsBinary(const char* data, size_t len) const
-    {
-        if (hasBOM(data, len))
-            return false;
-
-        if (isUtf16NoBomLE(data, len))
-            return false;
-
-        return hasNullBytes(data, len);
-    }
-
-    // ========================================================================
-    // 4) File Loading Pipeline (shared by Find in Files and Replace in Files)
-    // ========================================================================
-
-    // Loads a file and decides ONCE how it is to be searched:
-    // header -> BOM/UTF-16 detection -> binary check -> text size -> full read -> decode.
-    // Text: content holds UTF-8, enc describes the source encoding.
-    // RawBytes: content holds the raw file bytes (binary skip disabled).
-    // content keeps its capacity: a caller loading file after file passes the same string.
+    // Loads a file and decides ONCE how it is to be searched (FileLoad::load), counting a skip.
     SkipReason loadTextFile(const std::filesystem::path& fp, std::string& content,
         Encoding::EncodingInfo& enc, LoadKind& kind)
     {
-        content.clear();
-        enc = Encoding::EncodingInfo{};
-        kind = LoadKind::Text;
-        auto skip = [&](SkipReason reason) { content.clear(); return fail(reason); };
+        const FileLoad::Result loaded = FileLoad::load(fp, loadOptions(), content);
+        enc = loaded.enc;
+        kind = loaded.kind;
+        return fail(loaded.skip);
+    }
 
-        try {
-            InputFile in(fp);
-            uint64_t fileSize = 0;
-            if (!in.isOpen() || !in.size(fileSize)) return fail(SkipReason::Unreadable);
-
-            const size_t maxSize = getEffectiveMaxFileSize();
-            if (maxSize > 0 && fileSize > maxSize) return fail(SkipReason::TooLarge);
-            if (fileSize > content.max_size()) return fail(SkipReason::TooLarge);   // 32-bit build
-
-            // Read header for the binary/encoding decision
-            const size_t headerSize = static_cast<size_t>((std::min)(fileSize, uint64_t{ BINARY_CHECK_SIZE }));
-            content.resize(headerSize);
-            size_t headerLen = 0;
-            if (!in.read(content.data(), headerSize, headerLen)) return skip(SkipReason::Unreadable);
-            content.resize(headerLen);
-
-            const bool binary = shouldSkipAsBinary(content.data(), content.size());
-            if (binary && _skipBinaryFiles) return skip(SkipReason::Binary);
-
-            // Text beyond the converters' reach is refused before the full read
-            if (!binary && fileSize > Encoding::MAX_CONVERT_LENGTH) return skip(SkipReason::TooLarge);
-
-            // Append remainder (a file that shrank since the size query ends where it ends now)
-            if (headerLen == headerSize && fileSize > headerSize) {
-                content.resize(static_cast<size_t>(fileSize));
-                size_t restLen = 0;
-                if (!in.read(content.data() + headerLen, content.size() - headerLen, restLen))
-                    return skip(SkipReason::Unreadable);
-                content.resize(headerLen + restLen);
-            }
-
-            if (binary) {
-                // Skip disabled: search the bytes as-is (N++ behavior).
-                // This only picks the codepage the hidden buffer is bound
-                // to (pattern encoding + dock rendering); the content is
-                // never decoded or transformed. isValidUtf8 is a strict
-                // structural parser over the FULL content - genuine binary
-                // essentially never validates, and a false "yes" could only
-                // mis-encode the search pattern, never corrupt buffer or
-                // disk (write-back stays verbatim). Deliberately NOT
-                // detectEncoding: its CJK/UTF-16 heuristics are tuned for
-                // text files and would guess confidently wrong here.
-                if (Encoding::isValidUtf8(content.data(), content.size())) {
-                    enc.kind = Encoding::Kind::UTF8;
-                    enc.withBOM = false;
-                    enc.bomBytes = 0;
-                }
-                kind = LoadKind::RawBytes;
-                return SkipReason::None;
-            }
-
-            enc = Encoding::detectEncoding(content.data(), content.size());
-
-            // UTF-8 is searched as it is: decoding would copy the same bytes, and they write back unchanged
-            if (enc.kind == Encoding::Kind::UTF8) {
-                content.erase(0, static_cast<size_t>(enc.bomBytes));
-                return SkipReason::None;
-            }
-
-            std::string u8;
-            if (!Encoding::convertBufferToUtf8(content.data(), content.size(), enc, u8))
-                return skip(SkipReason::Undecodable);
-
-            // Replace path: refuse files whose decode would not write back losslessly
-            if (_verifyRoundtrip && !Encoding::verifyLosslessDecode(content.data(), content.size(), enc, u8))
-                return skip(SkipReason::Undecodable);
-
-            content.swap(u8);
-            return SkipReason::None;
-        }
-        catch (const std::bad_alloc&) {
-            return skip(SkipReason::TooLarge);
-        }
-        catch (...) {
-            return skip(SkipReason::Unreadable);
-        }
+    // This run's load settings, for loading on worker threads
+    FileLoad::Options loadOptions() const
+    {
+        FileLoad::Options options;
+        options.maxFileSize = getEffectiveMaxFileSize();
+        options.skipBinary = _skipBinaryFiles;
+        options.verifyRoundtrip = _verifyRoundtrip;
+        return options;
     }
 
     // Skip counters (surfaced in the search summary)
@@ -419,7 +276,7 @@ public:
     size_t getUnreadableFolderCount() const  { return _unreadableFolderCount; }
 
     // ========================================================================
-    // 4b) Attach a live N++ document for searching (N++'s findInFilelist
+    // 3b) Attach a live N++ document for searching (N++'s findInFilelist
     //     technique via SCI_SETDOCPOINTER). While attached, no document-
     //     mutating call may run - the document belongs to the user's tab.
     // ========================================================================
@@ -446,7 +303,7 @@ public:
     };
 
     // ========================================================================
-    // 5) Write file to disk (atomic: temp file + replace)
+    // 4) Write file to disk (atomic: temp file + replace)
     // ========================================================================
 
     bool writeFile(const std::filesystem::path& fp, const std::string& data) const {
@@ -470,18 +327,21 @@ public:
     }
 
     // ========================================================================
-    // 6) Hidden-buffer helpers
+    // 5) Hidden-buffer helpers
     // ========================================================================
 
-    // Caret ends at 0 (SCI_ADDTEXT leaves it at the end): a defined scan start.
+    // Ends with a single empty selection at 0: a defined scan start. Without window work per
+    // file: SCI_CLEARALL would discard the font data of the view, SCI_GOTOPOS lay out line 0.
     // False if Scintilla could not take the whole text (out of memory).
     bool setText(const std::string& txt, int codepage) {
         if (!fn || !pData) return false;
+        // After a failed allocation Scintilla refuses every further change to that document
+        if (!bufferIntact() && !newDocument()) return false;
         fn(pData, SCI_SETSTATUS, SC_STATUS_OK, 0);
-        fn(pData, SCI_CLEARALL, 0, 0);
+        fn(pData, SCI_DELETERANGE, 0, fn(pData, SCI_GETLENGTH, 0, 0));
         fn(pData, SCI_SETCODEPAGE, codepage, 0);
-        fn(pData, SCI_ADDTEXT, txt.length(), reinterpret_cast<sptr_t>(txt.data()));
-        fn(pData, SCI_GOTOPOS, 0, 0);
+        fn(pData, SCI_APPENDTEXT, txt.length(), reinterpret_cast<sptr_t>(txt.data()));
+        fn(pData, SCI_SETEMPTYSELECTION, 0, 0);
         return bufferIntact() && static_cast<size_t>(fn(pData, SCI_GETLENGTH, 0, 0)) == txt.length();
     }
 
@@ -506,7 +366,7 @@ public:
     }
 
     // ========================================================================
-    // 7) Debug helpers
+    // 6) Debug helpers
     // ========================================================================
 
     std::wstring getFilterDebugString() const {
@@ -559,41 +419,33 @@ public:
     sptr_t      pData = 0;
 
 private:
-    // Read access that leaves the file to others meanwhile (they may write, rename or delete it)
-    class InputFile {
-    public:
-        explicit InputFile(const std::filesystem::path& fp)
-            : _h(::CreateFileW(fp.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)) {}
-        ~InputFile() { if (_h != INVALID_HANDLE_VALUE) ::CloseHandle(_h); }
-        InputFile(const InputFile&) = delete;
-        InputFile& operator=(const InputFile&) = delete;
-
-        bool isOpen() const { return _h != INVALID_HANDLE_VALUE; }
-
-        bool size(uint64_t& bytes) const {
-            LARGE_INTEGER s{};
-            if (!::GetFileSizeEx(_h, &s)) return false;
-            bytes = static_cast<uint64_t>(s.QuadPart);
-            return true;
-        }
-
-        // Up to count bytes, fewer only at the end of the file; false on a read error
-        bool read(char* dst, size_t count, size_t& got) {
-            got = 0;
-            while (got < count) {
-                const DWORD chunk = static_cast<DWORD>((std::min)(count - got, size_t{ 1 } << 30));
-                DWORD n = 0;
-                if (!::ReadFile(_h, dst + got, chunk, &n, nullptr)) return false;
-                if (n == 0) break;
-                got += n;
-            }
-            return true;
-        }
-
-    private:
-        HANDLE _h;
+    // The hidden view all runs share
+    struct View {
+        HWND        hSci = nullptr;
+        SciFnDirect fn = nullptr;
+        sptr_t      pData = 0;
+        bool        busy = false;
     };
+
+    static View& sharedView()
+    {
+        static View view;
+        return view;
+    }
+
+    // Own document: a scan never styles, so no style byte per character, and 64-bit
+    // line positions for binaries over 2 GB. The view holds the only reference.
+    bool newDocument()
+    {
+        const sptr_t doc = fn(pData, SCI_CREATEDOCUMENT, 0, SC_DOCUMENTOPTION_STYLES_NONE | SC_DOCUMENTOPTION_TEXT_LARGE);
+        if (!doc)
+            return false;
+        fn(pData, SCI_SETDOCPOINTER, 0, doc);
+        fn(pData, SCI_RELEASEDOCUMENT, 0, doc);
+        fn(pData, SCI_SETCODEPAGE, SC_CP_UTF8, 0);
+        fn(pData, SCI_SETUNDOCOLLECTION, 0, 0);
+        return true;
+    }
 
     // Counts the skip and hands the reason back to the caller
     SkipReason fail(SkipReason reason) {

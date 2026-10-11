@@ -1,9 +1,9 @@
-// Test harness for ExprTkPatternParser. Compile with:
+// Test harness for ExprTkPatternParser. Compile from the repository root with:
 //   g++ -std=c++17 -Wall -Wextra -Wpedantic -O2 \
-//       -I/home/claude/engine \
-//       /home/claude/engine/ExprTkPatternParser.cpp \
-//       /home/claude/engine/test_parser.cpp \
-//       -o /tmp/test_parser
+//       -Isrc/exprtk \
+//       src/exprtk/ExprTkPatternParser.cpp \
+//       src/engine/tests/test_parser.cpp \
+//       -o test_parser
 //
 // The tests cover all 18 edge cases from the design phase plus a few
 // additional adversarial cases.

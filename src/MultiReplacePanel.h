@@ -1149,6 +1149,9 @@ private:
     // deliberate engine-selection click (not when loading a list). Persisted,
     // not shown in the config dialog.
     inline static MultiReplaceEngine::EngineType _defaultEngine = MultiReplaceEngine::EngineType::Lua;
+    // INI [ReplaceInFiles] LoadThreads: worker threads that load the files of Find/Replace in Files
+    // ahead, -1 for "auto", 0 loads on the UI thread. Persisted, not shown in the config dialog.
+    inline static int  loadThreads = -1;
     inline static bool flowTabsIntroDontShowEnabled = false;
     inline static bool flowTabsNumericAlignEnabled = true;
     inline static bool limitFileSizeEnabled = false;
@@ -1451,7 +1454,7 @@ private:
 
 #pragma region Find All
     std::wstring sanitizeSearchPattern(const std::wstring& raw);
-    void trimHitToFirstLine(const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend, ResultDock::Hit& h);
+    void trimHitToFirstLine(const std::function<LRESULT(UINT, WPARAM, LPARAM)>& sciSend, ResultDock::RawHit& h, int searchFlags);
     void handleFindAllButton();
     void handleFindAllInDocsButton();
     void handleFindInFiles();

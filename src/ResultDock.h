@@ -20,8 +20,10 @@
 
 #include <windows.h>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <functional>
+#include <memory>
 #include <unordered_map>
 
 #include "Encoding.h"
@@ -39,7 +41,27 @@ class ResultDock final
 {
 public:
     // --------------------- Hit definition ---------------------
-    // Represents one visible "Line N:" entry in the dock
+    // One match as a search collects it. Find text, flags and color are those of its CritAgg.
+    struct RawHit
+    {
+        Sci_Position pos{};
+        Sci_Position length{};
+        int          docLine{ -1 };      // 0-based line number
+    };
+
+    // One match on a dock line
+    struct RowMatch
+    {
+        std::shared_ptr<const std::wstring> findTextW;   // shared by all matches of a search
+        Sci_Position pos{};
+        Sci_Position length{};
+        int searchFlags{ 0 };
+        int colorIndex{ -1 };
+        int dispStart{ -1 };   // offset in the dock line, -1 when beyond the shown text
+        int dispLen{ 0 };
+    };
+
+    // Represents one visible "Line N:" entry in the dock. Its first match is the jump target.
     struct Hit
     {
         std::string  fullPathUtf8;
@@ -54,21 +76,11 @@ public:
 
         std::wstring findTextW;
 
-        std::vector<std::wstring> allFindTexts;
-        std::vector<Sci_Position> allPositions;
-        std::vector<Sci_Position> allLengths;
-        std::vector<int>          allSearchFlags;
+        std::vector<RowMatch> matches;   // every match on this line, the first one included
 
         int displayLineStart{ -1 };
         int numberStart{ 0 };
         int numberLen{ 0 };
-
-        std::vector<int> matchStarts;
-        std::vector<int> matchLens;
-
-        std::vector<int> matchColors;
-
-        int colorIndex{ -1 };
     };
 
     // Cursor position info for navigation anchoring
@@ -87,7 +99,13 @@ public:
     // Returns SIZE_MAX if no hit found at that position
     size_t getHitIndexAtLineStart(int lineStartPos) const;
 
-    struct CritAgg { std::wstring text; std::vector<Hit> hits; };
+    struct CritAgg {
+        std::wstring text;                               // label in the dock
+        std::shared_ptr<const std::wstring> findTextW;   // as searched
+        int searchFlags = 0;
+        int colorIndex = -1;
+        std::vector<RawHit> hits;
+    };
     struct FileAgg {
         std::wstring wPath;
         int hitCount = 0;
@@ -202,7 +220,7 @@ private:
     void applyTheme();
 
     // -------- Range styling / folding (partial updates) -------
-    void applyStylingRange(Sci_Position pos0, Sci_Position len, const std::vector<Hit>& newHits) const;
+    void applyStylingRange(Sci_Position pos0, std::string_view text, const std::vector<Hit>& hits) const;
     void applyHitIndicators(const std::vector<Hit>& hits) const;
     void markAllStyled() const;
     void rebuildFoldingRange(int firstLine, int lastLine, const std::string& dockTextU8) const;
@@ -218,9 +236,12 @@ private:
         std::string& outTextU8,
         std::vector<Hit>& outHits) const;
 
+    struct SourceHit { const RawHit* hit; const CritAgg* crit; };
     void formatHitsLines(const SciSendFn& sciSend,
-        std::vector<Hit>& hitsInOut,
-        std::string& outBlockU8) const;
+        const std::string& pathUtf8,
+        const std::vector<SourceHit>& hits,
+        std::string& outBlockU8,
+        std::vector<Hit>& outRows) const;
 
     // --------------------- Line helpers -----------------------
     enum class LineLevel : int { SearchHdr = 0, FileHdr = 1, CritHdr = 2, HitLine = 3 };
@@ -334,12 +355,11 @@ private:
         IDM_RD_COLLAPSE_FILES = 60011
     };
 
-    static constexpr int INDIC_LINENUMBER_FORE = 29;
-    static constexpr int INDIC_MATCH_FORE = 30;
-
     static constexpr int STYLE_HEADER = 33;
     static constexpr int STYLE_CRITHDR = 34;
     static constexpr int STYLE_FILEPATH = 35;
+    static constexpr int STYLE_HIT_NUMBER = 40;   // line number of a hit line
+    static constexpr int STYLE_HIT_MATCH = 41;    // match text without per-entry colors
 
     // -------------------------- Members -----------------------
     // Handles

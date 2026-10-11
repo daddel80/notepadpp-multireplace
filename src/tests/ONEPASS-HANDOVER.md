@@ -1,6 +1,6 @@
-# One-Pass Replace All: handover to whoever reviews or continues this
+# One-Pass Replace All: design reasoning and review notes
 
-Written for another model (or another engineer) picking this up cold. It is the
+Written for anyone picking this up cold. It is the
 **reasoning**: what the thing is, why it is built the way it is, every defect
 found so far and why the tests had not found it, what is actually proven versus
 measured versus argued, and where I would attack it next.
@@ -15,7 +15,7 @@ Read alongside, not instead of:
 | `src/tests/onepass_qa.cpp` | the same logic against a fake document, builds anywhere, sanitizers, 380 lines |
 | `src/MultiReplacePanel.cpp` | `onePassReplaceAll` (the loop), `replaceOne` (the confirmation), `performSingleSearch` (the refusal signal) |
 
-**Status: shipped.** Owner's decision after reviewing the findings: it went
+**Status: shipped.** Decision after reviewing the findings: it went
 into the codebase (not a side branch). The release gate,
 `ONEPASS-CHECKLIST.md` passing in real Notepad++, was met - all 20 numbered
 cases plus J5 (undo) green, with one live catch on the way (C3 briefly looked
@@ -388,7 +388,7 @@ positions - before suspecting the bookkeeping.
 ## 9. Open items
 
 1. **Stage 7, the manual checklist** (`ONEPASS-CHECKLIST.md`, superseding the
-   20-case sketch in `ONEPASS-PLAN.md`) has been run by the owner in real
+   20-case sketch in `ONEPASS-PLAN.md`) has been run in real
    Notepad++: all 20 numbered cases plus J5 (undo, run separately as the
    highest-value item below) came back green. C3 (`a\Kb`) briefly looked like
    the F7 regression had returned - Find 3, Replace 0 - which turned out to be
@@ -411,7 +411,7 @@ positions - before suspecting the bookkeeping.
 3. **The Visual Studio project** already lists `OnePassHits.h/.cpp`; nothing else
    in the build needs changing.
 4. The branch also carries stray `.git/*.lock` and `.git/objects/*/tmp_obj_*`
-   files from an interrupted git run on the owner's machine - unrelated to the
+   files from an interrupted git run on the development machine - unrelated to the
    code, but they block git until deleted.
 
 ---

@@ -21,6 +21,20 @@
 //      A later real user switch still cleans the padding. Every activation
 //      drops the view's flow tab stops and column styles, so the guard has to
 //      rebuild them for the document it returns to.
+//   8. One hidden view for all Files runs (HiddenSciGuard::create/release): Notepad++
+//      keeps every Scintilla it creates for plugins until exit, its Buffer holding the
+//      view's first document. Each run binds the shared view with a document of its own
+//      and frees it on release; a document that failed an allocation is replaced before
+//      the next fill.
+//   9. Column mode around the runs: Find All reads the editor's delimiters only for the
+//      editor, as Replace All does; Find All in Docs binds the view before it reads a
+//      document's delimiters; Replace All in Docs checks the column data before it asks;
+//      the document a run returns to gets its delimiters in its own codepage.
+//  10. Loading ahead on worker threads (FileLoadPool): the pool loads the files the loop does
+//      not keep for itself (documents searched or replaced live, unsaved ones Replace skips), and
+//      every file ends as before: read-only, live, unsaved or from disk. A file that changed on
+//      disk after a worker loaded it is loaded again and replaced once more, counted once and
+//      never written over the change.
 //
 // Mirrors the panel/guard logic verbatim where mirrorable; Scintilla calls
 // are replaced by a reference-counting mock that asserts protocol violations.
@@ -30,6 +44,7 @@
 #include <cstdio>
 #include <cwctype>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -107,6 +122,65 @@ struct AttachedDocM {
         g->setDoc(ownDoc);          // releases foreign, refs ours
         g->release(ownDoc);         // drop keep-alive ref
     }
+};
+
+// -------------------------- MIRROR: HiddenSciGuard view sharing (create, release, setText)
+// NPPM_CREATESCINTILLAHANDLE in mock terms: Notepad++ keeps every view it creates for a
+// plugin until exit, its Buffer holding the view's first document (attachDefaultDoc).
+struct NppPluginViewsM {
+    DocSpace& space;
+    std::vector<std::unique_ptr<MockSci>> views;
+    explicit NppPluginViewsM(DocSpace& s) : space(s) {}
+    MockSci* create() {
+        views.push_back(std::make_unique<MockSci>(space));
+        MockSci* v = views.back().get();
+        v->init();
+        v->addref(v->getDoc());   // SCI_ADDREFDOCUMENT for the Buffer
+        return v;
+    }
+};
+
+struct HiddenViewM {
+    MockSci* sci = nullptr;
+    bool busy = false;
+    bool window = true;          // IsWindow
+    bool intact = true;          // bufferIntact(): no failure status
+    std::set<int> refusing;      // documents left with enteredModification after a bad_alloc
+};
+
+struct GuardM {
+    NppPluginViewsM& npp;
+    HiddenViewM& view;
+    MockSci* bound = nullptr;
+
+    bool create() {
+        release();
+        if (view.busy) return false;
+        if (!view.sci || !view.window) {
+            view = HiddenViewM{};
+            view.sci = npp.create();
+        }
+        view.busy = true;
+        bound = view.sci;
+        return newDocument();
+    }
+    void release() {
+        if (!bound) return;
+        bound->setDoc(0);        // SCI_SETDOCPOINTER 0
+        view.busy = false;
+        bound = nullptr;
+    }
+    bool newDocument() { return createOwnDocM(*bound) != 0; }
+    // allocFails: SCI_APPENDTEXT runs out of memory
+    bool setText(bool allocFails) {
+        if (!bound) return false;
+        if (!view.intact && !newDocument()) return false;
+        view.intact = true;      // SCI_SETSTATUS SC_STATUS_OK
+        if (view.refusing.count(bound->getDoc())) return false;   // nothing inserted, length differs
+        if (allocFails) { view.intact = false; view.refusing.insert(bound->getDoc()); return false; }
+        return true;
+    }
+    ~GuardM() { release(); }
 };
 
 // -------------------------- MIRROR: source switch + probe/release policy
@@ -456,6 +530,273 @@ int main() {
         drain(edN, pN);
         CHECK("S7 now: a later user switch still cleans the padding",
               pN.padBufs.empty() && edN.buf() == 11 && pN.docSwitched);
+    }
+
+    std::printf("\n=== S8 one hidden view for all Files runs ===\n\n");
+    {
+        auto aliveDocs = [](const DocSpace& s) {
+            int n = 0;
+            for (const auto& [id, r] : s.ref) if (r > 0 && !s.destroyed.count(id)) ++n;
+            return n;
+        };
+
+        // Before: a view per run, its window destroyed at the end
+        DocSpace oldSpace;
+        NppPluginViewsM oldNpp(oldSpace);
+        for (int run = 0; run < 3; ++run) {
+            MockSci* v = oldNpp.create();
+            createOwnDocM(*v);
+            v->release(v->getDoc());   // DestroyWindow: the view drops its document
+        }
+        CHECK("S8 before: three runs left three views and their first documents with Notepad++",
+              oldNpp.views.size() == 3 && aliveDocs(oldSpace) == 3);
+
+        // Now: one view, a document per run
+        DocSpace space;
+        NppPluginViewsM npp(space);
+        HiddenViewM view;
+        std::vector<int> runDocs;
+        bool ownDocs = true;
+        for (int run = 0; run < 3; ++run) {
+            GuardM g{ npp, view };
+            ownDocs = g.create() && ownDocs;
+            runDocs.push_back(g.bound->getDoc());
+            ownDocs = ownDocs && g.bound->ref[runDocs.back()] == 1;
+        }
+        bool freed = true;
+        for (int d : runDocs) freed = freed && space.destroyed.count(d) == 1;
+        CHECK("S8 now: every run binds the view with a document of its own, held by the view alone", ownDocs);
+        CHECK("S8 now: three runs, one view, every run's document freed after the run",
+              npp.views.size() == 1 && freed && runDocs[0] != runDocs[1] && runDocs[1] != runDocs[2]);
+        CHECK("S8 now: only the Buffer's first document and the idle view's empty one remain",
+              aliveDocs(space) == 2 && !view.busy && !space.protocolError);
+
+        {
+            GuardM outer{ npp, view };
+            outer.create();
+            {
+                GuardM inner{ npp, view };
+                CHECK("S8 now: a second run while one is active is refused, Notepad++ creates no view",
+                      !inner.create() && npp.views.size() == 1);
+            }
+            CHECK("S8 now: the refused guard leaves the active run's lease alone", view.busy && outer.bound);
+        }
+
+        // Out of memory while filling: Scintilla refuses every later change to that document
+        auto oldSetText = [](GuardM& g, bool allocFails) {
+            g.view.intact = true;
+            if (g.view.refusing.count(g.bound->getDoc())) return false;
+            if (allocFails) { g.view.intact = false; g.view.refusing.insert(g.bound->getDoc()); return false; }
+            return true;
+        };
+        {
+            GuardM g{ npp, view };
+            g.create();
+            const bool failed = !oldSetText(g, true);
+            CHECK("S8 before: after a failed fill every later file counted as too large",
+                  failed && !oldSetText(g, false) && !oldSetText(g, false));
+        }
+        {
+            GuardM g{ npp, view };
+            g.create();
+            const bool failed = !g.setText(true);
+            const int broken = g.bound->getDoc();
+            CHECK("S8 now: the next fill gets a fresh document and succeeds",
+                  failed && g.setText(false) && g.bound->getDoc() != broken && g.setText(false));
+            CHECK("S8 now: the broken document is freed", space.destroyed.count(broken) == 1);
+        }
+
+        view.window = false;   // Notepad++ exiting
+        {
+            GuardM g{ npp, view };
+            CHECK("S8 now: a lost window is replaced by a new view", g.create() && npp.views.size() == 2);
+        }
+        CHECK("S8 no protocol violations", !space.protocolError && !oldSpace.protocolError);
+    }
+
+    std::printf("\n=== S9 column mode around the runs ===\n\n");
+    {
+        // The editor's column state; spec stands for columns, delimiter and quote character
+        struct EditorM {
+            std::string panelSpec = "1";     // what the panel fields say
+            std::string parsedSpec;          // columnDelimiterData
+            std::string highlightedSpec;     // what the editor shows
+            bool highlight = true;           // column highlight on
+            bool documentSwitched = false;
+            bool stale = false, positionsEmpty = true;
+            int scans = 0, clears = 0;
+        };
+        // MIRROR: handleDelimiterPositions(LoadAll)
+        auto loadAll = [](EditorM& e) {
+            if (e.documentSwitched) { ++e.clears; e.positionsEmpty = true; e.stale = false; e.documentSwitched = false; }
+            const bool changed = e.parsedSpec != e.panelSpec;
+            e.parsedSpec = e.panelSpec;
+            if (changed || e.stale || e.positionsEmpty) {
+                ++e.scans;
+                e.stale = e.positionsEmpty = false;
+                if (e.highlight) e.highlightedSpec = e.panelSpec;
+            }
+        };
+        // MIRROR: handleFindInFiles in column mode: validateDelimiterData, delimiters per file, discardDelimiterSnapshot
+        auto filesRun = [](EditorM& e) { e.parsedSpec = e.panelSpec; e.positionsEmpty = true; e.stale = true; };
+        enum class Mode { Editor, Docs, Files };
+        // MIRROR: IDC_FIND_ALL_BUTTON and IDC_REPLACE_ALL_BUTTON, editor's delimiters read before the run?
+        auto findAllBefore = [](Mode) { return true; };
+        auto findAllNow = [](Mode m) { return m == Mode::Editor; };
+        auto replaceAll = [](Mode m) { return m == Mode::Editor; };
+        bool differed = false, same = true;
+        for (Mode m : { Mode::Editor, Mode::Docs, Mode::Files }) {
+            differed = differed || findAllBefore(m) != replaceAll(m);
+            same = same && findAllNow(m) == replaceAll(m);
+        }
+        CHECK("S9 before: Find All read the editor's delimiters before Files and Docs runs, Replace All did not", differed);
+        CHECK("S9 now: Find All and Replace All read them for the editor only", same);
+
+        // Column spec changed with highlight on, then Find All in Files, then Find Next in the editor
+        auto session = [&](bool before, std::string& afterFindAll) {
+            EditorM e;
+            loadAll(e);                       // an earlier column action: editor scanned, spec 1 shown
+            e.panelSpec = "2";
+            e.documentSwitched = true;        // and a tab switch since then
+            const int scans0 = e.scans;
+            if (before) loadAll(e);
+            filesRun(e);
+            afterFindAll = e.highlightedSpec;
+            loadAll(e);                       // Find Next
+            e.scans -= scans0;
+            return e;
+        };
+        std::string shownBefore, shownNow;
+        const EditorM b = session(true, shownBefore), n = session(false, shownNow);
+        CHECK("S9 before: the editor was scanned twice, once for nothing", b.scans == 2);
+        CHECK("S9 now: the editor is scanned once, at the next editor action", n.scans == 1);
+        CHECK("S9 now: the tab switch is cleaned up once, as before", b.clears == 1 && n.clears == 1);
+        CHECK("S9 now: after the next editor action the state is the same as before",
+              n.highlightedSpec == b.highlightedSpec && n.parsedSpec == b.parsedSpec && n.stale == b.stale
+              && n.positionsEmpty == b.positionsEmpty && n.documentSwitched == b.documentSwitched);
+        CHECK("S9 now: the only visible difference: the new columns show at the next editor action, not right after Find All",
+              shownBefore == "2" && shownNow == "1");
+
+        // Find All in Docs: whose delimiters are read, with and without Notepad++ rebinding on activation
+        struct ViewsM { int bound = 0; int active = 0; };
+        auto activate = [](ViewsM& v, int view, bool notifies) { v.active = view; if (notifies) v.bound = view; };   // NPPM_ACTIVATEDOC
+        auto docBefore = [](ViewsM& v, int view) { const int read = v.bound; v.bound = view; return read; };   // load, then bindToView
+        auto docNow = [](ViewsM& v, int view) { v.bound = view; return v.bound; };                             // bindToView, then load
+        bool beforeNeedsNotify = true, nowAlways = true;
+        for (bool notifies : { true, false }) {
+            ViewsM vb, vn;
+            activate(vb, 1, notifies);
+            activate(vn, 1, notifies);
+            beforeNeedsNotify = beforeNeedsNotify && ((docBefore(vb, 1) == vb.active) == notifies);
+            nowAlways = nowAlways && docNow(vn, 1) == vn.active;
+        }
+        CHECK("S9 before: Find All in Docs read the right document only thanks to the rebinding on activation", beforeNeedsNotify);
+        CHECK("S9 now: it reads the activated document in any case, as Replace All in Docs", nowAlways);
+
+        // Replace All in Docs with invalid column data
+        struct StatusM { int asked = 0; std::string status; };
+        auto replaceDocsBefore = [](StatusM& s) {
+            ++s.asked;                                           // MessageBox confirm, user says OK
+            s.status = "Column data or delimiter data is missing";   // first document: loadDelimitersForScan
+            s.status = "Replace in documents: 0 occurrences replaced.";
+        };
+        auto replaceDocsNow = [](StatusM& s) {
+            s.status = "Column data or delimiter data is missing";   // validateDelimiterData before the question
+        };
+        StatusM sb, sn;
+        replaceDocsBefore(sb);
+        replaceDocsNow(sn);
+        CHECK("S9 before: asked first, then the summary hid the error", sb.asked == 1 && sb.status.rfind("Replace in documents", 0) == 0);
+        CHECK("S9 now: not asked, the error stays", sn.asked == 0 && sn.status == "Column data or delimiter data is missing");
+
+        // Back on the user's tab after the run: the delimiter U+00A7 in the bytes of each codepage
+        auto delimBytes = [](bool utf8) { return utf8 ? std::string("\xC2\xA7") : std::string("\xA7"); };
+        auto countIn = [](const std::string& text, const std::string& d) {
+            int n = 0;
+            for (size_t p = text.find(d); p != std::string::npos; p = text.find(d, p + d.size())) ++n;
+            return n;
+        };
+        const std::string userTab = "a\xA7" "b\xA7" "c";   // ANSI
+        std::string parsed;
+        for (bool utf8 : { false, true, true }) parsed = delimBytes(utf8);   // the run: the user's tab, then two UTF-8 tabs
+        // MIRROR (before): restoreColumnVisuals scanned with the bytes converted last
+        const int foundBefore = countIn(userTab, parsed);
+        // MIRROR (now): restoreColumnVisuals -> loadDelimitersForScan, converted for the bound tab
+        parsed = delimBytes(false);
+        const int foundNow = countIn(userTab, parsed);
+        CHECK("S9 before: back on the ANSI tab, the UTF-8 bytes of the last tab found no delimiter", foundBefore == 0);
+        CHECK("S9 now: converted again for the tab returned to, both delimiters are found", foundNow == 2);
+    }
+
+    std::printf("\n=== S10 loading ahead on worker threads ===\n\n");
+    {
+        // A file of the run: open in Notepad++ (and how), read-only on disk
+        struct FileM { bool open, dirty, closedSince, readOnly; };
+        enum class End { ReadOnly, Live, Unsaved, Disk };
+        std::vector<FileM> files;
+        for (int bits = 0; bits < 16; ++bits) {
+            const bool open = bits & 1;
+            files.push_back({ open, open && (bits & 2), open && (bits & 4), (bits & 8) != 0 });
+        }
+
+        // MIRROR (before): handleReplaceInFiles, read-only checked first for every file
+        auto replaceBefore = [](const FileM& f, bool liveDocs) {
+            if (f.readOnly) return End::ReadOnly;
+            if (f.open && liveDocs) return f.closedSince ? End::Disk : End::Live;
+            if (f.open && f.dirty) return End::Unsaved;
+            return End::Disk;
+        };
+        // MIRROR (now): loopOnly keeps live and unsaved documents with the loop, which checks them for
+        // read-only itself; a worker checks the files it loads (FileLoad::Options::skipReadOnly)
+        auto replaceNow = [](const FileM& f, bool liveDocs) {
+            const bool ahead = !(f.open && (liveDocs || f.dirty));
+            if (!ahead && f.readOnly) return End::ReadOnly;
+            if (f.open && liveDocs) return f.closedSince ? End::Disk : End::Live;
+            if (f.open && f.dirty) return End::Unsaved;
+            return (ahead && f.readOnly) ? End::ReadOnly : End::Disk;
+        };
+        // MIRROR: handleFindInFiles, liveDoc with "Use open documents" on and off
+        auto findBefore = [](const FileM& f, bool live) { return (f.open && live) ? End::Live : End::Disk; };
+        auto findNow = [](const FileM& f, bool live) { const bool ahead = !(f.open && live); return ahead ? End::Disk : End::Live; };
+
+        bool replaceSame = true, findSame = true;
+        for (bool option : { false, true })
+            for (const FileM& f : files) {
+                replaceSame = replaceSame && replaceBefore(f, option) == replaceNow(f, option);
+                findSame = findSame && findBefore(f, option) == findNow(f, option);
+            }
+        CHECK("S10 Replace: every file ends as before (read-only, live, unsaved, from disk), option on and off", replaceSame);
+        CHECK("S10 Find: open documents live, the other files from the pool, option on and off", findSame);
+
+        // MIRROR: replaceInFile and the loop's second try
+        struct RunM { int replaced = 0, counted = 0, written = 0; bool aborted = false; };
+        auto replaceInFile = [](RunM& r, bool modifies, bool changedOnDisk, bool aborts) {
+            ++r.replaced;
+            if (aborts) r.aborted = true;
+            if (modifies && changedOnDisk) return false;   // FileLoad::unchangedSince before writing
+            ++r.counted;                                   // accumulateListTotals
+            if (modifies) ++r.written;
+            return true;
+        };
+        auto loop = [&](bool ahead, bool modifies, bool changedOnDisk, bool aborts) {
+            RunM r;
+            if (!replaceInFile(r, modifies, ahead && changedOnDisk, aborts) && !r.aborted)
+                replaceInFile(r, modifies, false, false);  // loaded again on the UI thread
+            return r;
+        };
+        const RunM plain = loop(true, true, false, false);
+        const RunM changed = loop(true, true, true, false);
+        const RunM nothingToWrite = loop(true, false, true, false);
+        const RunM canceled = loop(true, true, true, true);
+        const RunM serial = loop(false, true, true, false);
+        CHECK("S10 loaded ahead, unchanged on disk: replaced, counted and written once", plain.replaced == 1 && plain.counted == 1 && plain.written == 1);
+        CHECK("S10 changed on disk since: loaded again and replaced once more, counted and written once",
+              changed.replaced == 2 && changed.counted == 1 && changed.written == 1);
+        CHECK("S10 changed on disk, but the replacement changes nothing: nothing to write, counted once",
+              nothingToWrite.replaced == 1 && nothingToWrite.counted == 1 && nothingToWrite.written == 0);
+        CHECK("S10 changed on disk and the run canceled: not written over the change, no second try",
+              canceled.replaced == 1 && canceled.written == 0);
+        CHECK("S10 loaded on the UI thread (LoadThreads=0): as before, no check", serial.replaced == 1 && serial.written == 1);
     }
 
     std::printf("\n%s (%d failure%s)\n",

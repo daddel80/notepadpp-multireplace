@@ -466,6 +466,7 @@ Some advanced options are not exposed in the UI and can only be configured by ed
 | `[Lua]` | `SafeMode` | `0` | When set to `1`, disables Lua libraries that access the file system (`os`, `io`, `package`, `dofile`, etc.) for security. When `0`, full Lua functionality is enabled (required for `lvars`, `lkp`, and `lcmd`). |
 | `[Options]` | `DimIntensity` | `50` | Controls how strongly the list is dimmed when inactive (with **Keep list always visible** enabled or during a Ctrl+Shift bypass). Range: `0` (no dimming, list looks identical whether active or not) to `100` (text fully blended into background). Changes take effect after restarting Notepad++. |
 | `[Options]` | `TabMaxLength` | `15` | Maximum number of characters shown in tab labels before truncation with an ellipsis (…). Increase for longer logical names, decrease for a more compact tab bar. The full name remains visible in the tab tooltip regardless of this setting. Range: `4` to `60`. Changes take effect after restarting Notepad++. |
+| `[ReplaceInFiles]` | `LoadThreads` | `auto` | Worker threads that load files ahead of the search in *Find/Replace in Files*. `auto`: 8 on network drives, 1 on optical drives, hard disks and USB disks that do not report whether they are one, and 4 on all other drives such as SSDs, USB sticks and SD cards. `1` to `8` sets the number; `0` loads every file on the main thread as before (for troubleshooting). Changes take effect after restarting Notepad++. |
 
 ## Multilingual UI Support
 

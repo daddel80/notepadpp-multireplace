@@ -56,6 +56,11 @@ namespace Encoding {
         const unsigned char* s = reinterpret_cast<const unsigned char*>(data);
         size_t i = 0;
         while (i < len) {
+            if (len - i >= 8) {                                      // eight ASCII bytes at once
+                uint64_t block;
+                std::memcpy(&block, s + i, 8);
+                if ((block & 0x8080808080808080ull) == 0) { i += 8; continue; }
+            }
             unsigned char c = s[i];
             if (c < 0x80) { ++i; continue; }                         // ASCII
             size_t need = 0;

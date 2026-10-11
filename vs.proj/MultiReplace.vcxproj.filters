@@ -166,6 +166,8 @@
     <ClCompile Include="..\src\MultiReplacePanel_FlowTabs.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_FormulaDebug.cpp" />
     <ClCompile Include="..\src\FileDialogUtil.cpp" />
+    <ClCompile Include="..\src\FileLoad.cpp" />
+    <ClCompile Include="..\src\FileLoadPool.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
@@ -264,6 +266,7 @@
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\image_data.h" />
     <ClInclude Include="..\src\HiddenSciGuard.h" />
+    <ClInclude Include="..\src\LiteralPrefilter.h" />
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\ResultDock.h" />
     <ClInclude Include="..\src\Encoding.h" />
@@ -328,6 +331,8 @@
     <ClInclude Include="..\src\ListCodec.h" />
     <ClInclude Include="..\src\ReplaceItemData.h" />
     <ClInclude Include="..\src\FileDialogUtil.h" />
+    <ClInclude Include="..\src\FileLoad.h" />
+    <ClInclude Include="..\src\FileLoadPool.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\MultiReplace.rc" />
