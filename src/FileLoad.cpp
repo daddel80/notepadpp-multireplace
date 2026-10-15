@@ -104,12 +104,10 @@ namespace FileLoad {
             return false;
         }
 
-        // Check if content is binary by looking for NULL bytes
-        // This is the industry standard approach (same as grep)
+        // A NUL byte in the header marks a binary file, as grep decides it
         bool hasNullBytes(const char* data, size_t len)
         {
             const size_t checkLen = (len < BINARY_CHECK_SIZE) ? len : BINARY_CHECK_SIZE;
-            // std::memchr is highly optimized (uses SIMD on modern CPUs)
             return std::memchr(data, '\0', checkLen) != nullptr;
         }
 
@@ -182,16 +180,8 @@ namespace FileLoad {
             }
 
             if (binary) {
-                // Skip disabled: search the bytes as-is (N++ behavior).
-                // This only picks the codepage the hidden buffer is bound
-                // to (pattern encoding + dock rendering); the content is
-                // never decoded or transformed. isValidUtf8 is a strict
-                // structural parser over the FULL content - genuine binary
-                // essentially never validates, and a false "yes" could only
-                // mis-encode the search pattern, never corrupt buffer or
-                // disk (write-back stays verbatim). Deliberately NOT
-                // detectEncoding: its CJK/UTF-16 heuristics are tuned for
-                // text files and would guess confidently wrong here.
+                // Binary skip off: the bytes are searched as they are (N++ behavior). Valid UTF-8 only sets the
+                // codepage for patterns and dock lines; detectEncoding's text heuristics would guess wrong here.
                 if (Encoding::isValidUtf8(content.data(), content.size())) {
                     r.enc.kind = Encoding::Kind::UTF8;
                     r.enc.withBOM = false;

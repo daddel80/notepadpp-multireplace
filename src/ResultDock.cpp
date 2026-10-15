@@ -1162,7 +1162,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     }
 
     std::vector<size_t> mapOrigToDisp;
-    std::unordered_map<size_t, size_t> u8PrefixLenByByte;
+    size_t u8PrefixBytes = 0;   // non-UTF-8 docs: filtered bytes of the line converted so far
+    size_t u8PrefixLen = 0;     // and their UTF-8 length
 
     auto loadLineIfNeeded = [&](int line0)
         {
@@ -1316,7 +1317,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             // finalize
             capUtf8WithEllipsis(displayU8, kMaxHitTextUtf8);
 
-            u8PrefixLenByByte.clear();
+            u8PrefixBytes = 0;
+            u8PrefixLen = 0;
             // prevDocLine is set by the caller when the row is actually written
         };
 
@@ -1330,14 +1332,17 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         return mapRawToFiltered[rawPos];
         };
 
+    // Hits of a line come in position order: only the bytes since the previous hit are converted
     auto u8PrefixFromRawBytes = [&](size_t byteCount)->size_t {
         if (isUtf8Doc) return rawToFilteredPos(byteCount); // byte pos == UTF-8 pos
-        auto it = u8PrefixLenByByte.find(byteCount);
-        if (it != u8PrefixLenByByte.end()) return it->second;
         const size_t filteredByteCount = rawToFilteredPos(byteCount);
-        size_t val = Encoding::bytesToUtf8(effectiveRaw->data(), filteredByteCount, docCp).size();
-        u8PrefixLenByByte.emplace(byteCount, val);
-        return val;
+        if (filteredByteCount < u8PrefixBytes) {
+            u8PrefixBytes = 0;
+            u8PrefixLen = 0;
+        }
+        u8PrefixLen += Encoding::bytesToUtf8(effectiveRaw->data() + u8PrefixBytes, filteredByteCount - u8PrefixBytes, docCp).size();
+        u8PrefixBytes = filteredByteCount;
+        return u8PrefixLen;
         };
 
     for (const SourceHit& source : hits) {
