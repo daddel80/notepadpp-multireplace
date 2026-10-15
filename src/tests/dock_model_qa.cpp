@@ -31,6 +31,8 @@
 //            a43e162 with SC_WRAP_WORD, the new dock with the wrap mode ../ResultDock.cpp sets
 //   delete   the dock's Delete key on random lines, blocks and selections, each followed by the
 //            comparisons above
+// Then long lines in code page 1252, a hit every 32 bytes, compared as above and timed: a43e162
+// converts a line up to every hit again, the new dock must be at least 20 times as fast.
 // Searches as Find in Files runs them: files of the given folders and generated texts (UTF-8 and
 // code page 1252, lines over the 2048-byte display cap, control characters, soft hyphens, no-break
 // spaces), one to four criteria with match case, whole word and regex, merged and grouped,
@@ -46,6 +48,7 @@
 // Run:   ./dock_model_qa [folder ...]
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -2313,7 +2316,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     }
 
     std::vector<size_t> mapOrigToDisp;
-    std::unordered_map<size_t, size_t> u8PrefixLenByByte;
+    size_t u8PrefixBytes = 0;   // non-UTF-8 docs: filtered bytes of the line converted so far
+    size_t u8PrefixLen = 0;     // and their UTF-8 length
 
     auto loadLineIfNeeded = [&](int line0)
         {
@@ -2467,7 +2471,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             // finalize
             capUtf8WithEllipsis(displayU8, kMaxHitTextUtf8);
 
-            u8PrefixLenByByte.clear();
+            u8PrefixBytes = 0;
+            u8PrefixLen = 0;
             // prevDocLine is set by the caller when the row is actually written
         };
 
@@ -2481,14 +2486,17 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         return mapRawToFiltered[rawPos];
         };
 
+    // Hits of a line come in position order: only the bytes since the previous hit are converted
     auto u8PrefixFromRawBytes = [&](size_t byteCount)->size_t {
         if (isUtf8Doc) return rawToFilteredPos(byteCount); // byte pos == UTF-8 pos
-        auto it = u8PrefixLenByByte.find(byteCount);
-        if (it != u8PrefixLenByByte.end()) return it->second;
         const size_t filteredByteCount = rawToFilteredPos(byteCount);
-        size_t val = Encoding::bytesToUtf8(effectiveRaw->data(), filteredByteCount, docCp).size();
-        u8PrefixLenByByte.emplace(byteCount, val);
-        return val;
+        if (filteredByteCount < u8PrefixBytes) {
+            u8PrefixBytes = 0;
+            u8PrefixLen = 0;
+        }
+        u8PrefixLen += Encoding::bytesToUtf8(effectiveRaw->data() + u8PrefixBytes, filteredByteCount - u8PrefixBytes, docCp).size();
+        u8PrefixBytes = filteredByteCount;
+        return u8PrefixLen;
         };
 
     for (const SourceHit& source : hits) {
@@ -3086,6 +3094,7 @@ struct Docks {
 };
 
 static long long g_checks = 0, g_failures = 0, g_wrapLines = 0, g_wrapWordDiffers = 0, g_deletions = 0;
+static double g_oldAppendSeconds = 0, g_newAppendSeconds = 0;
 static void fail(const char* what, const std::string& detail) {
     if (++g_failures <= 15) std::printf("  FAIL %s: %s\n", what, detail.c_str());
 }
@@ -3155,8 +3164,12 @@ static void searchBlock(Docks& docks, std::vector<SourceFile>& files, const std:
             hitsInFile += n;
         }
         if (hitsInFile > 0) {
+            const auto t0 = std::chrono::steady_clock::now();
             docks.oldDock.appendFileBlock(oldMap, sciSend);
+            const auto t1 = std::chrono::steady_clock::now();
             docks.newDock.appendFileBlock(newMap, sciSend);
+            g_oldAppendSeconds += std::chrono::duration<double>(t1 - t0).count();
+            g_newAppendSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t1).count();
             totalHits += hitsInFile;
             ++filesWithHits;
         }
@@ -3394,6 +3407,35 @@ static std::vector<SourceFile> loadFolder(const std::vector<std::string>& dirs) 
     return files;
 }
 
+// One line of 32 to 128 KB in code page 1252 with a hit every 32 bytes, after the cap mostly unshown
+static void longLines() {
+    for (const size_t kb : { 32, 64, 128 }) {
+        SourceFile f;
+        f.codepage = 0;
+        f.pathUtf8 = "C:\\gen\\long" + std::to_string(kb) + ".txt";
+        f.pathW = widen(f.pathUtf8);
+        while (f.text.size() < kb * 1024) f.text += "Fi \xE4\xF6\xFC\xDF \xAD\xA0 abcdefghijklmnopqrst ";
+        f.text += "\r\nFi\r\n";
+        size_t hits = 0;
+        for (size_t p = f.text.find("Fi"); p != std::string::npos; p = f.text.find("Fi", p + 2)) ++hits;
+        Criterion c;
+        c.findW = L"Fi";
+        c.bytes = "Fi";
+        c.flags = SCFIND_MATCHCASE;
+        std::vector<SourceFile> files{ f };
+        Docks docks;
+        g_oldAppendSeconds = g_newAppendSeconds = 0;
+        searchBlock(docks, files, { c }, false, false);
+        compareRows(docks);
+        compareDock(docks);
+        if (kb == 128) {
+            ++g_checks;
+            if (g_newAppendSeconds * 20 > g_oldAppendSeconds) fail("long line", "not 20 times as fast as a43e162");
+        }
+        std::printf("L. %3zu KB line, %zu hits: a43e162 %.3f s, now %.3f s\n", kb, hits, g_oldAppendSeconds, g_newAppendSeconds);
+    }
+}
+
 int main(int argc, char** argv) {
     std::printf("Result dock: new hit model against a43e162\n\n");
     const int drift = verbatimCheck();
@@ -3449,6 +3491,7 @@ int main(int argc, char** argv) {
         deleteRandomly(docks, deleteRng);
     }
     std::printf("S. %d search blocks in 300 docks, %lld dock lines\n", blocks, rows);
+    longLines();
     std::printf("W. wrap of %lld dock lines at 4 widths, a43e162 with SC_WRAP_WORD, now with %s; SC_WRAP_WORD would break %lld of them differently\n",
         g_wrapLines, wrapName.c_str(), g_wrapWordDiffers);
     std::printf("D. Delete key: %lld deletions of lines, blocks and selections\n", g_deletions);
