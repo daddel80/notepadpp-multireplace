@@ -658,6 +658,7 @@ public:
 
     void pickupSelectionIntoFindEdit();
     void activateAndFocusFindEdit();
+    void applyNppDarkModeTheme(ULONG flags);
     inline HWND getHSelf() const { return _hSelf; }
     inline void setParent(HWND parent2set) {
         _hParent = parent2set;

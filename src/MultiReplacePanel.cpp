@@ -1061,8 +1061,8 @@ void MultiReplace::initializeDragAndDrop() {
 }
 
 namespace {
-    // A combo box selects its whole text when it is resized. Keeps the edit
-    // selection of every combo box across a layout pass.
+    // A combo box selects its whole text when it is resized or restyled. Across
+    // such a pass the focused field keeps its selection, the others show none.
     class ComboSelectionGuard {
     public:
         ComboSelectionGuard(HWND hDlg, const std::map<int, ControlInfo>& controls)
@@ -1080,8 +1080,13 @@ namespace {
 
         ~ComboSelectionGuard()
         {
-            for (const Selection& sel : _selections)
-                SendMessage(sel.hEdit, EM_SETSEL, static_cast<WPARAM>(sel.start), static_cast<LPARAM>(sel.end));
+            const HWND hFocus = GetFocus();
+            for (const Selection& sel : _selections) {
+                if (sel.hEdit == hFocus)
+                    SendMessage(sel.hEdit, EM_SETSEL, static_cast<WPARAM>(sel.start), static_cast<LPARAM>(sel.end));
+                else
+                    SendMessage(sel.hEdit, EM_SETSEL, static_cast<WPARAM>(-1), 0);
+            }
         }
 
         ComboSelectionGuard(const ComboSelectionGuard&) = delete;
@@ -1147,6 +1152,11 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
     // anchored regardless of which caller triggered the pass (resize,
     // visibility toggle, search bar show/hide, scale change).
     repositionNewTabButton();
+}
+
+void MultiReplace::applyNppDarkModeTheme(ULONG flags) {
+    const ComboSelectionGuard comboSelections(_hSelf, ctrlMap);
+    ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(flags), reinterpret_cast<LPARAM>(_hSelf));
 }
 
 void MultiReplace::updateTwoButtonsVisibility() {
@@ -5441,7 +5451,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         rebuildTabControl();
 
         // Activate Dark Mode
-        ::SendMessage(nppData._nppHandle, NPPM_DARKMODESUBCLASSANDTHEME, static_cast<WPARAM>(NppDarkMode::dmfInit), reinterpret_cast<LPARAM>(_hSelf));
+        applyNppDarkModeTheme(NppDarkMode::dmfInit);
 
         // Post-init tasks, deferred until after the dialog is shown
         PostMessage(_hSelf, WM_POST_INIT, 0, 0);
