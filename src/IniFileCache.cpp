@@ -46,12 +46,12 @@ bool IniFileCache::parse(const std::wstring& iniFilePath, std::set<std::wstring>
     std::ifstream ini(std::filesystem::path(iniFilePath), std::ios::binary);
     if (!ini.is_open()) return false;
 
-    // Read whole file (unchanged)
+    // Read whole file
     std::string raw((std::istreambuf_iterator<char>(ini)),
         std::istreambuf_iterator<char>());
     ini.close();
 
-    // UTF‑8 / ANSI detection (unchanged)
+    // UTF-8 / ANSI detection
     size_t offset = 0;
     UINT cp = CP_UTF8;
     if (raw.size() >= 3 &&
@@ -113,7 +113,7 @@ bool IniFileCache::parse(const std::wstring& iniFilePath, std::set<std::wstring>
 }
 
 // ------------------------------------------------------------------
-//  Typed getters  (identical logic, macro‑safe max() usage)
+//  Typed getters  (identical logic, macro-safe max() usage)
 // ------------------------------------------------------------------
 std::wstring IniFileCache::readString(const std::wstring& s, const std::wstring& k,
     const std::wstring& d) const

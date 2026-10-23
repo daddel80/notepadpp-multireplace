@@ -1,4 +1,4 @@
-// QA harness for "Search open documents instead of files on disk" (stage 1):
+// QA harness for "Search open documents instead of files on disk":
 //
 //   1. Source switch in Find in Files: files open in N++ are searched via
 //      their live Scintilla document; everything else takes the disk path.

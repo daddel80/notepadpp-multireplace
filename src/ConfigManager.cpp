@@ -17,8 +17,8 @@
 // -----------------------------------------------------------------------------
 //  Handles user settings stored in "MultiReplace.ini".
 //  • wrap IniFileCache for typed read access
-//  • simple write helpers modify the in‑memory cache
-//  • save() serialises the full cache back to disk (UTF‑8 +BOM)
+//  • simple write helpers modify the in-memory cache
+//  • save() serialises the full cache back to disk (UTF-8 +BOM)
 //  • Differentiates between numeric values (no escaping) and strings (escaped)
 // -----------------------------------------------------------------------------
 
@@ -72,7 +72,7 @@ void ConfigManager::forceReload(const std::wstring& iniFile)
 }
 
 //
-//  Save current cache to disk (UTF‑8 with BOM)
+//  Save current cache to disk (UTF-8 with BOM)
 //  - String values (user input) are escaped with escapeQuoted()
 //  - Numeric values (int, bool, float, size_t) are written as-is
 //

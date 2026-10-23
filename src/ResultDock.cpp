@@ -482,7 +482,7 @@ void ResultDock::closeSearchBlock(int totalHits, int totalFiles, const std::wstr
 // ---------------- Construction & Core State ---------------
 
 ResultDock::ResultDock(HINSTANCE hInst)
-    : _hInst(hInst)      // member‑initialiser‑list
+    : _hInst(hInst)      // member-initialiser-list
     , _hSci(nullptr)
     , _hDock(nullptr)
 {
@@ -557,7 +557,7 @@ void ResultDock::create(const NppData& npp)
     // Whitespace only: SC_WRAP_WORD would also break where a match style starts or ends
     ::SendMessageW(_hSci, SCI_SETWRAPMODE, wrapEnabled() ? SC_WRAP_WHITESPACE : SC_WRAP_NONE, 0);
 
-    // 3a) **Performance/caching**: keep layout cached for whole doc + buffered drawing
+    // 3a) Performance: keep the layout of the whole document cached, draw buffered
     ::SendMessageW(_hSci, SCI_SETBUFFEREDDRAW, TRUE, 0);
     ::SendMessageW(_hSci, SCI_SETLAYOUTCACHE, SC_CACHE_DOCUMENT, 0); // critical for fast fold open on older blocks
     applyControlRepresentations(_hSci);
@@ -619,11 +619,11 @@ void ResultDock::initFolding() const
     S(SCI_SETMARGINTYPEN, M_FOLD, SC_MARGIN_SYMBOL);
     S(SCI_SETMARGINMASKN, M_FOLD, SC_MASK_FOLDERS);
 
-    // 2) width: 16‑px box + 4 px stem so nothing is clipped ------
+    // 2) width: 16-px box + 4 px stem so nothing is clipped ------
     const int h = static_cast<int>(S(SCI_TEXTHEIGHT));
     S(SCI_SETMARGINWIDTHN, M_FOLD, h + 4);
 
-    // 3) hide margins 0/1 (line‑numbers & bookmarks) -------------
+    // 3) hide margins 0/1 (line-numbers & bookmarks) -------------
     S(SCI_SETMARGINWIDTHN, 0, 0);
     S(SCI_SETMARGINWIDTHN, 1, 0);
 
@@ -634,7 +634,7 @@ void ResultDock::initFolding() const
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEROPENMID, SC_MARK_BOXMINUSCONNECTED);
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDEREND, SC_MARK_BOXPLUSCONNECTED);
 
-    // 5) guide‑line markers (│ ├ └) ------------------------------
+    // 5) guide-line markers (│ ├ └) ------------------------------
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERSUB, SC_MARK_VLINE);
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERMIDTAIL, SC_MARK_TCORNER);
     S(SCI_MARKERDEFINE, SC_MARKNUM_FOLDERTAIL, SC_MARK_LCORNER);
@@ -1253,7 +1253,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             }
             const std::string& origU8 = *origU8Ptr;
 
-            // classify helpers (codepoint-based; both old paths used the same rules)
+            // classify helpers (codepoint-based)
             auto isCtlCp = [](uint32_t cp)->bool {
                 if (cp == 0x0000) return true;
                 if ((cp <= 0x1Fu) && cp != 0x09 && cp != 0x0A && cp != 0x0D) return true;
@@ -1265,7 +1265,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             auto isNbspCp = [](uint32_t cp)->bool { return cp == 0x00A0; };
 
             // Single-pass transform on UTF-8: build displayU8 and mapOrigToDisp
-            // in one walk over origU8. Same cleanup rules as before
+            // in one walk over origU8. Cleanup rules:
             // (SHY drop / NBSP+Ctl -> ASCII space / else verbatim).
             // The walk stops past the display cap; later offsets map beyond the capped text.
             displayU8.clear();
@@ -2237,7 +2237,7 @@ void ResultDock::copySelectedLines(HWND hSci) {
     if (!out.empty()) {
         std::wstring joined;
         for (size_t i = 0; i < out.size(); ++i) {
-            joined += out[i];                   // << keeps original behaviour
+            joined += out[i];
         }
         copyTextToClipboard(hSci, joined);
     }
@@ -2402,7 +2402,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     int lastLine = static_cast<int>(Sx(SCI_LINEFROMPOSITION, c));
     bool hasSel = (a != c);
 
-    // Build list of display-line ranges to delete (unchanged logic)
+    // Build list of display-line ranges to delete
     struct DelRange { int first; int last; };
     std::vector<DelRange> ranges;
 
@@ -2471,7 +2471,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     if (ranges.empty())
         return;
 
-    // Delete ranges bottom-up (keep your original structure)
+    // Delete ranges bottom-up so the ranges still to delete keep their line numbers
     std::sort(ranges.begin(), ranges.end(), [](auto& A, auto& B) {
         return A.first != B.first ? A.first < B.first : A.last < B.last;
         });
@@ -2508,12 +2508,12 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         ::SendMessage(hSci, WM_SETREDRAW, TRUE, 0);
     }
 
-    // Rebuild dock caches as before
+    // Rebuild dock caches
     dock.rebuildFolding();
     dock.applyStyling();
     dock.rebuildHitLineIndex();
 
-    // force a synchronous repaint (matches prependBlock's explicit refresh idea) ---
+    // Force a synchronous repaint
     ::RedrawWindow(hSci, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
     ::UpdateWindow(hSci);
@@ -2756,7 +2756,7 @@ LRESULT CALLBACK ResultDock::sciSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPA
             ::SendMessage(hwnd, SCI_GETSELECTIONSTART, 0, 0) !=
             ::SendMessage(hwnd, SCI_GETSELECTIONEND, 0, 0);
 
-        // -------- exact order & separators (matches screenshot) ----------------
+        // -------- menu order and separators ----------------
 
         add(IDM_RD_FOLD_ALL, L"rdmenu_fold_all");
         add(IDM_RD_UNFOLD_ALL, L"rdmenu_unfold_all");

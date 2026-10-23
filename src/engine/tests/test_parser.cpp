@@ -185,9 +185,8 @@ int main()
           { E("foo\\bar") });
 
     // 11. UTF-8 in literal text - bytes pass through unchanged
-    //     "Über=" in UTF-8: 55 CC 88 62 65 72 3D ... actually it's
-    //     C3 9C 62 65 72 3D - either way, the parser only cares that
-    //     the marker bytes don't appear in the multi-byte sequence.
+    //     "Über=" is C3 9C 62 65 72 3D in UTF-8; the parser only relies on
+    //     the marker bytes never occurring inside a multi-byte sequence.
     check("11_utf8_literal",
           "Über=(?=reg(1))",
           { L("Über="), E("reg(1)") });
@@ -232,19 +231,6 @@ int main()
     //     The closing ')' that balances the outer '(?=' is the last
     //     one. Depth: opens at (?=(1), then (?=(2), opens 2x for
     //     reg(...), so depth tracking yields the rightmost ')'.
-    //     Let's count manually:
-    //         (?=    -> we entered, depth=1, i past the marker
-    //         r e g  -> 3 chars
-    //         (      -> depth=2
-    //         1
-    //         )      -> depth=1
-    //         + ( ?  -> ( bumps depth to 2
-    //         = r e g
-    //         (      -> depth=3
-    //         2
-    //         )      -> depth=2
-    //         )      -> depth=1
-    //         )      -> depth=0, STOP
     //     Final expression text = "reg(1)+(?=reg(2))"
     check("17_nested_marker_in_expr",
           "(?=reg(1)+(?=reg(2)))",

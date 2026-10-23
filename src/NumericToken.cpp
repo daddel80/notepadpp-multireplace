@@ -24,7 +24,7 @@ namespace mr {
         // Internal Constants
         // =========================================================================
 
-        // Maximum length for currency/unit prefix or suffix (e.g. "$", "USD", "�")
+        // Maximum length for currency/unit prefix or suffix (e.g. "$", "USD", "€")
         static constexpr std::size_t MAX_AFFIX_LENGTH = 4;
 
         // =========================================================================

@@ -213,7 +213,7 @@ struct Walk {
     bool take(size_t w) { ++run.found[w]; return matchList.empty() || matchList.count(run.found[w]); }
 };
 
-// ---------------------------------------------------------------- the walk as onePassReplaceAll runs it, over OnePassHits
+// ---------------------------------------------------------------- the walk as onePassReplaceAll runs it, over OnePassHits (keep in step with it)
 struct HitsPass : Walk {
     bool remember; Scoping sc; bool dynamicRepl = false; std::set<size_t> extEdits; Sci::Position startPos = 0;   // extEdits: steps with an outside insertion + reset()
     HitsPass(Doc& d, const std::vector<Entry>& l, const std::set<int>& m, bool rem, Scoping s = {}) : Walk(d, l, m), remember(rem), sc(std::move(s)) {}
@@ -613,7 +613,7 @@ static bool kDependence(KResult& k, const std::string& pat, bool regex, bool who
 
 // K2, K4, K5, K6: every start position of every probe text. Texts with invalid UTF-8 are counted
 // apart: there the bridge's iterator decodes differently depending on where it starts, so the
-// engine itself answers inconsistently and nothing built on it can be consistent (see Stage 6).
+// engine itself answers inconsistently and nothing built on it can be consistent.
 static void kPositions(KResult& k, const std::string& pat, bool regex, int flags, const std::vector<std::string>& texts, bool dependent) {
     const bool uncached = OnePassHits::neverRemembered(pat, regex);
     // only context-sensitive entries get the anchored probe, and only a construct whose hit at P can be
@@ -912,7 +912,7 @@ int main(int argc, char** argv) {
     DocOptions custom; custom.wordChars = "abcdefghijklmnopqrstuvwxyz0123456789_-";
     compareNewRef("C32 custom word chars: '-' replaced by ' ' frees a whole-word hit", "x-foo foo", { { "-", " " }, { "foo", "F", false, true } }, {}, {}, custom);
     compareNewRef("C33 custom word chars: ' ' replaced by '-' binds a whole-word hit", "x foo foo", { { " ", "-" }, { "foo", "F", false, true } }, {}, {}, custom);
-    // Stage 6: the cases that can only be built here
+    // Cases that can only be built here
     compareNewRef("C34 replacement ends with a lead byte, untouched continuation byte completes it", "x\xA4" "b x\xA4" "b", { { "x", "\xC3" }, { "\\bb", "B", true } });
     compareNewRef("C35 lone lead byte removed before a word-boundary entry", "\xC3" "b \xC3" "b", { { "\xC3", "" }, { "\\bb", "B", true }, { "b", "" } });
     compareNewRef("C36 U+2028 inserted before a remembered ^ entry", "a!b\nb", { { "a!", "\xE2\x80\xA8" }, { "^b", "B", true } });

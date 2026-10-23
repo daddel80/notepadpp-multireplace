@@ -4306,7 +4306,7 @@ void MultiReplace::closeEditField(bool commitChanges)
         }
     }
 
-    // Tear down edit controls (unchanged)
+    // Tear down edit controls
     DestroyWindow(hwndEdit);
     hwndEdit = nullptr;
     if (hwndExpandBtn && IsWindow(hwndExpandBtn)) {
@@ -9862,7 +9862,7 @@ void MultiReplace::handleReplaceInFiles() {
 std::wstring MultiReplace::sanitizeSearchPattern(const std::wstring& raw) {
     // Escape newlines directly in the wstring (no encoding conversion needed)
     std::wstring escaped = raw;
-    // Replace CR/LF as before, but for wstring
+    // Escape CR and LF
     size_t pos = 0;
     while ((pos = escaped.find(L"\r", pos)) != std::wstring::npos)
         escaped.replace(pos, 1, L"\\r"), pos += 2;
@@ -10338,7 +10338,6 @@ void MultiReplace::handleFindInFiles() {
         return;
     }
 
-    // (Standard File-Parsing block omitted for brevity - no changes until dock clear)
     auto wDir = getTextFromDialogItem(_hSelf, IDC_DIR_EDIT);
     auto wFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
     const bool recurse = (IsDlgButtonChecked(_hSelf, IDC_SUBFOLDERS_CHECKBOX) == BST_CHECKED);
@@ -10847,7 +10846,7 @@ void MultiReplace::handleFindPrevButton() {
         }
     }
     else {
-        // Single-Mode: lesen -> History -> Flags -> Suche
+        // Single mode: read input -> history -> flags -> search
         std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
 
@@ -11554,7 +11553,7 @@ void MultiReplace::handleMarkMatchesButton() {
         refreshUIListView();
     }
     else {
-        // Single Mode (unchanged)
+        // Single mode
         const std::wstring findText = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         SearchContext context;
         context.findText = convertAndExtendW(findText, IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
@@ -20272,7 +20271,7 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
             Sci_Position insertLineNumber = (cursorPosition == lineStart) ? lineNumber : lineNumber + 1;
             LogEntry insertEntry;
             insertEntry.changeType = ChangeType::Insert;
-            insertEntry.lineNumber = insertLineNumber;  // ← FIXED: Use adjusted position
+            insertEntry.lineNumber = insertLineNumber;
             insertEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(insertEntry);
         }
@@ -20299,7 +20298,7 @@ void MultiReplace::processTextChange(SCNotification* notifyCode) {
 
             LogEntry deleteEntry;
             deleteEntry.changeType = ChangeType::Delete;
-            deleteEntry.lineNumber = deletePos;  // ← FIXED
+            deleteEntry.lineNumber = deletePos;
             deleteEntry.blockSize = static_cast<Sci_Position>(std::abs(addedLines));
             logChanges.push_back(deleteEntry);
         }
@@ -20345,8 +20344,7 @@ void MultiReplace::flowTabsFinalizeUndo() {
         ::SendMessage(_hScintilla, SCI_ADDUNDOACTION, FLOWTAB_UNDO_TOKEN, 0);
     }
     else {
-        // Fallback: mechanism unavailable, clear the undo buffer as before.
-        // No toggle-undo, but stable - exactly the legacy behaviour.
+        // Fallback: mechanism unavailable, clear the undo buffer (no toggle undo).
         ::SendMessage(_hScintilla, SCI_EMPTYUNDOBUFFER, 0, 0);
     }
 }

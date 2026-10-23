@@ -17,7 +17,7 @@
 #pragma once
 // --------------------------------------------------------------
 //  IniFileCache
-//  • Parses a Windows‑style INI file (UTF‑8, UTF‑8‑BOM, or ANSI)
+//  • Parses a Windows-style INI file (UTF-8, UTF-8-BOM, or ANSI)
 //  • Stores key/value pairs hierarchically in memory
 //  • Offers typed getters (string, int, bool …)
 // --------------------------------------------------------------

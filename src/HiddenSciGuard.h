@@ -31,7 +31,7 @@
 #include "Scintilla.h"         // For SCI_*
 #pragma comment(lib, "shlwapi.lib")
 
-extern NppData nppData;       // From your plugin definition
+extern NppData nppData;       // defined in PluginDefinition.cpp
 
 class HiddenSciGuard {
 public:

@@ -14,7 +14,7 @@ Pos effectiveStart(bool fileScope, bool optionOn, bool wrap, Pos caret) {
 int fails = 0;
 #define CHECK(d,c) do{bool ok=(c);printf("%-4s %s\n",ok?"PASS":"FAIL",d);if(!ok)++fails;}while(0)
 int main() {
-    const Pos END = 18; // caret after SCI_ADDTEXT (file end) resp. editor caret
+    const Pos END = 18; // caret after SCI_ADDTEXT (file end) or editor caret
     CHECK("file scope, option ON,  wrap off -> 0 (F5 fixed; was END)", effectiveStart(true,  true,  false, END) == 0);
     CHECK("file scope, option ON,  wrap on  -> 0",                     effectiveStart(true,  true,  true,  END) == 0);
     CHECK("file scope, option OFF, wrap off -> 0",                     effectiveStart(true,  false, false, END) == 0);

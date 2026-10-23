@@ -530,7 +530,7 @@ const UITextMapping kControlTextMappings[] = {
     { IDC_LOAD_LIST_BUTTON,            L"panel_load_list" },
     { IDC_SAVE_TO_CSV_BUTTON,          L"panel_save_list" },
     { IDC_SAVE_AS_BUTTON,              L"panel_save_as" },
-    // Replace in Files Panel - NEU HINZUGEFÜGT
+    // Replace in Files panel
     { IDC_DIR_STATIC,                  L"panel_directory" },
     { IDC_FILTER_STATIC,               L"panel_filter" },
     { IDC_SUBFOLDERS_CHECKBOX,         L"panel_in_subfolders" },

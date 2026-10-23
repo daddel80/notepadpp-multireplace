@@ -1,2 +1,0 @@
-function wrap(s: S) : S
-    return '[' + s + ']';

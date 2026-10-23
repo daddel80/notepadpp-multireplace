@@ -1052,7 +1052,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             }
             const std::string& origU8 = *origU8Ptr;
 
-            // classify helpers (codepoint-based; both old paths used the same rules)
+            // classify helpers (codepoint-based)
             auto isCtlCp = [](uint32_t cp)->bool {
                 if (cp == 0x0000) return true;
                 if ((cp <= 0x1Fu) && cp != 0x09 && cp != 0x0A && cp != 0x0D) return true;
@@ -1064,7 +1064,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             auto isNbspCp = [](uint32_t cp)->bool { return cp == 0x00A0; };
 
             // Single-pass transform on UTF-8: build displayU8 and mapOrigToDisp
-            // in one walk over origU8. Same cleanup rules as before
+            // in one walk over origU8. Cleanup rules:
             // (SHY drop / NBSP+Ctl -> ASCII space / else verbatim).
             // The walk stops past the display cap; later offsets map beyond the capped text.
             displayU8.clear();
@@ -1480,7 +1480,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     int lastLine = static_cast<int>(Sx(SCI_LINEFROMPOSITION, c));
     bool hasSel = (a != c);
 
-    // Build list of display-line ranges to delete (unchanged logic)
+    // Build list of display-line ranges to delete
     struct DelRange { int first; int last; };
     std::vector<DelRange> ranges;
 
@@ -1549,7 +1549,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     if (ranges.empty())
         return;
 
-    // Delete ranges bottom-up (keep your original structure)
+    // Delete ranges bottom-up so the ranges still to delete keep their line numbers
     std::sort(ranges.begin(), ranges.end(), [](auto& A, auto& B) {
         return A.first != B.first ? A.first < B.first : A.last < B.last;
         });
@@ -1586,12 +1586,12 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         ::SendMessage(hSci, WM_SETREDRAW, TRUE, 0);
     }
 
-    // Rebuild dock caches as before
+    // Rebuild dock caches
     dock.rebuildFolding();
     dock.applyStyling();
     dock.rebuildHitLineIndex();
 
-    // force a synchronous repaint (matches prependBlock's explicit refresh idea) ---
+    // Force a synchronous repaint
     ::RedrawWindow(hSci, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
     ::UpdateWindow(hSci);
@@ -2407,7 +2407,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             }
             const std::string& origU8 = *origU8Ptr;
 
-            // classify helpers (codepoint-based; both old paths used the same rules)
+            // classify helpers (codepoint-based)
             auto isCtlCp = [](uint32_t cp)->bool {
                 if (cp == 0x0000) return true;
                 if ((cp <= 0x1Fu) && cp != 0x09 && cp != 0x0A && cp != 0x0D) return true;
@@ -2419,7 +2419,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             auto isNbspCp = [](uint32_t cp)->bool { return cp == 0x00A0; };
 
             // Single-pass transform on UTF-8: build displayU8 and mapOrigToDisp
-            // in one walk over origU8. Same cleanup rules as before
+            // in one walk over origU8. Cleanup rules:
             // (SHY drop / NBSP+Ctl -> ASCII space / else verbatim).
             // The walk stops past the display cap; later offsets map beyond the capped text.
             displayU8.clear();
@@ -2800,7 +2800,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     int lastLine = static_cast<int>(Sx(SCI_LINEFROMPOSITION, c));
     bool hasSel = (a != c);
 
-    // Build list of display-line ranges to delete (unchanged logic)
+    // Build list of display-line ranges to delete
     struct DelRange { int first; int last; };
     std::vector<DelRange> ranges;
 
@@ -2869,7 +2869,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     if (ranges.empty())
         return;
 
-    // Delete ranges bottom-up (keep your original structure)
+    // Delete ranges bottom-up so the ranges still to delete keep their line numbers
     std::sort(ranges.begin(), ranges.end(), [](auto& A, auto& B) {
         return A.first != B.first ? A.first < B.first : A.last < B.last;
         });
@@ -2906,12 +2906,12 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         ::SendMessage(hSci, WM_SETREDRAW, TRUE, 0);
     }
 
-    // Rebuild dock caches as before
+    // Rebuild dock caches
     dock.rebuildFolding();
     dock.applyStyling();
     dock.rebuildHitLineIndex();
 
-    // force a synchronous repaint (matches prependBlock's explicit refresh idea) ---
+    // Force a synchronous repaint
     ::RedrawWindow(hSci, nullptr, nullptr,
         RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
     ::UpdateWindow(hSci);

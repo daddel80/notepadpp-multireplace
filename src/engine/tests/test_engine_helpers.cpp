@@ -2,11 +2,6 @@
 // ExprTkEngine: parseCaptureToDouble and formatDouble. These do not
 // link the full engine; they re-implement the helpers in this TU so
 // they can be verified without the ExprTk header.
-//
-// The intent is to lock in the contract for these helpers before the
-// full engine is built, so the engine code can rely on documented
-// behaviour. When the full engine compiles successfully on Thomas's
-// box, we'll also build proper end-to-end tests.
 
 #include <array>
 #include <cassert>

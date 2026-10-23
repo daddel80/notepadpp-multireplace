@@ -36,6 +36,10 @@
 // a test lever, not a setting: with false every step searches every entry
 // from the walk position, which the QA harnesses use as the reference result.
 // The plugin always uses the default.
+//
+// Before anything is written, replaceOne repeats the search with the entry's
+// own flags and refuses a different position or length, so a defect here can
+// miss or reorder a replacement but never replace text the entry does not match.
 
 struct OnePassHit {
     Sci_Position pos = -1;

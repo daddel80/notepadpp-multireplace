@@ -507,10 +507,7 @@ int main(int argc, char** argv) {
             "    };\n"
             "    return total;\n"
             "end\n";
-        // num2rom(rom2num('XX') + 5)  =  num2rom(20 + 5) = "XXV"... wait
-        // our toy num2rom doesn't handle V. Let's pick a clean example:
-        // num2rom(rom2num('XXIII') * 2) = num2rom(23 * 2) = num2rom(46)
-        // = X X X X V I -> but no V again. Stay with 'XII' * 2 = 24
+        // The toy num2rom only emits X and I: num2rom(rom2num('XII') * 2) = num2rom(24) = "XXIIII"
         expectString("compose_pipeline", lib,
                      "return [num2rom(rom2num('XII') * 2)];", "XXIIII");
     }
