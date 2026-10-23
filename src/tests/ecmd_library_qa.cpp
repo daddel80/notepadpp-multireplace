@@ -4,7 +4,7 @@
 // outer expression that calls into the library and verify results.
 //
 // Compile:
-//   g++ -std=c++20 -Wall -Wextra ecmd_library_qa.cpp ../engine/EcmdParser.cpp
+//   g++ -std=c++20 -Wall -Wextra ecmd_library_qa.cpp ../exprtk/EcmdParser.cpp
 //       -I.. -o ecmd_library_qa
 //   ./ecmd_library_qa [-v]
 //

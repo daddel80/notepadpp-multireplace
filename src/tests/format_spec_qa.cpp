@@ -1,13 +1,11 @@
-// Test harness for FormatSpec. Builds standalone with the FormatSpec
-// library only - no MR, no ExprTk, no Win32. Run from the src/tests dir.
+// Test harness for FormatSpec. Builds standalone with FormatSpec and the
+// Encoding helpers - no MR, no ExprTk. Run from the src/tests dir.
 //
 // MSVC (x64 Native Tools Command Prompt for VS 2022):
-//   cl /std:c++17 /EHsc /I.. format_spec_qa.cpp ..\exprtk\FormatSpec.cpp /Fe:format_spec_qa.exe
+//   cl /std:c++17 /EHsc /I.. format_spec_qa.cpp ..\exprtk\FormatSpec.cpp ..\Encoding.cpp /Fe:format_spec_qa.exe
 //   format_spec_qa.exe
 //
-// MinGW / g++:
-//   g++ -std=c++17 -Wall -Wextra -I.. format_spec_qa.cpp ../exprtk/FormatSpec.cpp -o format_spec_qa
-//   ./format_spec_qa
+// Windows only: the date formatting uses _wcreate_locale, with MinGW that needs its UCRT toolchain.
 //
 // Pass -v for a verbose pass-by-pass listing.
 

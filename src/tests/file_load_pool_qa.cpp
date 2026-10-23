@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <random>
 #include <stdexcept>
@@ -72,6 +73,7 @@ namespace {
         std::atomic<uint64_t> outstanding{ 0 };  // bytes past the gate, kept for the consumer and not taken yet
         std::atomic<uint64_t> nextBytes{ 0 };    // the same for files that passed as the next one, budget or not
         std::unique_ptr<std::atomic<int>[]> counted;   // 1 in outstanding, 2 in nextBytes
+        std::mutex booking;                            // a worker's check and the consumer's booking, one at a time
         std::atomic<int> gateViolations{ 0 };
         std::atomic<int> bigBuffers{ 0 };        // loads that were handed a buffer over 1 MB
         std::atomic<int> reusedBuffers{ 0 };
@@ -128,8 +130,9 @@ namespace FileLoad {
                 r.skip = SkipReason::Unreadable;
                 return r;
             }
-            // The file the consumer may be taking right now is still counted here, not in the pool any more.
-            // A file passing as the next one may pass over the budget; it is counted apart.
+            // Under the consumer's lock: the file it may be taking right now is still counted here, not in the
+            // pool any more. A file passing as the next one may pass over the budget; it is counted apart.
+            std::lock_guard<std::mutex> lock(run.booking);
             const size_t taken = run.taken.load();
             const uint64_t window = (taken < run.specs.size() && run.counted[taken].load() == 1) ? run.specs[taken].size : 0;
             const bool next = index <= taken + 1;
@@ -270,12 +273,15 @@ int main()
                     if (ordered) std::printf("  run %d: file %zu not as expected\n", r, expect);
                     ordered = false;
                 }
-                // Uncounted first, then unflagged: a worker looking meanwhile still finds the file in its window
-                const int counted = run.counted[expect].load();
-                if (counted == 1) run.outstanding -= run.specs[expect].size;
-                if (counted == 2) run.nextBytes -= run.specs[expect].size;
-                run.counted[expect].store(0);
-                run.taken = expect + 1;
+                // Booked as one step: a worker checking meanwhile sees the file either still counted or taken
+                {
+                    std::lock_guard<std::mutex> lock(run.booking);
+                    const int counted = run.counted[expect].load();
+                    if (counted == 1) run.outstanding -= run.specs[expect].size;
+                    if (counted == 2) run.nextBytes -= run.specs[expect].size;
+                    run.counted[expect].store(0);
+                    run.taken = expect + 1;
+                }
                 ++expect;
                 pool.recycle(std::move(f.text));
                 if (expect == cancelAt) { pool.cancel(); ++cancels; }

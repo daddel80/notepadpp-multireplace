@@ -1,6 +1,6 @@
 // Standalone tests for EcmdParser.
 // Compile:
-//   g++ -std=c++20 -Wall -Wextra ecmd_parser_qa.cpp ../engine/EcmdParser.cpp -o ecmd_parser_qa
+//   g++ -std=c++20 -Wall -Wextra ecmd_parser_qa.cpp ../exprtk/EcmdParser.cpp -o ecmd_parser_qa
 //   ./ecmd_parser_qa [-v]
 
 #include "../exprtk/EcmdParser.h"
