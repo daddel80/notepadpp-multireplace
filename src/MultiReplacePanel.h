@@ -548,6 +548,14 @@ public:
         bool    _prev;
         bool    _done;
         inline static bool _active = false;
+
+        bool tabsMoved() const {
+            int view = -1;
+            ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&view));
+            return view != _focusView
+                || ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW) != _mainIdx
+                || ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, SUB_VIEW) != _subIdx;
+        }
     public:
         DocCycleGuard()
             : _mainIdx(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, MAIN_VIEW)),
@@ -559,22 +567,25 @@ public:
         }
         ~DocCycleGuard() { restore(); }
 
-        // Re-activates the saved documents, focused view last, and ends the guard
+        // Re-activates the saved documents, focused view last, and ends the guard.
+        // Tabs the run left as they were stay untouched: activating would take the focus from the panel.
         void restore() {
             if (_done) return;
             _done = true;
             if (_isShuttingDown) { _active = _prev; return; }   // nothing left to return to
-            if (_mainIdx >= 0)
+            const bool moved = tabsMoved();
+            if (moved && _mainIdx >= 0)
                 ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, _mainIdx);
-            if (_subIdx >= 0)
+            if (moved && _subIdx >= 0)
                 ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, _subIdx);
             const int focusView = (_focusView == 0) ? MAIN_VIEW : SUB_VIEW;
             const LRESULT focusIdx = (_focusView == 0) ? _mainIdx : _subIdx;
             if (focusIdx >= 0) {
-                ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
+                if (moved)
+                    ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, focusView, focusIdx);
                 if (instance) {
                     instance->bindToView(focusView);
-                    ::SetFocus(instance->_hScintilla);
+                    if (moved) ::SetFocus(instance->_hScintilla);
                     if (!_prev) instance->restoreColumnVisuals();   // outermost cycle only
                 }
             }
