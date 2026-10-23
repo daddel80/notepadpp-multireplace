@@ -661,7 +661,6 @@ public:
     inline HWND getHSelf() const { return _hSelf; }
     inline void setParent(HWND parent2set) {
         _hParent = parent2set;
-        _hParent = parent2set;
     };
 
     static inline HWND getScintillaHandle() {
@@ -826,6 +825,7 @@ public:
     static void processLog();
     static void onDocumentSwitched();
     static void pointerToScintilla();
+    static HWND currentEditorView();
     static void onSelectionChanged();
     static void onTextChanged();
     static void onCaretPositionChanged();

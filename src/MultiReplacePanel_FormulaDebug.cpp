@@ -314,12 +314,13 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
                 {
                     bool shiftPressed = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
                     bool handled = true;
+                    const HWND hView = currentEditorView();
 
                     switch (msg.wParam) {
-                    case 'C': SendMessage(nppData._scintillaMainHandle, SCI_COPY, 0, 0); break;
-                    case 'V': SendMessage(nppData._scintillaMainHandle, SCI_PASTE, 0, 0); break;
-                    case 'X': SendMessage(nppData._scintillaMainHandle, SCI_CUT, 0, 0); break;
-                    case 'U': SendMessage(nppData._scintillaMainHandle,
+                    case 'C': SendMessage(hView, SCI_COPY, 0, 0); break;
+                    case 'V': SendMessage(hView, SCI_PASTE, 0, 0); break;
+                    case 'X': SendMessage(hView, SCI_CUT, 0, 0); break;
+                    case 'U': SendMessage(hView,
                         shiftPressed ? SCI_UPPERCASE : SCI_LOWERCASE, 0, 0); break;
                     case 'S': SendMessage(nppData._nppHandle,
                         shiftPressed ? NPPM_SAVEALLFILES : NPPM_SAVECURRENTFILE, 0, 0); break;

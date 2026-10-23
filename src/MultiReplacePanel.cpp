@@ -15382,16 +15382,20 @@ void MultiReplace::activateAndFocusFindEdit()
 
 std::wstring MultiReplace::getSelectedText()
 {
-    Sci_Position lengthWithNul = static_cast<Sci_Position>(SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0, 0));
+    const HWND hView = currentEditorView();
+    if (!hView) return L"";
+
+    Sci_Position lengthWithNul = static_cast<Sci_Position>(SendMessage(hView, SCI_GETSELTEXT, 0, 0));
     if (lengthWithNul <= 0) return L"";
 
     std::string buffer(static_cast<size_t>(lengthWithNul), '\0');
-    SendMessage(nppData._scintillaMainHandle, SCI_GETSELTEXT, 0,
+    SendMessage(hView, SCI_GETSELTEXT, 0,
         reinterpret_cast<LPARAM>(buffer.data()));
 
     if (!buffer.empty() && buffer.back() == '\0') buffer.pop_back();
 
-    UINT sciCp = getCurrentDocCodePage();
+    // Code page of the same view: the bound one may hold another document
+    const UINT sciCp = static_cast<UINT>(SendMessage(hView, SCI_GETCODEPAGE, 0, 0));
     return Encoding::bytesToWString(buffer, sciCp);
 }
 
@@ -20545,13 +20549,19 @@ void MultiReplace::bindToView(int view) {
         ::SendMessage(_hScintilla, SCI_GETDIRECTPOINTER, 0, 0));
 }
 
-void MultiReplace::pointerToScintilla() {
-
+// The editor view Notepad++ works in, nullptr if it cannot tell
+HWND MultiReplace::currentEditorView() {
     int which = -1;
     ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTSCINTILLA, 0, reinterpret_cast<LPARAM>(&which));
-    if (which != -1) {
-        instance->_hScintilla = (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
-        s_hScintilla = instance->_hScintilla;
+    if (which == -1) return nullptr;
+    return (which == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+}
+
+void MultiReplace::pointerToScintilla() {
+
+    if (HWND hView = currentEditorView()) {
+        instance->_hScintilla = hView;
+        s_hScintilla = hView;
     }
 
     if (instance->_hScintilla) { // just to supress Warning
