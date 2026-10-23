@@ -25627,7 +25627,9 @@ namespace exprtk
                 dec_.final_stmt_return_ = true;
             }
 
-            const expression_node_ptr result = simplify(arg_list, side_effect_list);
+            // Statement list ending in a string stays string-typed (extension, daddel80 patch),
+            // so expression_helper::get_string() reads it like a single string expression
+            const expression_node_ptr result = simplify(arg_list, side_effect_list, true);
 
             svd.delete_ptr = (0 == result);
 
