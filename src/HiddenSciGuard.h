@@ -116,12 +116,14 @@ public:
         return newDocument();
     }
 
-    // Ends the run: its document is freed, the view stays for the next run
+    // Ends the run: its document is freed, the view stays for the next run.
+    // Closing Notepad++ during a run destroys the view first: then nothing is left to free.
     void release()
     {
         if (!fn)
             return;
-        fn(pData, SCI_SETDOCPOINTER, 0, 0);
+        if (::IsWindow(hSci))
+            fn(pData, SCI_SETDOCPOINTER, 0, 0);
         sharedView().busy = false;
         hSci = nullptr;
         fn = nullptr;
@@ -296,7 +298,7 @@ public:
             g->fn(g->pData, SCI_SETDOCPOINTER, 0, foreignDoc);   // releases ours, refs foreign
         }
         ~AttachedDoc() {
-            if (!g) return;
+            if (!g || !::IsWindow(g->hSci)) return;
             g->fn(g->pData, SCI_SETDOCPOINTER, 0, ownDoc);       // releases foreign, refs ours
             g->fn(g->pData, SCI_RELEASEDOCUMENT, 0, ownDoc);     // drop keep-alive ref
         }

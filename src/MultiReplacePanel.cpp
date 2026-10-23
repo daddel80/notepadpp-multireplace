@@ -1275,9 +1275,14 @@ void MultiReplace::updateAllDocsCheckboxState()
 // operation, preventing double-execution from queued clicks.
 void MultiReplace::drainMessageQueue()
 {
+    // PeekMessage hands out WM_QUIT whatever the filter: put it back for Notepad++'s loop
     MSG msg;
-    while (::PeekMessage(&msg, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE)) {}
-    while (::PeekMessage(&msg, _hSelf, WM_COMMAND, WM_COMMAND, PM_REMOVE)) {}
+    while (::PeekMessage(&msg, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE)) {
+        if (msg.message == WM_QUIT) { ::PostQuitMessage(static_cast<int>(msg.wParam)); return; }
+    }
+    while (::PeekMessage(&msg, _hSelf, WM_COMMAND, WM_COMMAND, PM_REMOVE)) {
+        if (msg.message == WM_QUIT) { ::PostQuitMessage(static_cast<int>(msg.wParam)); return; }
+    }
 }
 
 void MultiReplace::updateFilesPanel()
@@ -9189,14 +9194,22 @@ namespace {
         void run()
         {
             const ULONGLONG now = GetTickCount64();
-            if (now < _next) return;
+            if (_quit || now < _next) return;
             _next = now + INTERVAL_MS;
             MSG m;
-            while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) { ::TranslateMessage(&m); ::DispatchMessage(&m); }
+            while (::PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
+                if (m.message == WM_QUIT) {   // Notepad++ is closing: its own loop must still see the quit
+                    ::PostQuitMessage(static_cast<int>(m.wParam));
+                    _quit = true;
+                    return;
+                }
+                ::TranslateMessage(&m); ::DispatchMessage(&m);
+            }
         }
     private:
         static constexpr ULONGLONG INTERVAL_MS = 50;
         ULONGLONG _next = 0;   // the first call runs it
+        bool _quit = false;
     };
 
     // Worker threads loading the files ahead; none if there is nothing to load or no thread could start
@@ -9813,6 +9826,7 @@ void MultiReplace::handleReplaceInFiles() {
         if (aborted) break;
     }
     pool.reset();   // a canceled run stops its workers here
+    if (_isShuttingDown) return;   // Notepad++ is closing: its views may already be gone
 
     discardDelimiterSnapshot();
     cycle.restore();
@@ -10394,6 +10408,7 @@ void MultiReplace::handleFindInFiles() {
         HiddenSciGuard& g;
         const std::unordered_map<std::wstring, OpenScanDoc>& m;
         ~DocPtrReleaser() {
+            if (!::IsWindow(g.hSci)) return;   // destroyed with Notepad++ on exit, and the documents with it
             for (const auto& kv : m)
                 if (kv.second.docPtr) g.fn(g.pData, SCI_RELEASEDOCUMENT, 0, kv.second.docPtr);
         }
@@ -10611,6 +10626,7 @@ void MultiReplace::handleFindInFiles() {
         }
     }
     pool.reset();   // a canceled run stops its workers here
+    if (_isShuttingDown) return;   // Notepad++ is closing: its views may already be gone
 
     // NOW show the dock (after search is complete, like Notepad++ does)
     dock.ensureCreatedAndVisible(nppData);
@@ -15421,7 +15437,8 @@ std::string MultiReplace::getEOLStyle() {
 }
 
 sptr_t MultiReplace::send(unsigned int iMessage, uptr_t wParam, sptr_t lParam, bool useDirect) const {
-    if (useDirect && pSciMsg) {
+    // On exit Notepad++ destroys its views: a direct call could reach a deleted one, a message cannot
+    if (useDirect && pSciMsg && !_isShuttingDown) {
         return pSciMsg(pSciWndData, iMessage, wParam, lParam);
     }
     else {

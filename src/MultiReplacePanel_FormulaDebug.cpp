@@ -158,7 +158,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
             if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
             {
-                if (msg.message == WM_QUIT) break;
+                if (msg.message == WM_QUIT) { ::PostQuitMessage(static_cast<int>(msg.wParam)); break; }
 
                 // Keyboard shortcuts when the debug window itself is the
                 // foreground - intercepted before IsDialogMessage so they
@@ -280,6 +280,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT) {
+                ::PostQuitMessage(static_cast<int>(msg.wParam));
                 break;
             }
 
@@ -815,7 +816,7 @@ void MultiReplace::WaitForDebugWindowClose(bool autoClose)
     while (IsWindow(hDebugWnd))
     {
         if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) break;
+            if (msg.message == WM_QUIT) { ::PostQuitMessage(static_cast<int>(msg.wParam)); break; }
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }

@@ -563,6 +563,7 @@ public:
         void restore() {
             if (_done) return;
             _done = true;
+            if (_isShuttingDown) { _active = _prev; return; }   // nothing left to return to
             if (_mainIdx >= 0)
                 ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, _mainIdx);
             if (_subIdx >= 0)
