@@ -8751,6 +8751,14 @@ void MultiReplace::refreshUiListView()
     refreshUIListView();
 }
 
+std::wstring MultiReplace::formulaErrorText(const std::wstring& listKey,
+    const std::wstring& fieldsKey, std::vector<std::wstring> args) const
+{
+    if (_currentRuleIndex == SIZE_MAX) return LM.get(fieldsKey, args);
+    args.insert(args.begin(), std::to_wstring(_currentRuleIndex + 1));
+    return LM.get(listKey, args);
+}
+
 void MultiReplace::showErrorMessage(
     MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
     const std::string& engineName,
@@ -8760,9 +8768,6 @@ void MultiReplace::showErrorMessage(
 
     const std::wstring engineW = Encoding::utf8ToWString(engineName);
     const std::wstring detailsW = Encoding::utf8ToWString(details);
-    const std::wstring entryW = (_currentRuleIndex != SIZE_MAX)
-        ? std::to_wstring(_currentRuleIndex + 1)
-        : L"?";
 
     // Jump to the offending rule so the user sees the row the dialog names
     // (skipped when no dialog is shown - this is only reached with the
@@ -8770,19 +8775,26 @@ void MultiReplace::showErrorMessage(
     focusListRow(_currentRuleIndex);
 
     if (category == EC::CompileError) {
-        std::wstring body = LM.get(L"msgbox_engine_error_body",
-            { entryW, engineW, detailsW });
+        std::wstring body = formulaErrorText(
+            L"msgbox_engine_error_body",
+            L"msgbox_engine_error_body_no_list",
+            { engineW, detailsW });
         MessageBox(nppData._nppHandle,
             body.c_str(),
             LM.get(L"msgbox_title_formula_support_syntax_error").c_str(),
             MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
     }
     else {
-        const std::wstring posW = (_currentMatchPos >= 0)
-            ? std::to_wstring(_currentMatchPos)
-            : L"?";
-        std::wstring body = LM.get(L"msgbox_formula_support_execution_error_engine",
-            { entryW, engineW, posW, detailsW });
+        // Without a match (init entry) there is no position to name
+        std::wstring body = (_currentMatchPos >= 0)
+            ? formulaErrorText(
+                L"msgbox_formula_support_execution_error_engine",
+                L"msgbox_formula_support_execution_error_engine_no_list",
+                { engineW, std::to_wstring(_currentMatchPos), detailsW })
+            : formulaErrorText(
+                L"msgbox_formula_support_execution_error_engine_no_pos",
+                L"msgbox_formula_support_execution_error_engine_no_list_no_pos",
+                { engineW, detailsW });
         MessageBox(nppData._nppHandle, body.c_str(),
             LM.get(L"msgbox_title_formula_support_execution_error").c_str(),
             MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
@@ -8798,9 +8810,6 @@ MultiReplace::showRecoverableErrorDialog(
 
     const std::wstring engineW = Encoding::utf8ToWString(engineName);
     const std::wstring detailsW = Encoding::utf8ToWString(details);
-    const std::wstring entryW = (_currentRuleIndex != SIZE_MAX)
-        ? std::to_wstring(_currentRuleIndex + 1)
-        : L"?";
     const std::wstring posW = (_currentMatchPos >= 0)
         ? std::to_wstring(_currentMatchPos)
         : L"?";
@@ -8810,9 +8819,10 @@ MultiReplace::showRecoverableErrorDialog(
 
     const std::wstring title = LM.get(
         L"msgbox_title_formula_support_execution_error");
-    const std::wstring body = LM.get(
+    const std::wstring body = formulaErrorText(
         L"msgbox_recoverable_error_body_taskdialog",
-        { entryW, engineW, posW, detailsW });
+        L"msgbox_recoverable_error_body_taskdialog_no_list",
+        { engineW, posW, detailsW });
 
     const std::wstring btnSkipOne = LM.get(L"msgbox_btn_skip_this_match");
     const std::wstring btnSkipAll = LM.get(L"msgbox_btn_skip_all_errors");

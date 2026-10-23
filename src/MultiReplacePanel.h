@@ -1019,8 +1019,8 @@ private:
     std::unordered_map<HWND, std::wstring> _rememberedComboText;
     std::vector<char> styleBuffer; // reusable Buffer for highlightColumnsInLine()
     std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in fillCapturesForEngine()
-    size_t _currentRuleIndex = SIZE_MAX; // List index for showErrorMessage; SIZE_MAX = no engine call active
-    Sci_Position _currentMatchPos = -1;  // Document position for showErrorMessage; -1 = unknown
+    size_t _currentRuleIndex = SIZE_MAX; // List entry of the running formula; SIZE_MAX outside the list
+    Sci_Position _currentMatchPos = -1;  // Match position for the formula error texts; -1 without a match
     bool isColumnHighlighted = false;
     SIZE_T CSVheaderLinesCount = 1; // Header rows excluded from sort and dedup (find/replace always searches every line)
     inline static POINT debugWindowPosition{ CW_USEDEFAULT, CW_USEDEFAULT };
@@ -1424,6 +1424,10 @@ private:
         std::string& out) const override;
     bool         readCurrentRowColumnByName(const std::string& headerName,
         std::string& out) const override;
+
+    // Formula error text naming the running list entry, the field variant outside the list.
+    std::wstring formulaErrorText(const std::wstring& listKey,
+        const std::wstring& fieldsKey, std::vector<std::wstring> args) const;
 
     // Populate the engine-agnostic FormulaVars for the current match.
     void fillFormulaVars(MultiReplaceEngine::FormulaVars& vars,
