@@ -15342,6 +15342,8 @@ std::wstring MultiReplace::escapeForRegexMode(const std::wstring& s)
 void MultiReplace::pickupSelectionIntoFindEdit()
 {
     if (!pickupSelection) return;
+    // Frozen while a Files run is going: it reads the field again for every file
+    if (!IsWindowEnabled(GetDlgItem(_hSelf, IDC_FIND_EDIT))) return;
 
     std::wstring sel = getSelectedText();
     if (sel.empty()) return;
