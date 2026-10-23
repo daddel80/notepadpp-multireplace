@@ -73,15 +73,15 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
 
 All variables below are registered under both upper- and lowercase. Pick whichever style reads better — `CNT` and `cnt` refer to the same value, as do `match` and `MATCH`, `cap1` and `CAP1`, and so on.
 
-**Function names are also case-insensitive.** `num(1)`, `Num(1)`, and `NUM(1)` all call the same function; the same applies to `numprev` / `NumPrev` / `NUMPREV`, `txt` / `TXT`, and every other built-in. This is enforced consistently from the parser through to the match-history analyser.
+**Function names are also case-insensitive.** `num(1)`, `Num(1)`, and `NUM(1)` all call the same function; the same applies to `numprev` / `NumPrev` / `NUMPREV`, `txt` / `TXT`, and every other built-in. This is enforced consistently from the parser through to the match-history analyzer.
 
 | Variable        | Description |
 |-----------------|-------------|
 | `CNT` / `cnt`   | Count of the detected string. |
 | `LCNT` / `lcnt` | Count of the detected string within the line. |
 | `LINE` / `line` | Line number where the string is found. |
-| `LPOS` / `lpos` | Relative character position within the line. |
-| `APOS` / `apos` | Absolute character position in the document. |
+| `LPOS` / `lpos` | Byte position of the match within the line (1-based). |
+| `APOS` / `apos` | Byte position of the match in the document (1-based). |
 | `COL` / `col`   | Column number where the string was found (CSV-Scope option selected). |
 | `MATCH` / `match` | Contains the text of the detected string, in contrast to `CAP` variables which correspond to capture groups in regex patterns. |
 | `FNAME` / `fname` | Filename or window title for new, unsaved files. |
@@ -98,15 +98,15 @@ All variables below are registered under both upper- and lowercase. Pick whichev
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `set(v)` | Returns `v` as the replacement string. If `v` is `nil`, the replacement is skipped (original text remains). | `set("Value: " .. CNT)` |
+| `set(v)` | Uses `v` (string or number) as the replacement. `nil` or any other type raises an error; to leave a match unchanged, use `cond()` without a false value. | `set("Value: " .. CNT)` |
 | `cond(c, t, f)` | If `c` is true, returns `t`. If `c` is false, returns `f`. If `f` is omitted, skips replacement on false. | `cond(CNT > 5, "Over 5")` |
-| `fmtN(n, d, f)` | Formats number `n` with `d` decimal places and optional fixed flag `f`. | `fmtN(math.pi, 2)` → `"3.14"` |
+| `fmtN(n, d, f)` | Formats `n` with at most `d` decimals; `f = true` keeps exactly `d` decimals. All three arguments are required; wrap the call in `set()` or `cond()`. | `set(fmtN(math.pi, 2, true))` → `3.14` |
 | `trim(s)` | Removes leading and trailing whitespace from string `s`. | `trim("  abc  ")` → `"abc"` |
 | `tonum(s)` | Converts string `s` to number. Accepts both dot (.) and comma (,) as decimal separator. | `tonum(CAP1) * 2` |
 | `padL(s, w, c)` | Pads string `s` on the **left** to width `w` with char `c`. Ideal for zero-padding IDs. | `padL(CNT, 3, "0")` → `"001"` |
 | `padR(s, w, c)` | Pads string `s` on the **right** to width `w` with char `c`. Ideal for text alignment. | `padR(MATCH, 10, ".")` → `"Val......."` |
 | `vars(t)` | Declares custom variables for use across replacements. Essential for carrying state between matches. | `vars({sum=0})` |
-| `lkp(k, p, c)` | Looks up key `k` in file `p` and returns the value (or specific column `c`). | `set(lkp(MATCH, "C:\\list.lkp"))` |
+| `lkp(k, p, inner)` | Replaces the match with the value of key `k` from lookup file `p`. A missing key keeps the key itself, or, with `inner = true`, removes the match. | `lkp(MATCH, "C:\\list.lkp")` |
 | `lvars(p)` | Loads all key-value pairs from file `p` as global variables. | `lvars("C:\\config.vars")` |
 | `lcmd(p)` | Loads external Lua functions from file `p` to extend functionality. | `lcmd("C:\\helpers.lcmd")` |
 
@@ -147,13 +147,13 @@ Evaluates the condition and outputs `trueVal` if the condition is true, otherwis
 
 Initializes custom variables for use in various commands, extending beyond standard variables like `CNT`, `MATCH`, `CAP1`. These variables can carry the status of previous find-and-replace operations to subsequent ones.
 
-Custom variables persist from match to match within a single **'Replace All'** operation and can transfer values between list entries. Each new operation (**button click**) starts with a fresh state. In multi-document or multi-file replacements, variables **persist across documents**. Use `FPATH` or `FNAME` to detect document changes and reset variables conditionally if needed.
+Custom variables persist from match to match and across list entries within one document. In **Replace All in Open Documents** and **Replace All in Files**, each document starts with a fresh state, as does every new button click.
 
 **Init usage:** Can be used as an init entry (empty Find) to preload before replacements; not mandatory. See [Preload Variables and Helpers](#preload-variables-and-helpers) for workflow and examples.
 
 | **Find**         | **Replace**                                                                                                                            | **Before**                                           | **After**                                                    | **Regex** | **Scope CSV** | **Description**                                                                                                              |
 |------------------|----------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------|--------------------------------------------------------------|-----------|---------------|------------------------------------------------------------------------------------------------------------------------------|
-| `(\d+)`          | `vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=tonum(CAP1) end;`<br>`if COL==4 then COL4=tonum(CAP1) end;`               | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22.0`<br>`2,30,text,3,33.0`<br>`3,40,text,4,44.0` | Yes       | Yes           | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.                |
+| `(\d+)`          | `vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);`<br>`if COL==2 then COL2=tonum(CAP1) end;`<br>`if COL==4 then COL4=tonum(CAP1) end;`               | `1,20,text,2,0`<br>`2,30,text,3,0`<br>`3,40,text,4,0` | `1,20,text,2,22`<br>`2,30,text,3,33`<br>`3,40,text,4,44`       | Yes       | Yes           | Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.                |
 | `\d{2}-[A-Z]{3}` | `vars({MATCH_PREV=''}); cond(LCNT==1,'Moved', MATCH_PREV); MATCH_PREV=MATCH;`                                                          | `12-POV,00-PLC`<br>`65-SUB,00-PLC`<br>`43-VOL,00-PLC` | `Moved,12-POV`<br>`Moved,65-SUB`<br>`Moved,43-VOL`            | Yes       | No            | Uses `MATCH_PREV` to track the first match in the line and shift it to the 2nd (`LCNT`) match during replacements.           |
 
 <br>
@@ -223,11 +223,11 @@ In this example:
 - `'003'` directly maps to `"Three"`.
 
 **Caching Mechanism:**
-Once `lkp()` loads the data file for **hpath**, the parsed table is cached in memory for the duration of the Replace-All operation.
+Once `lkp()` loads the data file for **hpath**, the parsed table is cached in memory for the current document.
 
 **inner Flag:**
 - **`false` (default, can be omitted)**: If the key is not found, `lkp()` returns the **search term itself** (e.g., `MATCH`, `CAP1`), instead of a mapped value.
-- **`true`**: If the key is not found, `lkp()` returns `nil`, allowing conditional handling.
+- **`true`**: If the key is not found, the replacement is `nil`, so the match is removed.
 
 **Examples:**
 
@@ -235,7 +235,7 @@ Once `lkp()` loads the data file for **hpath**, the parsed table is cached in me
 |------------|----------------------------------------------------------------|-----------|---------------|------------------------------------------------------------------------------------------------------|
 | `\b\w+\b`  | `lkp(MATCH, [[C:\tmp\hash.lkp]], true)`                        | Yes       | No            | Uses **inner = true**: If found, replaces with mapped value. If not found, original word is removed. |
 | `(\d+)`    | `lkp(CAP1, "C:/path/to/myLookupFile.lkp")`                     | Yes       | No            | Uses **inner = false** (default): If found, replaces with mapped value. If not, returns `CAP1`.      |
-| `\b\w+\b`  | `output = lkp(MATCH, [[C:\tmp\hash.lkp]], true); set(output or "NoKey")` | Yes | No         | Uses **inner = true**: If lookup result is non-`nil`, replaces with mapped value; otherwise `"NoKey"`. |
+| `\b\w+\b`  | `local r = lkp(MATCH, [[C:\tmp\hash.lkp]], true).result; set(r or "NoKey")` | Yes | No | Uses **inner = true**: If lookup result is non-`nil`, replaces with mapped value; otherwise `"NoKey"`. |
 | `\b\w+\b`  | `cond(COL==3, lkp(MATCH, [[C:/tmp/col3_hash.lkp]]))`           | No        | Yes           | Looks up values in the third column (`COL==3`) using a separate lookup file.                         |
 
 <br>
@@ -264,10 +264,10 @@ Load user-defined helper functions from a Lua file. The file must `return` a tab
 
 | Find      | Replace                                                        | Regex | Description |
 |-----------|----------------------------------------------------------------|-------|-------------|
-| *(empty)* | `lcmd([[C:\tmp\mycmds.lcmd]])`                                 | No    | Load helpers from file (init row — no replacement). |
-| `(\d+)`   | `set(padLeft(CAP1, 6, '0'))`                                   | Yes   | Zero-pad captured number to width 6 using `padLeft`. |
+| *(empty)* | `lcmd([[C:\tmp\helpers.lcmd]])`                                | No    | Load helpers from file (init row — no replacement). |
 | `(.+)`    | `set(slug(CAP1))`                                              | Yes   | Create a URL-safe slug from the whole line using `slug`. |
-| `\{\{(.*?)\}\}` | `set(file_log_simple(MATCH, [[C:\tmp\out.txt]]))`        | Yes   | Logs the entire search hit to a custom file, leaving the original text unchanged. |
+| `([a-z_]+)` | `set(titleCase(CAP1))`                                       | Yes   | Convert snake_case to Title Case using `titleCase`. |
+| `\{\{(.*?)\}\}` | `set(file_log(MATCH, [[C:\tmp\out.txt]]))`               | Yes   | Logs the entire search hit to a custom file, leaving the original text unchanged. |
 
 **File format:**
 ```lua
@@ -336,9 +336,9 @@ The following built-in helper functions are available for string manipulation:
 | `padL(s, w, c)` | Pads string `s` on the **left** to width `w` with character `c` (default: space). Use `padL(CNT, 3, "0")` to generate sorted file names like `file_001.txt`. | `padL("42", 5, "0")` → `"00042"` |
 | `padR(s, w, c)` | Pads string `s` on the **right** to width `w` with character `c` (default: space). Useful to align text into fixed-width columns. | `padR("Val", 10, ".")` → `"Val......."` |
 
-#### `tonum` parsing behaviour
+#### `tonum` parsing behavior
 
-The `tonum()` helper normalises commas to periods and delegates to Lua's built-in `tonumber()`. The strict return semantics (e.g. `nil` on trailing junk) follow Lua convention — combine with `or` for a default: `tonum(CAP1) or 0`.
+The `tonum()` helper normalizes commas to periods and delegates to Lua's built-in `tonumber()`. The strict return semantics (e.g. `nil` on trailing junk) follow Lua convention — combine with `or` for a default: `tonum(CAP1) or 0`.
 
 | Input          | Result    | Note                                            |
 |----------------|-----------|-------------------------------------------------|
@@ -369,9 +369,9 @@ Use init entries (empty Find) to preload variables or helper functions before an
 |-------------|---------------------------------------------|-----------------|
 | *(empty)*   | `vars({prefix = "ID_"})`                    | Set `prefix` before replacements. |
 | *(empty)*   | `lvars([[C:\path\to\myVars.vars]])`         | Load variables from file (file must `return { ... }`). |
-| *(empty)*   | `lcmd([[C:\tmp\mycmds.lcmd]])`              | Load helpers from file (e.g. `padLeft`, `slug`). |
+| *(empty)*   | `lcmd([[C:\tmp\helpers.lcmd]])`             | Load helpers from file (e.g. `slug`, `titleCase`). |
 | `(\d+)`     | `set(prefix .. CAP1)`                       | Uses `prefix` from init (`123` → `ID_123`). |
-| `(\d+)`     | `set(padLeft(CAP1, 6, '0'))`                | Use helper loaded by `lcmd` to zero-pad (`123` → `000123`). |
+| `(\d+)`     | `set(padL(CAP1, 6, '0'))`                   | Use the built-in helper `padL` to zero-pad (`123` → `000123`). |
 | `(.+)`      | `set(slug(CAP1))`                           | Use helper loaded by `lcmd` to create a slug (`Hello World!` → `hello-world`). |
 
 <br>
@@ -400,15 +400,17 @@ If-then logic is integral for dynamic replacements, allowing users to set custom
 
 **Example:**
 
-This example shows how to use `if` statements with `cond()` to manage variables based on conditions:
+This example uses an `if` statement to restart a running total on every line; `set()` stays outside the `if`:
 
-`vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end`
+| Find    | Replace | Regex | Before | After |
+|---------|---------|-------|--------|-------|
+| `(\d+)` | `vars({SUM=0, LAST=0}); if LINE ~= LAST then SUM = 0; LAST = LINE end; SUM = SUM + tonum(CAP1); set(SUM)` | Yes | `1 2 3`<br>`10 20` | `1 3 6`<br>`10 30` |
 
 <br>
 
 ### Debug Mode
 
-The **Debug Mode** provides a safe environment to test complex logic involving conditions or math. Instead of modifying the text immediately, it allows you to step through matches one by one and inspect the real-time values of all variables.
+The **Debug Mode** pauses before each replacement and shows the current values of all variables, so you can follow the logic match by match.
 
 **How to enable:**
 * **Via Menu:** Click the arrow on the **Replace All** button and select **Debug Mode**. This is the standard way to debug.
@@ -433,7 +435,7 @@ The **Debug Mode** provides a safe environment to test complex logic involving c
 | `(\d+)`           | `set(tonum(CAP1) * 2)`                                                                                   | Yes   | No        | Doubles the matched number. E.g., `100` becomes `200`.                                          |
 | `;`               | `cond(LCNT == 1, string.rep(" ", 20-(LPOS))..";")`                                                          | No    | No        | Inserts spaces before the semicolon to align it to the 20th character position.                 |
 | `-`               | `cond(LINE == math.floor(10.5 + 6.25*math.sin((2*math.pi*LPOS)/50)), "*", " ")`                              | No    | No        | Draws a sine wave across a canvas of '-' characters.                                            |
-| `^(.*)$`          | `vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                    | Yes   | No        | Removes duplicate lines, keeping the first occurrence of each line.                             |
+| `^(.*)$`          | `vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;`                                    | Yes   | No        | Empties every line that repeats the line directly above it (the empty line stays).              |
 
 <br>
 
@@ -474,20 +476,22 @@ ExprTk is a numeric expression engine. Its design goal is concise inline math: w
    - **Input lines:** `5`, `10`, `3`
    - **Output lines:** `5`, `15`, `18`
 
-   `numprev()` reads the previous match's value with `0` as the implicit fallback, so the chain bootstraps automatically on the first match. See [Match History](#match-history) for the full reader catalogue.
+   `numprev()` reads the previous match's value with `0` as the implicit fallback, so the chain bootstraps automatically on the first match. See [Match History](#match-history) for the full reader catalog.
 
 <br>
 
 ### Pattern Syntax: `(?= ... )`
 
-Every ExprTk expression in a replace string is wrapped in `(?=` and `)`. The marker is intentionally three characters so it cannot be confused with regex syntax.
+Every ExprTk expression in a replace string is wrapped in `(?=` and `)`.
 
 | Syntax           | Meaning                                                               |
 |------------------|-----------------------------------------------------------------------|
 | `(?=expr)`       | Evaluate the expression and insert its result at this position.       |
-| `\(?=`           | Literal `(?=` — backslash escapes the marker.                         |
-| `\\`             | Literal backslash.                                                    |
+| `\(?=`           | Literal `(?=` — backslash escapes the marker. In regex mode write `\(\?=`. |
+| `\\`             | Literal backslash. In regex mode write `\\\\`.                      |
 | any other text   | Literal output, including UTF-8 byte sequences.                       |
+
+In regex mode the literal text is a Notepad++ replace string: `$1` and `\1` insert groups, and `\`, `$`, `(`, `)` and `?` must be escaped with `\` to appear as is. Outside regex mode, literal text is copied unchanged.
 
 The closing `)` is matched by depth-counting, so balanced parentheses inside the expression — like `min(num(1), num(2))` — work naturally without extra escaping.
 
@@ -501,11 +505,11 @@ ExprTk receives the same per-match context as Lua, but exposed differently becau
 
 | Name          | Description                                                       |
 |---------------|-------------------------------------------------------------------|
-| `CNT` / `cnt`   | Replacement count across the whole run (1-based).               |
-| `LCNT` / `lcnt` | Replacement count within the current line (1-based).            |
+| `CNT` / `cnt`   | Number of the current match of this list entry in the current document (1-based); skipped matches count too. |
+| `LCNT` / `lcnt` | The same, counted within the current line.                      |
 | `LINE` / `line` | 1-based line number of the current match.                       |
-| `LPOS` / `lpos` | Column position within the line (UTF-8 bytes).                  |
-| `APOS` / `apos` | Absolute byte position in the document.                         |
+| `LPOS` / `lpos` | Byte position of the match within the line (1-based).           |
+| `APOS` / `apos` | Byte position of the match in the document (1-based).           |
 | `COL` / `col`   | CSV column index (CSV mode), 0 otherwise.                       |
 | `HIT` / `hit`   | Numeric value of the full match (same as `num(0)`).             |
 
@@ -540,7 +544,7 @@ To access the matched text as a string, use `txt(0)`. To reference the match in 
 
 **Number parsing notes:**
 
-`num(N)` parses captures with a single `.` or `,` accepted as the decimal separator (more than one separator - mixed or repeated, as in thousands grouping - yields `NaN`, since the intended value is ambiguous), tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (or to `±Infinity` from things like `0/0`, `log(-1)`, `sqrt(-1)`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.
+`num(N)` parses captures with a single `.` or `,` accepted as the decimal separator (more than one separator - mixed or repeated, as in thousands grouping - yields `NaN`, since the intended value is ambiguous), tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (for example `0/0`, `log(-1)`, `sqrt(-1)`) or to `±Infinity` (for example `1/0`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. With **Show formula error dialogs** turned off, such matches are skipped without a dialog and counted in the summary at the end of the run. Skipped matches are left untouched, so no original data is lost.
 
 | Capture text                         | `num(N)`            | Note                                            |
 |--------------------------------------|---------------------|-------------------------------------------------|
@@ -572,7 +576,7 @@ ExprTk keeps a small ring buffer of previously processed matches so a formula ca
 | Reader family         | Reads from history                | Block index                                       |
 |-----------------------|-----------------------------------|---------------------------------------------------|
 | `num` / `txt`         | A specific **capture group**      | `n` = capture index                               |
-| `numout` / `txtout`   | A specific **block's output**     | `n` = block index (0-based, by template position) |
+| `numout` / `txtout`   | A specific **block's output**     | `n` = block index (1-based, by template position) |
 | `numprev` / `txtprev` | The **same block's** output       | implicit (= the running block)                    |
 
 Shared argument semantics:
@@ -583,7 +587,7 @@ Shared argument semantics:
 | `p` | Lookback depth. `p=0` is the current match; `p=1` the previous; `p>=2` walks further back. Literal negative `p` is rejected at compile time. |
 | `v` | Optional fallback. Returned when the lookup fails — past history, out-of-range, type mismatch (numeric reader against a string slot or vice versa), or, for numeric readers, a non-finite result. |
 
-A **block** is one `(?=...)` expression in the template, numbered `0, 1, 2, ...` in source order (literal text in between doesn't count).
+A **block** is one `(?=...)` expression in the template, numbered `1, 2, 3, ...` in source order (literal text in between doesn't count).
 
 <br>
 
@@ -650,8 +654,8 @@ The block index `N` is **1-based**: `numout(1)` is the first block, `numout(2)` 
 | Find      | Replace                                                    | Description                                                                 |
 |-----------|------------------------------------------------------------|-----------------------------------------------------------------------------|
 | `(\d+)`   | `(?=num(1) + numprev())`                                   | Running total. First match emits its value alone (no previous, v=0); subsequent matches accumulate. |
-| `(\d+)`   | `(?=max(num(1), numprev(1, 0), numprev(2, 0)))`            | Per-match maximum over the current value and the two preceding ones. Missing history → 0. |
-| `^(\w+)$` | `(?=txtprev(1, 'first') + ' -> ' + txt(1))`                | Predecessor chain with explicit fallback for the first match.               |
+| `(\d+)`   | `(?=max(num(1), numprev()))`                               | Running maximum: the largest value up to this match (the first match compares against the fallback 0). |
+| `^(\w+)$` | `(?=txtprev(1, 'first') + ' -> ' + txt(1))`                | Growing chain: each match appends its text to the previous output (`first -> alpha`, then `first -> alpha -> beta`, ...). |
 
 <br>
 
@@ -668,7 +672,7 @@ value of the *previous* line via `numout(1, 1, 0)` — first block, one match ba
 fallback 0. This is the line-to-line delta.
 
 - **Find:** `(\d+)`
-- **Replace:** `(?=num(1)) (delta (?=num(1) - numout(1, 1, 0)))`
+- **Replace:** `(?=num(1)) \(delta (?=num(1) - numout(1, 1, 0))\)`
 
 | Input line | Block 1 `num(1)` | `numout(1, 1, 0)` (prev. raw) | Block 2 delta | Output |
 |------------|------------------|-------------------------------|---------------|--------|
@@ -802,7 +806,7 @@ Examples:
 (?= rnd(6) )                 # 1..6 (dice roll)
 (?= rnd(10, 99) )            # two-digit integer
 (?= rndnorm(100, 15) )       # IQ-like Gaussian around 100
-(?= rnd() < 0.3 ? 'A' : 'B') # ~30% A, ~70% B (inside return [...])
+(?= rnd() < 0.3 ? 'A' : 'B') # ~30% A, ~70% B
 (?= rndseed(42); rnd() )     # always the same draw for seed 42
 ```
 
@@ -819,7 +823,7 @@ ExprTk has expression-level control flow. Everything returns a value — there a
 | `if (cond) { a; b; c }`                 | Block form, value is the last statement.         |
 | `switch { case c1: v1; case c2: v2; default: v3 }` | Multi-way branch.                     |
 
-Example — clamp a captured value but show "OVER" if it exceeded:
+Example — cap a captured value at 100:
 
 ```
 (?=num(1) > 100 ? 100 : num(1))
@@ -858,7 +862,7 @@ Replace: $1(?=num2rom(num(2)))$3        -> Chapter XIV: ...
 |---------------------------------------------------|---------------------------------------------------|
 | `+`, `-`, `*`, `/`, `%`, `^`                       | Arithmetic and exponentiation.                    |
 | `==`, `!=`, `<`, `<=`, `>`, `>=`                   | Comparison.                                       |
-| `and`, `or`, `not`, `xor`, `nand`, `nor`           | Logical operators (also `&&`, `\|\|`, `!`).        |
+| `and`, `or`, `not`, `xor`, `nand`, `nor`           | Logical operators (also `&` for `and`, `\|` for `or`). |
 | `:=`                                              | Assignment to a local variable.                   |
 | `+=`, `-=`, `*=`, `/=`, `%=`                      | Compound assignment.                              |
 | `?:`                                              | Ternary.                                          |
@@ -867,7 +871,7 @@ Replace: $1(?=num2rom(num(2)))$3        -> Chapter XIV: ...
 
 ### Skipping Matches
 
-Calling `skip()` from within an expression tells the engine to leave this match unchanged. The expression's own value is ignored when skip is signalled. Useful as a numeric filter:
+Calling `skip()` from within an expression tells the engine to leave this match unchanged. The expression's own value is ignored when skip is signaled. Useful as a numeric filter:
 
 ```
 (?=num(1) < 100 ? skip() : num(1) * 2)
@@ -916,7 +920,7 @@ Built-in functions for parsing hexadecimal, binary, octal, or Roman numerals bac
 | `rom2num(s)` | number  | `rom2num('MMXXIV')` → `2024`         |
 
 **Output conventions:**
-- Hex/bin/oct output via `~ x` / `~ b` / `~ o` is **bare lowercase** — no `0x` / `0b` / `0o` prefix. Compose prefixes if you want them: `(?='0x' + num(1) ~ x)`.
+- Hex/bin/oct output via `~ x` / `~ b` / `~ o` is **bare lowercase** — no `0x` / `0b` / `0o` prefix. Compose prefixes as literal text: `0x(?=num(1) ~ x)`.
 - Roman output is **uppercase canonical** form (subtractive pairs `IV`, `IX`, `XL`, etc.).
 - For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.
 
@@ -929,7 +933,7 @@ Built-in functions for parsing hexadecimal, binary, octal, or Roman numerals bac
 
 | Find                  | Replace                          | Description                  |
 |-----------------------|----------------------------------|------------------------------|
-| `(\d+)`               | `(?='0x' + num(1) ~ x)`          | Decimal → `0xff`             |
+| `(\d+)`               | `0x(?=num(1) ~ x)`               | Decimal → `0xff`             |
 | `0x([0-9a-fA-F]+)`    | `(?=hex2num(txt(1)))`            | Hex literal → decimal        |
 | `(\d+)`               | `(?=num2rom(num(1)))`            | Chapter `14` → `XIV`         |
 | `([IVXLCDM]+)`        | `(?=rom2num(txt(1)))`            | Roman → decimal              |
@@ -975,7 +979,7 @@ String helpers for measuring, slicing, splitting, cleaning, and converting text.
 |-----------------------|--------------------------------------|-----------------------------------|
 | `(.+)`                | `(?=slice(txt(1), 1, 3))`            | First 3 codepoints                |
 | `(\S+)@(\S+)`         | `(?=split(txt(2), '.', 1))`          | Domain's first label              |
-| `\s*(.+?)\s*`         | `(?=trim(txt(1)))`                   | Strip surrounding whitespace      |
+| `^(.*)$`              | `(?=trim(txt(1)))`                   | Strip leading and trailing whitespace of each line |
 | `(\d+)`               | `(?=totxt(num(1), '04d'))`           | Zero-pad to 4 digits              |
 
 <br>
@@ -994,12 +998,12 @@ When CSV mode is active, `numcol(N)` and `txtcol(N)` return the value of column 
 - Indexing reads the raw row regardless of any column-selection filter the user set.
 - The cell is returned verbatim - no quote stripping, matching the existing CSV column convention used by sort and column highlighting.
 
-**Behaviour at the edges:**
+**Behavior at the edges:**
 - Missing column (e.g. `numcol(99)` on a row with 5 columns): `NaN` for `numcol`, empty string for `txtcol`.
 - Unknown header name: same.
 - CSV mode off, no delimiter set, or no current match in progress: same.
 
-**Example - lookup by name with arithmetic:**
+**Example - lookup by name with arithmetic** (scope **CSV**, Cols `3`, Delim `;`):
 
 ```
 Header:  product;price;qty
@@ -1008,7 +1012,7 @@ Row:     banana;0.30;25
 ```
 
 ```
-Find:    ^(?!product).+$
+Find:    \d+$
 Replace: $0 total=(?=numcol('price') * numcol('qty'))
 ```
 
@@ -1018,7 +1022,7 @@ apple;1.50;10 total=15
 banana;0.30;25 total=7.5
 ```
 
-The negative lookahead in the Find pattern excludes the header row so the formula only runs on data rows. Inside the formula, `numcol('price')` reads the `price` column of whichever line the current match landed on.
+In the CSV scope each selected column is searched on its own, so Cols `3` limits the search to the `qty` cells; the header cell `qty` has no digits and stays unchanged. Inside the formula, `numcol('price')` reads the `price` column of whichever line the current match landed on.
 
 <br>
 
@@ -1054,19 +1058,19 @@ function NAME(PARAMS) [: RETURN] BODY end
 Examples covering all four parameter / return shapes:
 
 ```
-function double_it(n)              # T -> T  (defaults, no annotation)
+function double_it(n)              // T -> T  (defaults, no annotation)
     return n * 2;
 end
 
-function tag(label: S) : S         # S -> S
+function tag(label: S) : S         // S -> S
     return '[' + label + ']';
 end
 
-function digit_count(s: S)         # S -> T
+function digit_count(s: S)         // S -> T
     return s[];                    /* string length */
 end
 
-function padleft(s: S, n, fill: S) : S   # S, T, S -> S
+function padleft(s: S, n, fill: S) : S   // S, T, S -> S
     var r := s;
     while (r[] < n) { r := fill + r; };
     return r;
@@ -1091,7 +1095,7 @@ end
 
 **Comments:** Both `/* ... */` and `// ...` work, anywhere in the file or inside function bodies.
 
-**Errors:** Parser, name-collision, and compile errors abort the load with a dialog that names the function and offset. The matching expressions then evaluate to `0` or `''`.
+**Errors:** Parser, name-collision and compile errors abort the load with a dialog that names the function and offset, and the run stops; no replacement is made.
 
 <br>
 
@@ -1117,7 +1121,7 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 | Length | `s[]` | Byte length of the string, as a number. Low-level; for codepoint length use `len(s)`. |
 | Substring | `s[i:j]` | Bytes from index `i` (inclusive) to `j` (exclusive). 0-based. Low-level; for codepoint slicing use `slice(s, start, n)`. |
 | Concatenation | `a + b` | `+` joins strings, same operator as numeric add. |
-| Comparison | `s == 'X'`, `s != 'Y'` | Equality only. No `<` on strings. |
+| Comparison | `s == 'X'`, `s != 'Y'` | `==`, `!=`, `<`, `<=`, `>`, `>=` — byte-wise comparison. |
 | Literal | `'text'`, `''` for empty | UTF-8 accepted; multi-byte literals round-trip byte-for-byte. |
 
 > **`s[]` and `s[i:j]` are byte-level operations.**
@@ -1153,7 +1157,7 @@ Used in a replace rule:
 
 Spec: wrap each captured number in a fixed-width zero-padded ID tag like `[ID-00042]`. Demonstrates a library function that takes both a number and a width, returns a string, and composes with literals at the call site.
 
-`C:/Data/Projekte/MultiReplace/idtag.elib`:
+`C:/tmp/idtag.elib`:
 
 ```
 function padleft(s: S, n, fill: S) : S
@@ -1193,7 +1197,7 @@ Replace-All rules:
 
 | Find | Replace | Regex | Description |
 |---|---|---|---|
-| *(empty)* | `(?=loadlib('C:/Data/Projekte/MultiReplace/idtag.elib'))` | No | Load library. |
+| *(empty)* | `(?=loadlib('C:/tmp/idtag.elib'))` | No | Load library. |
 | `\b(\d+)\b` | `(?=id_tag(num(1), 5))` | Yes | Each number becomes `[ID-NNNNN]`. |
 
 For built-in formatting needs (zero padding, fixed width, hex, etc.) consider the [format spec](#output-formatting) with `~`: `(?=num(1) ~ 05)` produces the same zero-padded number without a library function. The example above is shown to illustrate the library mechanics — for simple numeric formatting the spec is more direct.
@@ -1485,7 +1489,7 @@ The rule is uniform across every marker: the frame (fill/align/width) leads, the
 
 #### Errors and edge cases
 
-- **Invalid spec at compile time** — `(?=hit ~ 99q)` produces *"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o/d"*. The rule fails to compile; no replacements run.
+- **Invalid spec at compile time** — `(?=hit ~ 99q)` produces `Invalid format spec "99q": Unknown numeric type letter; expected f/e/g/x/b/o/d`. The rule fails to compile; no replacements run.
 - **Alignment + zero-pad** — combining an explicit align with the `0` flag (e.g. `>05d`, or `>8 n:05` where the align comes from the frame) is rejected at compile time; the two fills conflict. Use one or the other.
 - **Marker before the frame** — `n:<8.2f` or `t:>8.3` is rejected: the frame must lead, so write `<8 n:.2f` / `>8 t:.3`. A bare body marker with no frame (`n:5.2f`, `t:.5`) is fine.
 - **Width given twice** — stating a width in both the frame and the body (`>8 n:5.2f`) is rejected; put it in one place.
@@ -1494,7 +1498,7 @@ The rule is uniform across every marker: the frame (fill/align/width) leads, the
   - A spec with an exclusively numeric trait (`5.2f`, `08x`, `d:`, `ts:`) on a string-returning formula → error.
   - A **bare frame** (`>8`, `^10`, `.5`) carries no type assertion and applies to either type — never a mismatch.
 - **NaN / Inf** — when the formula produces `NaN` (e.g. parsing a non-numeric capture) or `Inf` (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears, leaving the original match untouched if skipped.
-- **`~` inside the formula** — the splitter takes the **last** `~` outside string quotes. ExprTk string literals (`'a~b'`, `"a~b"`) are quote-aware, so a `~` inside them does not split:
+- **`~` inside the formula** — the splitter takes the **last** `~` outside string quotes. ExprTk string literals (`'a~b'`) are quote-aware, so a `~` inside them does not split:
 
   ```
   (?= 'note ~ check' + txt(1) ~ >20 )
@@ -1569,7 +1573,7 @@ Whitespace in the format matches **zero or more** whitespace characters in the i
 
 #### Quoting the format string in ExprTk
 
-**Use single quotes** for `todate`'s format string. ExprTk's lexer treats `%` as the modulo operator, so a double-quoted pattern starting with `%` is misread; single-quoted strings are taken verbatim:
+**Use single quotes** for `todate`'s format string. ExprTk strings are always single-quoted; a double-quoted string is a token error:
 
 | Form                                       | Status              |
 |--------------------------------------------|---------------------|
@@ -1621,7 +1625,7 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 | `(\d+\.?\d*)` | `(?=roundn(num(1), 2))`                  | Round all numbers to 2 decimal places.             |
 | `(-?\d+\.?\d*)` | `(?=clamp(0, num(1), 100))`            | Clamp every value to the range `[0..100]`.         |
 | `(-?\d+\.?\d*)` | `(?=abs(num(1)))`                      | Take the absolute value of every number.           |
-| `(\d+\.?\d*)` | `(?=num(1) * 2.54)`                      | Convert inches to centimetres (×2.54).             |
+| `(\d+\.?\d*)` | `(?=num(1) * 2.54)`                      | Convert inches to centimeters (×2.54).             |
 | `(\d+\.?\d*)` | `(?=(num(1) - 32) * 5/9)`                | Convert °F to °C.                                  |
 
 #### Conditional / filtering
@@ -1653,7 +1657,7 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 | Find          | Replace                                                 | Description                                                              |
 |---------------|---------------------------------------------------------|--------------------------------------------------------------------------|
 | `(\w+)`       | `<(?=txt(1))>`                                          | Wrap every match in angle brackets.                                      |
-| `(\d+)`       | `#(?=CNT): (?=txt(1))`                                  | Prefix each match with a running global counter.                         |
+| `(\d+)`       | `#(?=CNT): (?=txt(1))`                                  | Prefix each match with a running counter.                                |
 | `(\w+)`       | `(?=FNAME): (?=txt(1))`                                 | Tag each match with the source filename.                                 |
 
 #### Cross-match calculations
@@ -1662,11 +1666,11 @@ The examples below are drawn from typical text-processing tasks. Each row in the
 |-----------------|------------------------------------------------------|----------------------------------------------------------------------------|
 | `(\d+)`         | `(?=num(1) + numprev())`                             | Running total. First match emits its own value (no previous, v=0 fallback); each subsequent match adds to the accumulator. |
 | `^(\d+)$`       | `(?=num(1) - num(1, 1, 0))`                          | Difference to the previous match. First match keeps its own value via the v=0 fallback. |
-| `^(\w+)$`       | `(?=txtprev(1, 'first') + ' -> ' + txt(1))`          | Predecessor chain: each line becomes `prev -> current`, with `first` standing in for the unavailable predecessor on match 1. |
-| `(\d+)`         | `(?=max(num(1), numprev(1, 0), numprev(2, 0)))`      | Per-match maximum over the current value and the two preceding ones. Missing history falls back to 0. |
+| `^(\w+)$`       | `(?=txt(1, 1, 'first') + ' -> ' + txt(1))`           | Predecessor chain: each line becomes `prev -> current`, with `first` standing in for the unavailable predecessor on match 1. |
+| `(\d+)`         | `(?=max(num(1), num(1, 1, 0), num(1, 2, 0)))`        | Per-match maximum over the current value and the two preceding ones. Missing history falls back to 0. |
 | `^(\w+),(\d+)$` | `(?=num(2)) (?=numout(1, 0) * 2)`                    | The second block reads the first block's output within the same match and doubles it. `numout(1)` is equivalent, since `P=0` is the default. |
 
-See the [Match History](#match-history) section for the full reader catalogue and buffer sizing rules.
+See the [Match History](#match-history) section for the full reader catalog and buffer sizing rules.
 
 #### Counters
 
@@ -1675,7 +1679,7 @@ See the [Match History](#match-history) section for the full reader catalogue an
 | `^`           | `(?=CNT). `                   | Number every line (insert at the start of each line).                    |
 | `^`           | `(?=seq(100, 10)). `          | Number every line, starting at 100, step 10 (100, 110, 120, ...).        |
 | `^`           | `(?=seq(0, -1)). `            | Number every line, counting **down** from 0 (0, -1, -2, ...).            |
-| `;`           | `(?=LCNT == 1 ? skip() : 0);` | Replace only the second and later semicolons on each line.               |
+| `;`           | `(?=LCNT == 1 ? skip() : 0);` | Put a `0` before every semicolon after the first one on each line.       |
 
 <br>
 

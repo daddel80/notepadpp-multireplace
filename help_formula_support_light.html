@@ -183,6 +183,10 @@ html, body                   {margin: 0; padding: 0; width: 100%;}
         line-height: 1.4;
     }
 
+    :not(pre) > code {
+        white-space: pre-wrap;
+    }
+
     table.optionsTable {
         border-collapse: separate;
         border-spacing: 0;
@@ -374,7 +378,7 @@ nav.pagenav .nav-group.collapsible {
             document.getElementById("fontdown").style.display = "inline-block";
             document.getElementById("fontup").style.display = "inline-block";
             if (window.localStorage) {
-                var n = localStorage.getItem("ColumnsPlusPlusFontSize");
+                var n = localStorage.getItem("MultiReplaceHelp.fontSize");
                 if (!isNaN(n) && n >= 9 && n <= 40) {
                     document.documentElement.style.fontSize = n + "px";
                 }
@@ -387,22 +391,19 @@ nav.pagenav .nav-group.collapsible {
         var n = parseFloat(window.getComputedStyle(document.documentElement).fontSize);
         if (n > 9) --n;
         document.documentElement.style.fontSize = n + "px";
-        if (window.localStorage) localStorage.setItem("ColumnsPlusPlusFontSize", n);
+        if (window.localStorage) localStorage.setItem("MultiReplaceHelp.fontSize", n);
     }
 
     function setFontUp() {
         var n = parseFloat(window.getComputedStyle(document.documentElement).fontSize);
         if (n < 40) ++n;
         document.documentElement.style.fontSize = n + "px";
-        if (window.localStorage) localStorage.setItem("ColumnsPlusPlusFontSize", n);
+        if (window.localStorage) localStorage.setItem("MultiReplaceHelp.fontSize", n);
     }
 
     function checkDarkMode() {
         if (isDarkModeEnabled) {
             document.body.classList.add('dark-mode');
-            console.log("Dark Mode On");
-        } else {
-            console.log("Dark Mode Off");
         }
     }
 
@@ -473,7 +474,6 @@ nav.pagenav .nav-group.collapsible {
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        console.log("Document loaded");
         checkDarkMode();
     });
     </script>
@@ -502,7 +502,7 @@ nav.pagenav .nav-group.collapsible {
     <a href="#fmtnnum-maxdecimals-fixeddecimals" class="sub-item" hidden onclick="navClicked(event, 'fmtnnum-maxdecimals-fixeddecimals')">fmtN()</a>
     <a href="#lcmdpath" class="sub-item" hidden onclick="navClicked(event, 'lcmdpath')">lcmd()</a>
     <a href="#StringHelpers" hidden onclick="navClicked(event, 'StringHelpers')">String Formatting Helpers</a>
-    <a href="#tonum-behaviour" hidden onclick="navClicked(event, 'tonum-behaviour')">tonum Parsing Behaviour</a>
+    <a href="#tonum-behavior" hidden onclick="navClicked(event, 'tonum-behavior')">tonum Parsing Behavior</a>
     <a href="#preload-variables--helpers" hidden onclick="navClicked(event, 'preload-variables--helpers')">Preload Variables &amp; Helpers</a>
     <a href="#lua-operators" hidden onclick="navClicked(event, 'lua-operators')">Operators</a>
     <a href="#IfThenLogic" hidden onclick="navClicked(event, 'IfThenLogic')">If-Then Logic</a>
@@ -587,7 +587,7 @@ nav.pagenav .nav-group.collapsible {
       <tr>
         <td><strong>Logic &amp; loops</strong></td>
         <td>Everything: <code>if/else</code>, <code>while</code>, <code>for</code>, <code>repeat</code></td>
-        <td><code>if</code>-style conditionals inside the expression; no loops</td>
+        <td><code>if</code>/<code>switch</code> conditionals and <code>for</code>/<code>while</code>/<code>repeat</code> loops inside the expression; meant for short formulas</td>
       </tr>
       <tr>
         <td><strong>External files</strong></td>
@@ -616,7 +616,7 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td>Round to 2 decimals</td>
-        <td><code>fmtN(tonum(CAP1), 2)</code></td>
+        <td><code>set(fmtN(tonum(CAP1), 2, false))</code></td>
         <td><code>(?=roundn(num(1), 2))</code></td>
       </tr>
       <tr>
@@ -636,8 +636,8 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td>Convert &deg;F to &deg;C</td>
-        <td><code>fmtN((tonum(CAP1) - 32) * 5/9, 2)</code></td>
-        <td><code>(?=(num(1) - 32) * 5/9)</code></td>
+        <td><code>set(fmtN((tonum(CAP1) - 32) * 5/9, 2, false))</code></td>
+        <td><code>(?=roundn((num(1) - 32) * 5/9, 2))</code></td>
       </tr>
       <tr>
         <td>Wrap match in brackets</td>
@@ -705,7 +705,7 @@ nav.pagenav .nav-group.collapsible {
       <section id="Variables">
     <h2>Variables Overview</h2>
     <p>All variables below are registered under both upper- and lowercase. Pick whichever style reads better &mdash; <code>CNT</code> and <code>cnt</code> refer to the same value, as do <code>match</code> and <code>MATCH</code>, <code>cap1</code> and <code>CAP1</code>, and so on.</p>
-    <p><strong>Function names are also case-insensitive.</strong> <code>num(1)</code>, <code>Num(1)</code>, and <code>NUM(1)</code> all call the same function; the same applies to <code>numprev</code> / <code>NumPrev</code> / <code>NUMPREV</code>, <code>txt</code> / <code>TXT</code>, and every other built-in. This is enforced consistently from the parser through to the match-history analyser.</p>
+    <p><strong>Function names are also case-insensitive.</strong> <code>num(1)</code>, <code>Num(1)</code>, and <code>NUM(1)</code> all call the same function; the same applies to <code>numprev</code> / <code>NumPrev</code> / <code>NUMPREV</code>, <code>txt</code> / <code>TXT</code>, and every other built-in. This is enforced consistently from the parser through to the match-history analyzer.</p>
     <table class="optionsTable">
       <tr>
         <th>Variable</th>
@@ -725,11 +725,11 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td><strong>LPOS</strong> / <strong>lpos</strong></td>
-        <td>Relative character position within the line.</td>
+        <td>Byte position of the match within the line (1-based).</td>
       </tr>
       <tr>
         <td><strong>APOS</strong> / <strong>apos</strong></td>
-        <td>Absolute character position in the document.</td>
+        <td>Byte position of the match in the document (1-based).</td>
       </tr>
       <tr>
         <td><strong>COL</strong> / <strong>col</strong></td>
@@ -755,8 +755,8 @@ nav.pagenav .nav-group.collapsible {
 
     <p><strong>Notes:</strong></p>
     <ul>
-      <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <code>Replace All in All Open Docs</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
-      <li><code>MATCH</code> and <code>CAP</code> variables are always strings. For calculations use <code>tonum(CAP1)</code>; see the <a href="#tonum-behaviour">tonum parsing behaviour</a> table for what it accepts.</li>
+      <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <code>Replace All in Open Documents</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
+      <li><code>MATCH</code> and <code>CAP</code> variables are always strings. For calculations use <code>tonum(CAP1)</code>; see the <a href="#tonum-behavior">tonum parsing behavior</a> table for what it accepts.</li>
     </ul>
   </section>
 
@@ -773,7 +773,7 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td><code>set(v)</code></td>
-        <td>Returns <code>v</code> as the replacement string. If <code>v</code> is <code>nil</code>, the replacement is skipped.</td>
+        <td>Uses <code>v</code> (string or number) as the replacement. <code>nil</code> or any other type raises an error; to leave a match unchanged, use <code>cond()</code> without a false value.</td>
         <td><code>set("Value: " .. CNT)</code></td>
       </tr>
       <tr>
@@ -783,8 +783,8 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td><code>fmtN(n, d, f)</code></td>
-        <td>Formats number <code>n</code> with <code>d</code> decimal places and optional fixed flag <code>f</code>.</td>
-        <td><code>fmtN(math.pi, 2)</code> → <code>"3.14"</code></td>
+        <td>Formats <code>n</code> with at most <code>d</code> decimals; <code>f = true</code> keeps exactly <code>d</code> decimals. All three arguments are required; wrap the call in <code>set()</code> or <code>cond()</code>.</td>
+        <td><code>set(fmtN(math.pi, 2, true))</code> → <code>3.14</code></td>
       </tr>
       <tr>
         <td><code>trim(s)</code></td>
@@ -793,7 +793,7 @@ nav.pagenav .nav-group.collapsible {
       </tr>
       <tr>
         <td><code>tonum(s)</code></td>
-        <td>Converts string <code>s</code> to number. Accepts both dot (.) and comma (,) as decimal separator. See the <a href="#tonum-behaviour">tonum parsing behaviour</a> table for the full input/output map.</td>
+        <td>Converts string <code>s</code> to number. Accepts both dot (.) and comma (,) as decimal separator. See the <a href="#tonum-behavior">tonum parsing behavior</a> table for the full input/output map.</td>
         <td><code>tonum(CAP1) * 2</code></td>
       </tr>
       <tr>
@@ -812,9 +812,9 @@ nav.pagenav .nav-group.collapsible {
         <td><code>vars({sum=0})</code></td>
       </tr>
       <tr>
-        <td><code>lkp(k, p, c)</code></td>
-        <td>Looks up key <code>k</code> in file <code>p</code> and returns the value.</td>
-        <td><code>set(lkp(MATCH, "C:\\list.lkp"))</code></td>
+        <td><code>lkp(k, p, inner)</code></td>
+        <td>Replaces the match with the value of key <code>k</code> from lookup file <code>p</code>. A missing key keeps the key itself, or, with <code>inner = true</code>, removes the match.</td>
+        <td><code>lkp(MATCH, "C:\\list.lkp")</code></td>
       </tr>
       <tr>
         <td><code>lvars(p)</code></td>
@@ -922,7 +922,7 @@ nav.pagenav .nav-group.collapsible {
         <td><code>(\d+)</code></td>
         <td><code>vars({COL2=0,COL4=0}); cond(LCNT==4, COL2+COL4);</code><br><code>if COL==2 then COL2=tonum(CAP1) end;</code><br><code>if COL==4 then COL4=tonum(CAP1) end;</code></td>
         <td>1,20,text,2,0<br>2,30,text,3,0<br>3,40,text,4,0</td>
-        <td>1,20,text,2,22.0<br>2,30,text,3,33.0<br>3,40,text,4,44.0</td>
+        <td>1,20,text,2,22<br>2,30,text,3,33<br>3,40,text,4,44</td>
         <td>Yes</td>
         <td>Yes</td>
         <td>Tracks values from columns 2 and 4, sums them, and updates the result for the 4th match in the current line.</td>
@@ -1041,12 +1041,12 @@ return {
     </ul>
 
     <h4>Caching Mechanism</h4>
-    <p>Once <code>lkp()</code> loads the data file for <strong>hpath</strong>, the parsed table is cached in memory for the duration of the Replace-All operation.</p>
+    <p>Once <code>lkp()</code> loads the data file for <strong>hpath</strong>, the parsed table is cached in memory for the current document.</p>
 
     <h4>inner Flag</h4>
     <ul>
       <li><strong><code>false</code> (default, can be omitted):</strong> If the key is not found, <code>lkp()</code> returns the <strong>search term itself</strong> (e.g., <code>MATCH</code>, <code>CAP1</code>), instead of a mapped value.</li>
-      <li><strong><code>true</code>:</strong> If the key is not found, <code>lkp()</code> returns <code>nil</code>, allowing conditional handling.</li>
+      <li><strong><code>true</code>:</strong> If the key is not found, the replacement is <code>nil</code>, so the match is removed.</li>
     </ul>
 
     <h4>Examples</h4>
@@ -1074,7 +1074,7 @@ return {
       </tr>
       <tr>
         <td><code>\b\w+\b</code></td>
-        <td><code>output = lkp(MATCH, [[C:\tmp\hash.lkp]], true); set(output or "NoKey")</code></td>
+        <td><code>local r = lkp(MATCH, [[C:\tmp\hash.lkp]], true).result; set(r or "NoKey")</code></td>
         <td>Yes</td>
         <td>No</td>
         <td>Uses <strong>inner = true</strong>: If lookup result is non-<code>nil</code>, replaces with mapped value; otherwise <code>"NoKey"</code>.</td>
@@ -1281,9 +1281,9 @@ return {
 
   <br>
 
-  <section id="tonum-behaviour">
-    <h2>tonum Parsing Behaviour</h2>
-    <p>The <code>tonum()</code> helper normalises commas to periods and delegates to Lua's built-in <code>tonumber()</code>. The strict return semantics (e.g. <code>nil</code> on trailing junk) follow Lua convention &mdash; combine with <code>or</code> for a default: <code>tonum(CAP1) or 0</code>.</p>
+  <section id="tonum-behavior">
+    <h2>tonum Parsing Behavior</h2>
+    <p>The <code>tonum()</code> helper normalizes commas to periods and delegates to Lua's built-in <code>tonumber()</code>. The strict return semantics (e.g. <code>nil</code> on trailing junk) follow Lua convention &mdash; combine with <code>or</code> for a default: <code>tonum(CAP1) or 0</code>.</p>
     <table class="optionsTable">
       <tr>
         <th>Input</th>
@@ -1439,15 +1439,30 @@ return {
     </ul>
 
     <h4>Example</h4>
-    <p>This example shows how to use <code>if</code> statements with <code>cond()</code> to manage variables based on conditions:</p>
-    <p><code>vars({MVAR=""}); if CAP2~=nil then MVAR=MVAR..CAP2 end; cond(string.sub(CAP1,1,1)~="#", MVAR); if CAP2~=nil then MVAR=string.sub(CAP1,4,-1) end</code></p>
+    <p>This example uses an <code>if</code> statement to restart a running total on every line; <code>set()</code> stays outside the <code>if</code>:</p>
+    <table class="optionsTable">
+      <tr>
+        <th>Find</th>
+        <th>Replace</th>
+        <th>Regex</th>
+        <th>Before</th>
+        <th>After</th>
+      </tr>
+      <tr>
+        <td><code>(\d+)</code></td>
+        <td><code>vars({SUM=0, LAST=0}); if LINE ~= LAST then SUM = 0; LAST = LINE end; SUM = SUM + tonum(CAP1); set(SUM)</code></td>
+        <td>Yes</td>
+        <td>1&nbsp;2&nbsp;3<br>10&nbsp;20</td>
+        <td>1&nbsp;3&nbsp;6<br>10&nbsp;30</td>
+      </tr>
+    </table>
   </section>
 
   <br>
 
 <section id="DebugMode">
     <h2>Debug Mode</h2>
-    <p>The <strong>Debug Mode</strong> provides a safe environment to test complex logic involving conditions or math. Instead of modifying the text immediately, it allows you to step through matches one by one and inspect the real-time values of all variables.</p>
+    <p>The <strong>Debug Mode</strong> pauses before each replacement and shows the current values of all variables, so you can follow the logic match by match.</p>
     
     <p><strong>How to enable:</strong></p>
     <ul>
@@ -1547,7 +1562,7 @@ return {
         <td><code>vars({MATCH_PREV=1}); cond(MATCH == MATCH_PREV, ''); MATCH_PREV=MATCH;</code></td>
         <td>Yes</td>
         <td>No</td>
-        <td>Removes duplicate lines, keeping the first occurrence of each line.</td>
+        <td>Empties every line that repeats the line directly above it (the empty line stays).</td>
       </tr>
     </table>
   </section>
@@ -1601,7 +1616,7 @@ return {
 
   <section id="exprtk-pattern-syntax">
     <h2>Pattern Syntax: <code>(?= ... )</code></h2>
-    <p>Every ExprTk expression in a replace string is wrapped in <code>(?=</code> and <code>)</code>. The marker is intentionally three characters so it cannot be confused with regex syntax.</p>
+    <p>Every ExprTk expression in a replace string is wrapped in <code>(?=</code> and <code>)</code>.</p>
     <table class="optionsTable">
       <tr>
         <th>Syntax</th>
@@ -1613,17 +1628,18 @@ return {
       </tr>
       <tr>
         <td><code>\(?=</code></td>
-        <td>Literal <code>(?=</code> &mdash; backslash escapes the marker.</td>
+        <td>Literal <code>(?=</code> &mdash; backslash escapes the marker. In regex mode write <code>\(\?=</code>.</td>
       </tr>
       <tr>
         <td><code>\\</code></td>
-        <td>Literal backslash.</td>
+        <td>Literal backslash. In regex mode write <code>\\\\</code>.</td>
       </tr>
       <tr>
         <td><em>any other text</em></td>
         <td>Literal output, including UTF-8 byte sequences.</td>
       </tr>
     </table>
+    <p>In regex mode the literal text is a Notepad++ replace string: <code>$1</code> and <code>\1</code> insert groups, and <code>\</code>, <code>$</code>, <code>(</code>, <code>)</code> and <code>?</code> must be escaped with <code>\</code> to appear as is. Outside regex mode, literal text is copied unchanged.</p>
     <p>The closing <code>)</code> is matched by depth-counting, so balanced parentheses inside the expression &mdash; like <code>min(num(1), num(2))</code> &mdash; work naturally without extra escaping.</p>
   </section>
 
@@ -1641,11 +1657,11 @@ return {
       </tr>
       <tr>
         <td><strong>CNT</strong> / <strong>cnt</strong></td>
-        <td>Replacement count across the whole run (1-based).</td>
+        <td>Number of the current match of this list entry in the current document (1-based); skipped matches count too.</td>
       </tr>
       <tr>
         <td><strong>LCNT</strong> / <strong>lcnt</strong></td>
-        <td>Replacement count within the current line (1-based).</td>
+        <td>The same, counted within the current line.</td>
       </tr>
       <tr>
         <td><strong>LINE</strong> / <strong>line</strong></td>
@@ -1653,11 +1669,11 @@ return {
       </tr>
       <tr>
         <td><strong>LPOS</strong> / <strong>lpos</strong></td>
-        <td>Column position within the line (UTF-8 bytes).</td>
+        <td>Byte position of the match within the line (1-based).</td>
       </tr>
       <tr>
         <td><strong>APOS</strong> / <strong>apos</strong></td>
-        <td>Absolute byte position in the document.</td>
+        <td>Byte position of the match in the document (1-based).</td>
       </tr>
       <tr>
         <td><strong>COL</strong> / <strong>col</strong></td>
@@ -1684,7 +1700,7 @@ return {
         <td>Filename without path.</td>
       </tr>
     </table>
-    <p>To access the matched text as a string, use <code>txt(0)</code> directly in a <code>(?=...)</code> block, or <code>\0</code> / <code>$0</code> in the replace pattern as a regex back-reference.</p>
+    <p>To access the matched text as a string, use <code>txt(0)</code> directly in a <code>(?=...)</code> block, or <code>$0</code> in the replace pattern as a regex back-reference.</p>
 
     <h3>Capture access</h3>
     <table class="optionsTable">
@@ -1768,17 +1784,23 @@ return {
         <td>trailing characters tolerated</td>
       </tr>
       <tr>
-        <td><code>"1,234,567"</code> (US thousands)</td>
-        <td><code>1.234</code></td>
-        <td>thousands separators not recognised &mdash; strip them in the regex first</td>
+        <td><code>"1,234,567"</code>, <code>"1.000.000"</code> (thousands)</td>
+        <td><code>NaN</code></td>
+        <td>more than one separator is rejected &mdash; remove the grouping first (see below)</td>
       </tr>
       <tr>
         <td><code>"1.234,56"</code> or <code>"1,234.56"</code></td>
-        <td><code>1.234</code> or <code>1</code></td>
-        <td>mixed separators are unreliable &mdash; avoid relying on them</td>
+        <td><code>NaN</code></td>
+        <td>mixing <code>.</code> and <code>,</code> is rejected &mdash; capture a single separator type</td>
       </tr>
     </table>
-    <p>When an expression evaluates to <code>NaN</code> (or to <code>&plusmn;Infinity</code> from things like <code>0/0</code>, <code>log(-1)</code>, <code>sqrt(-1)</code>), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. Skipped matches are left untouched, so no original data is lost.</p>
+    <p><strong>Reading grouped numbers.</strong> Because more than one separator yields <code>NaN</code>, a thousands-grouped number must have its grouping removed before parsing. Do this in the formula with <code>replace()</code>, once you know which character is the grouping separator:</p>
+    <ul>
+      <li>US grouping (<code>1,234.56</code>): <code>(?=tonum(replace(txt(1), ',', '')))</code> &rarr; <code>1234.56</code></li>
+      <li>European grouping (<code>1.234,56</code>): <code>(?=tonum(replace(txt(1), '.', '')))</code> &rarr; <code>1234.56</code> (the remaining comma is read as the decimal point)</li>
+    </ul>
+    <p>This needs the format to be known up front &mdash; a value with a single separator (e.g. <code>1.234</code>) stays ambiguous between a decimal and a thousands group and cannot be disambiguated automatically.</p>
+    <p>When an expression evaluates to <code>NaN</code> (for example <code>0/0</code>, <code>log(-1)</code>, <code>sqrt(-1)</code>) or to <code>&plusmn;Infinity</code> (for example <code>1/0</code>), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. With <strong>Show formula error dialogs</strong> turned off, such matches are skipped without a dialog and counted in the summary at the end of the run. Skipped matches are left untouched, so no original data is lost.</p>
   </section>
 
   <br>
@@ -1795,7 +1817,7 @@ return {
     <table class="optionsTable">
       <tr><th>Reader family</th><th>Reads from history</th><th>Block index</th></tr>
       <tr><td><code>num</code> / <code>txt</code></td><td>A specific <strong>capture group</strong></td><td><code>n</code> = capture index</td></tr>
-      <tr><td><code>numout</code> / <code>txtout</code></td><td>A specific <strong>block's output</strong></td><td><code>n</code> = block index (0-based, by template position)</td></tr>
+      <tr><td><code>numout</code> / <code>txtout</code></td><td>A specific <strong>block's output</strong></td><td><code>n</code> = block index (1-based, by template position)</td></tr>
       <tr><td><code>numprev</code> / <code>txtprev</code></td><td>The <strong>same block's</strong> output</td><td>implicit (= the running block)</td></tr>
     </table>
 
@@ -1808,7 +1830,7 @@ return {
       <tr><td><code>v</code></td><td>Optional fallback. Returned when the lookup fails &mdash; past history, out-of-range, type mismatch (numeric reader against a string slot or vice versa), or, for numeric readers, a non-finite result.</td></tr>
     </table>
 
-    <p>A <strong>block</strong> is one <code>(?=...)</code> expression in the template, numbered <code>0, 1, 2, ...</code> in source order (literal text in between doesn't count).</p>
+    <p>A <strong>block</strong> is one <code>(?=...)</code> expression in the template, numbered <code>1, 2, 3, ...</code> in source order (literal text in between doesn't count).</p>
 
     <br>
 
@@ -1878,8 +1900,8 @@ return {
     <table class="optionsTable">
       <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
       <tr><td><code>(\d+)</code></td><td><code>(?=num(1) + numprev())</code></td><td>Running total. First match emits its value alone (no previous, v=0); subsequent matches accumulate.</td></tr>
-      <tr><td><code>(\d+)</code></td><td><code>(?=max(num(1), numprev(1, 0), numprev(2, 0)))</code></td><td>Per-match maximum over the current value and the two preceding ones. Missing history &rarr; 0.</td></tr>
-      <tr><td><code>^(\w+)$</code></td><td><code>(?=txtprev(1, 'first') + ' -&gt; ' + txt(1))</code></td><td>Predecessor chain with explicit fallback for the first match.</td></tr>
+      <tr><td><code>(\d+)</code></td><td><code>(?=max(num(1), numprev()))</code></td><td>Running maximum: the largest value up to this match (the first match compares against the fallback 0).</td></tr>
+      <tr><td><code>^(\w+)$</code></td><td><code>(?=txtprev(1, 'first') + ' -&gt; ' + txt(1))</code></td><td>Growing chain: each match appends its text to the previous output (<code>first -&gt; alpha</code>, then <code>first -&gt; alpha -&gt; beta</code>, ...).</td></tr>
     </table>
 
     <br>
@@ -1890,7 +1912,7 @@ return {
     <p><strong>Example 1 &mdash; <code>numout</code> with an explicit <code>P</code> (reading a previous match).</strong> The first block passes the raw value through; the second block subtracts the raw value of the <em>previous</em> line via <code>numout(1, 1, 0)</code> &mdash; first block, one match back, fallback 0. This is the line-to-line delta.</p>
     <ul>
       <li><strong>Find:</strong> <code>(\d+)</code></li>
-      <li><strong>Replace:</strong> <code>(?=num(1)) (delta (?=num(1) - numout(1, 1, 0)))</code></li>
+      <li><strong>Replace:</strong> <code>(?=num(1)) \(delta (?=num(1) - numout(1, 1, 0))\)</code></li>
     </ul>
     <table class="optionsTable">
       <tr><th>Input line</th><th>Block 1 <code>num(1)</code></th><th><code>numout(1, 1, 0)</code> (prev. raw)</th><th>Block 2 delta</th><th>Output</th></tr>
@@ -1933,7 +1955,7 @@ return {
       <tr><th>Pattern</th><th>Error</th></tr>
       <tr><td>Literal <code>p &lt; 0</code></td><td><code>"p must be non-negative in ..."</code> &mdash; applies to every history reader.</td></tr>
       <tr><td>Literal <code>p &gt; 1024</code></td><td><code>"p exceeds hard cap (1024) in ..."</code> &mdash; hard upper bound on ring depth.</td></tr>
-      <tr><td>Literal <code>n &lt; 0</code> in <code>num</code>/<code>txt</code> arity-2/3</td><td><code>"n must be non-negative in ..."</code> &mdash; note <code>num(-1)</code> (arity-1) still returns <code>0</code> for backwards compatibility.</td></tr>
+      <tr><td>Literal <code>n &lt; 0</code> in <code>num</code>/<code>txt</code> arity-2/3</td><td><code>"n must be non-negative in ..."</code> &mdash; note <code>num(-1)</code> (arity-1) is not a compile error; it yields <code>NaN</code> at runtime like any other missing capture.</td></tr>
     </table>
 
     <p>Errors driven by runtime values (a variable that happens to evaluate to a negative number, an out-of-range block index, etc.) fall back to <code>v</code> silently instead of aborting &mdash; consistent with the rest of ExprTk's defensive failure handling.</p>
@@ -2019,7 +2041,7 @@ return {
 (?= rnd(6) )                 # 1..6 (dice roll)
 (?= rnd(10, 99) )            # two-digit integer
 (?= rndnorm(100, 15) )       # IQ-like Gaussian around 100
-(?= rnd() &lt; 0.3 ? 'A' : 'B') # ~30% A, ~70% B (inside return [...])
+(?= rnd() &lt; 0.3 ? 'A' : 'B') # ~30% A, ~70% B
 (?= rndseed(42); rnd() )     # always the same draw for seed 42</code></pre>
   </section>
 
@@ -2050,7 +2072,7 @@ return {
         <td>Multi-way branch.</td>
       </tr>
     </table>
-    <p>Example &mdash; clamp a captured value but show "OVER" if it exceeded:</p>
+    <p>Example &mdash; cap a captured value at 100:</p>
     <p><code>(?=num(1) &gt; 100 ? 100 : num(1))</code></p>
   </section>
 
@@ -2062,7 +2084,7 @@ return {
     <p><code>(?=txt(1))</code> &nbsp; &mdash; emit capture 1 as text<br>
        <code>(?='prefix-' + txt(1))</code> &nbsp; &mdash; concatenate literals and captures<br>
        <code>(?=fname + ': ' + txt(0))</code> &nbsp; &mdash; mix string variables with captures</p>
-    <p>String sources include literals in single quotes, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), <code>txtcol(...)</code> CSV columns, and the conversion functions (<code>num2rom</code>, <code>hex2num</code>, etc.). The <code>+</code> operator concatenates strings.</p>
+    <p>String sources include literals in single quotes, the string variables (<code>FPATH</code>, <code>FNAME</code>), <code>txt(N)</code> capture text (use <code>txt(0)</code> for the full match), <code>txtcol(...)</code> CSV columns, and the conversion functions (<code>num2rom</code>, <code>totxt</code>, <code>num2chr</code>, etc.). The <code>+</code> operator concatenates strings.</p>
     <p>The legacy form <code>(?=return [a, b, c])</code> still compiles and behaves the same as <code>(?=a + b + c)</code>; new expressions should prefer the direct form.</p>
     <section class="note">
       <p><strong>String literals accept UTF-8.</strong> Non-ASCII characters inside <code>'...'</code> (for example <code>'Gr&ouml;&szlig;e'</code> or <code>'caf&eacute;'</code>) work directly as needles, replacements, and comparison values. The String Pack functions process them correctly; only the byte-indexed <code>s[i:j]</code> slice and the <code>like</code>/<code>ilike</code> wildcards stay byte-level (see <a href="#exprtk-limitations">Limitations</a>).</p>
@@ -2080,7 +2102,7 @@ return {
       </tr>
       <tr><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code>, <code>^</code></td><td>Arithmetic and exponentiation.</td></tr>
       <tr><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code></td><td>Comparison.</td></tr>
-      <tr><td><code>and</code>, <code>or</code>, <code>not</code>, <code>xor</code>, <code>nand</code>, <code>nor</code></td><td>Logical operators (also <code>&amp;&amp;</code>, <code>||</code>, <code>!</code>).</td></tr>
+      <tr><td><code>and</code>, <code>or</code>, <code>not</code>, <code>xor</code>, <code>nand</code>, <code>nor</code></td><td>Logical operators (also <code>&amp;</code> for <code>and</code>, <code>|</code> for <code>or</code>).</td></tr>
       <tr><td><code>:=</code></td><td>Assignment to a local variable.</td></tr>
       <tr><td><code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code></td><td>Compound assignment.</td></tr>
       <tr><td><code>?:</code></td><td>Ternary.</td></tr>
@@ -2091,7 +2113,7 @@ return {
 
   <section id="exprtk-skip">
     <h2>Skipping Matches</h2>
-    <p>Calling <code>skip()</code> from within an expression tells the engine to leave this match unchanged. The expression's own value is ignored when skip is signalled. Useful as a numeric filter:</p>
+    <p>Calling <code>skip()</code> from within an expression tells the engine to leave this match unchanged. The expression's own value is ignored when skip is signaled. Useful as a numeric filter:</p>
     <p><code>(?=num(1) &lt; 100 ? skip() : num(1) * 2)</code></p>
     <p>This doubles captured numbers &ge; 100 and leaves everything else untouched.</p>
   </section>
@@ -2180,7 +2202,7 @@ return {
     </table>
     <p><strong>Output conventions:</strong></p>
     <ul>
-      <li>Hex/bin/oct output via <code>~ x</code> / <code>~ b</code> / <code>~ o</code> is <strong>bare lowercase</strong> &mdash; no <code>0x</code> / <code>0b</code> / <code>0o</code> prefix. Compose prefixes if you want them: <code>(?='0x' + num(1) ~ x)</code>.</li>
+      <li>Hex/bin/oct output via <code>~ x</code> / <code>~ b</code> / <code>~ o</code> is <strong>bare lowercase</strong> &mdash; no <code>0x</code> / <code>0b</code> / <code>0o</code> prefix. Compose prefixes as literal text: <code>0x(?=num(1) ~ x)</code>.</li>
       <li>Roman output is <strong>uppercase canonical</strong> form (subtractive pairs <code>IV</code>, <code>IX</code>, <code>XL</code>, etc.).</li>
       <li>For Roman, only the range 1..3999 is meaningful; out of range returns an empty string.</li>
     </ul>
@@ -2199,7 +2221,7 @@ return {
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>(?='0x' + num(1) ~ x)</code></td>
+        <td><code>0x(?=num(1) ~ x)</code></td>
         <td>Decimal &rarr; <code>0xff</code></td>
       </tr>
       <tr>
@@ -2260,7 +2282,7 @@ return {
       <tr><th>Find</th><th>Replace</th><th>Description</th></tr>
       <tr><td><code>(.+)</code></td><td><code>(?=slice(txt(1), 1, 3))</code></td><td>First 3 codepoints</td></tr>
       <tr><td><code>(\S+)@(\S+)</code></td><td><code>(?=split(txt(2), '.', 1))</code></td><td>Domain's first label</td></tr>
-      <tr><td><code>\s*(.+?)\s*</code></td><td><code>(?=trim(txt(1)))</code></td><td>Strip surrounding whitespace</td></tr>
+      <tr><td><code>^(.*)$</code></td><td><code>(?=trim(txt(1)))</code></td><td>Strip leading and trailing whitespace of each line</td></tr>
       <tr><td><code>(\d+)</code></td><td><code>(?=totxt(num(1), '04d'))</code></td><td>Zero-pad to 4 digits</td></tr>
     </table>
   </section>
@@ -2293,13 +2315,13 @@ return {
       <li>Indexing reads the raw row regardless of any column-selection filter the user set.</li>
       <li>The cell is returned verbatim - no quote stripping, matching the existing CSV column convention used by sort and column highlighting.</li>
     </ul>
-    <p><strong>Behaviour at the edges:</strong></p>
+    <p><strong>Behavior at the edges:</strong></p>
     <ul>
       <li>Missing column (e.g. <code>numcol(99)</code> on a row with 5 columns): <code>NaN</code> for <code>numcol</code>, empty string for <code>txtcol</code>.</li>
       <li>Unknown header name: same.</li>
       <li>CSV mode off, no delimiter set, or no current match in progress: same.</li>
     </ul>
-    <p><strong>Example - lookup by name with arithmetic:</strong></p>
+    <p><strong>Example - lookup by name with arithmetic</strong> (scope <strong>CSV</strong>, Cols <code>3</code>, Delim <code>;</code>):</p>
     <table class="optionsTable">
       <tr>
         <th>Input</th>
@@ -2309,12 +2331,12 @@ return {
       </tr>
       <tr>
         <td>product;price;qty<br>apple;1.50;10<br>banana;0.30;25</td>
-        <td><code>^(?!product).+$</code></td>
-        <td><code>(?=txt(0) + ' total=' + (numcol('price') * numcol('qty')))</code></td>
+        <td><code>\d+$</code></td>
+        <td><code>$0 total=(?=numcol('price') * numcol('qty'))</code></td>
         <td>product;price;qty<br>apple;1.50;10 total=15<br>banana;0.30;25 total=7.5</td>
       </tr>
     </table>
-    <p>The negative lookahead in the Find pattern excludes the header row so the formula only runs on data rows. Inside the formula, <code>numcol('price')</code> reads the <code>price</code> column of whichever line the current match landed on.</p>
+    <p>In the CSV scope each selected column is searched on its own, so Cols <code>3</code> limits the search to the <code>qty</code> cells; the header cell <code>qty</code> has no digits and stays unchanged. Inside the formula, <code>numcol('price')</code> reads the <code>price</code> column of whichever line the current match landed on.</p>
   </section>
 
   <br>
@@ -2359,21 +2381,21 @@ return {
       <li><strong>PARAMS</strong> is a comma-separated list of <code>name</code> or <code>name: TYPE</code>. <code>TYPE</code> is <code>T</code> (scalar, the default) or <code>S</code> (string), uppercase.</li>
       <li><strong>RETURN</strong> is optional. Same letters &mdash; <code>T</code> (default) or <code>S</code>.</li>
     </ul>
-    <p><strong>Body normalisation:</strong> write <code>return EXPR;</code> naturally; the loader rewrites it to ExprTk's native <code>return [EXPR];</code> form before compilation. Users who prefer the bracketed form can write it directly.</p>
+    <p><strong>Body normalization:</strong> write <code>return EXPR;</code> naturally; the loader rewrites it to ExprTk's native <code>return [EXPR];</code> form before compilation. Users who prefer the bracketed form can write it directly.</p>
     <p>Examples covering all four parameter / return shapes:</p>
-    <pre><code>function double_it(n)              # T -&gt; T  (defaults, no annotation)
+    <pre><code>function double_it(n)              // T -&gt; T  (defaults, no annotation)
     return n * 2;
 end
 
-function tag(label: S) : S         # S -&gt; S
+function tag(label: S) : S         // S -&gt; S
     return '[' + label + ']';
 end
 
-function digit_count(s: S)         # S -&gt; T
+function digit_count(s: S)         // S -&gt; T
     return s[];                    /* string length */
 end
 
-function padleft(s: S, n, fill: S) : S   # S, T, S -&gt; S
+function padleft(s: S, n, fill: S) : S   // S, T, S -&gt; S
     var r := s;
     while (r[] &lt; n) { r := fill + r; };
     return r;
@@ -2392,7 +2414,7 @@ function isOdd(n)
 end
 </code></pre>
     <p><strong>Comments:</strong> Both <code>/* ... */</code> and <code>// ...</code> work, anywhere in the file or inside function bodies.</p>
-    <p><strong>Errors:</strong> Parser, name-collision, and compile errors abort the load with a dialog that names the function and offset. The matching expressions then evaluate to <code>0</code> or <code>''</code>.</p>
+    <p><strong>Errors:</strong> Parser, name-collision and compile errors abort the load with a dialog that names the function and offset, and the run stops; no replacement is made.</p>
 
     <h3>Writing function bodies</h3>
     <p>Function bodies use a small statement language layered on top of ExprTk's expression syntax. The pieces below cover what's needed for almost any helper.</p>
@@ -2468,12 +2490,12 @@ end
       <tr>
         <td>Comparison</td>
         <td><code>s == 'X'</code>, <code>s != 'Y'</code></td>
-        <td>Equality only. No <code>&lt;</code> on strings.</td>
+        <td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code> &mdash; byte-wise comparison.</td>
       </tr>
       <tr>
         <td>Literal</td>
         <td><code>'text'</code>, <code>''</code> for empty</td>
-        <td>ASCII only inside literals.</td>
+        <td>UTF-8 accepted; multi-byte literals round-trip byte-for-byte.</td>
       </tr>
     </table>
     <section class="note">
@@ -2517,7 +2539,7 @@ end
 
     <h3>Complete example: ID-tag generator</h3>
     <p>Spec: wrap each captured number in a fixed-width zero-padded ID tag like <code>[ID-00042]</code>. Demonstrates a library function that takes both a number and a width, returns a string, and composes with literals at the call site.</p>
-    <p><code>C:/Data/Projekte/MultiReplace/idtag.elib</code>:</p>
+    <p><code>C:/tmp/idtag.elib</code>:</p>
     <pre><code>function padleft(s: S, n, fill: S) : S
     var r := s;
     while (r[] &lt; n) { r := fill + r; };
@@ -2560,7 +2582,7 @@ end
       </tr>
       <tr>
         <td><em>(empty)</em></td>
-        <td><code>(?=loadlib('C:/Data/Projekte/MultiReplace/idtag.elib'))</code></td>
+        <td><code>(?=loadlib('C:/tmp/idtag.elib'))</code></td>
         <td>No</td>
         <td>Load library.</td>
       </tr>
@@ -2796,7 +2818,7 @@ end
 
     <h3>Errors and edge cases</h3>
     <ul>
-      <li><strong>Invalid spec at compile time</strong> &mdash; <code>(?=hit ~ 99q)</code> produces <em>"Invalid format spec '99q': Unknown numeric type letter; expected f/e/g/x/b/o/d"</em>. The rule fails to compile; no replacements run.</li>
+      <li><strong>Invalid spec at compile time</strong> &mdash; <code>(?=hit ~ 99q)</code> produces <code>Invalid format spec "99q": Unknown numeric type letter; expected f/e/g/x/b/o/d</code>. The rule fails to compile; no replacements run.</li>
       <li><strong>Alignment + zero-pad</strong> &mdash; combining an explicit align with the <code>0</code> flag (e.g. <code>&gt;05d</code>, or <code>&gt;8 n:05</code> where the align comes from the frame) is rejected at compile time; the two fills conflict. Use one or the other.</li>
       <li><strong>Marker before the frame</strong> &mdash; <code>n:&lt;8.2f</code> or <code>t:&gt;8.3</code> is rejected: the frame must lead, so write <code>&lt;8 n:.2f</code> / <code>&gt;8 t:.3</code>. A bare body marker with no frame (<code>n:5.2f</code>, <code>t:.5</code>) is fine.</li>
       <li><strong>Width given twice</strong> &mdash; stating a width in both the frame and the body (<code>&gt;8 n:5.2f</code>) is rejected; put it in one place.</li>
@@ -2808,7 +2830,7 @@ end
         </ul>
       </li>
       <li><strong>NaN / Inf</strong> &mdash; when the formula produces <code>NaN</code> (e.g. parsing a non-numeric capture) or <code>Inf</code> (e.g. division by zero), the spec is not applied; the recoverable-error dialog appears, leaving the original match untouched if skipped.</li>
-      <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter takes the <strong>last</strong> <code>~</code> outside string quotes. ExprTk string literals (<code>'a~b'</code>, <code>"a~b"</code>) are quote-aware, so a <code>~</code> inside them does not split:
+      <li><strong><code>~</code> inside the formula</strong> &mdash; the splitter takes the <strong>last</strong> <code>~</code> outside string quotes. ExprTk string literals (<code>'a~b'</code>) are quote-aware, so a <code>~</code> inside them does not split:
         <p><code>(?= 'note ~ check' + txt(1) ~ &gt;20 )</code></p>
         The <code>~</code> inside the single-quoted literal is part of the formula; the final <code>~</code> is the spec separator.
       </li>
@@ -2860,7 +2882,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <p>Whitespace in the format matches <strong>zero or more</strong> whitespace characters in the input. Literal characters must match exactly. Trailing characters in the input beyond what the format consumes are tolerated.</p>
 
     <h3>Quoting the format string in ExprTk</h3>
-    <p><strong>Use single quotes</strong> for <code>todate</code>'s format string. ExprTk's lexer treats <code>%</code> as the modulo operator, so a double-quoted pattern starting with <code>%</code> is misread; single-quoted strings are taken verbatim:</p>
+    <p><strong>Use single quotes</strong> for <code>todate</code>'s format string. ExprTk strings are always single-quoted; a double-quoted string is a token error:</p>
     <table class="optionsTable">
       <tr><th>Form</th><th>Status</th></tr>
       <tr><td><code>todate(txt(0), '%Y-%m-%d')</code></td><td>&check; works</td></tr>
@@ -2922,7 +2944,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
         <td><code>(?=num(1) * 2.54)</code></td>
-        <td>Convert inches to centimetres (&times;2.54).</td>
+        <td>Convert inches to centimeters (&times;2.54).</td>
       </tr>
       <tr>
         <td><code>(\d+\.?\d*)</code></td>
@@ -3017,8 +3039,8 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
       </tr>
       <tr>
         <td><code>(\d+)</code></td>
-        <td><code>(?='#' + CNT + ': ' + txt(1))</code></td>
-        <td>Prefix each match with a running global counter.</td>
+        <td><code>#(?=CNT): (?=txt(1))</code></td>
+        <td>Prefix each match with a running counter.</td>
       </tr>
       <tr>
         <td><code>(\w+)</code></td>
@@ -3074,7 +3096,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
       <tr>
         <td><code>;</code></td>
         <td><code>(?=LCNT == 1 ? skip() : 0);</code></td>
-        <td>Replace only the second and later semicolons on each line.</td>
+        <td>Put a <code>0</code> before every semicolon after the first one on each line.</td>
       </tr>
     </table>
   </section>
@@ -3087,7 +3109,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
     <ul>
       <li><strong>String manipulation inside <code>(?=...)</code>.</strong> The String Pack covers the common cases codepoint-correctly: length (<code>len</code>), search (<code>find</code>), slicing (<code>slice</code>), splitting (<code>split</code>), trimming, replacement, repetition, and codepoint conversion (see <a href="#exprtk-stringpack">String Pack</a>). The low-level byte primitives <code>s[i:j]</code> and <code>s[]</code> remain for ASCII/byte work. For anything beyond the built-ins &mdash; formatted assembly, custom encodings, multi-step parsing &mdash; write helper functions in a <code>.elib</code> library (see <a href="#exprtk-loadlib">Library Loading via loadlib</a>).</li>
       <li><strong>Byte-indexed slicing and wildcards in built-ins (<code>s[i:j]</code>, <code>like</code>, <code>ilike</code>).</strong> The built-in range slice and wildcard match work on raw bytes, not whole characters, so they can split or mismatch multi-byte sequences. For correct results use the <a href="#exprtk-stringpack">String Pack</a> &mdash; <code>slice()</code> for ranges, <code>find()</code> and <code>replace()</code> for substring search &mdash; and reserve the built-in operators for plain ASCII. String literals themselves (<code>'Gr&ouml;&szlig;e'</code>, <code>'caf&eacute;'</code>) compile and round-trip fine; the limit is only about those byte-indexed operators.</li>
-      <li><strong>No state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh. The numeric counters (<code>CNT</code>, <code>LCNT</code>) are provided by the host and read-only; for accumulating user-defined state across matches, switch to the Lua engine and use <code>vars({...})</code>.</li>
+      <li><strong>No general user-defined state across matches.</strong> Each <code>(?=...)</code> evaluation starts fresh &mdash; you cannot create your own named variables that persist. The <a href="#exprtk-match-history">Match History</a> functions cover the common case (read earlier captures and block outputs), and <code>CNT</code> / <code>LCNT</code> are provided by the host. For arbitrary per-key state (a cumulative table keyed by string, a per-value tally), switch to the Lua engine and use <code>vars({...})</code>.</li>
       <li><strong>No data file loading.</strong> ExprTk has no equivalent to Lua's <code>lvars</code> (preload variables from disk) or <code>lkp</code> (key lookup from disk). <code>loadlib</code> loads <strong>code</strong>, not data.</li>
       <li><strong><code>todate</code> is intentionally minimal.</strong> It accepts the common strftime specifiers (<code>%Y %y %m %d %H %M %S %I %p %F %T %%</code>) &mdash; enough for ISO, European, US, and ISO 8601 dates with optional time-of-day. Locale-dependent fields like month names (<code>%B</code>), weekday names (<code>%A</code>), or week numbers (<code>%V</code>) are <strong>not</strong> accepted on the input side. For richer date input parsing, use Lua's date handling instead.</li>
       <li><strong>Date timestamps must be &ge; 0.</strong> <code>d:fmt</code> and <code>todate</code> only handle years 1970 onwards. Negative timestamps produce empty output or NaN respectively.</li>
