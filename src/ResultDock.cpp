@@ -1596,28 +1596,11 @@ bool ResultDock::FileExistsW(const std::wstring& fullPath)
     return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-std::wstring ResultDock::GetNppProgramDir()
-{
-    wchar_t buf[MAX_PATH] = {};
-    DWORD n = ::GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    std::wstring exePath = (n ? std::wstring(buf, n) : std::wstring());
-    const size_t pos = exePath.find_last_of(L"\\/");
-    return (pos == std::wstring::npos) ? L"." : exePath.substr(0, pos);
-}
-
 bool ResultDock::IsCurrentDocByFullPath(const std::wstring& fullPath)
 {
     wchar_t cur[MAX_PATH] = {};
     ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, static_cast<WPARAM>(MAX_PATH), reinterpret_cast<LPARAM>(cur));
     return (_wcsicmp(cur, fullPath.c_str()) == 0);
-}
-
-bool ResultDock::IsCurrentDocByTitle(const std::wstring& titleOnly)
-{
-    // Compare against current tab title (filename only)
-    wchar_t name[MAX_PATH] = {};
-    ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, static_cast<WPARAM>(MAX_PATH), reinterpret_cast<LPARAM>(name));
-    return (_wcsicmp(name, titleOnly.c_str()) == 0);
 }
 
 void ResultDock::SwitchToFileIfOpenByFullPath(const std::wstring& fullPath)
@@ -1626,78 +1609,59 @@ void ResultDock::SwitchToFileIfOpenByFullPath(const std::wstring& fullPath)
     ::SendMessage(nppData._nppHandle, NPPM_SWITCHTOFILE, 0, reinterpret_cast<LPARAM>(fullPath.c_str()));
 }
 
-std::wstring ResultDock::BuildDefaultPathForPseudo(const std::wstring& label)
-{
-    // Map "new 1" -> "<NppProgramDir>\new 1"
-    const std::wstring dir = GetNppProgramDir();
-    if (dir.empty()) return label;
-    return dir + L"\\" + label;
-}
-
 bool ResultDock::EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath)
 {
     extern NppData nppData;
 
-    // Detect pseudo (e.g., "new 1") and normalize to a real path if needed.
-    const bool isPseudo = IsPseudoPath(desiredPath);
-
-    // Fast path: if it's a pseudo-name and that tab is currently open, done.
-    if (isPseudo && IsCurrentDocByTitle(desiredPath)) {
+    // Try to activate if already open; the full path of an unsaved tab is its title ("new 1")
+    if (IsCurrentDocByFullPath(desiredPath)) {
+        outOpenedPath = desiredPath;
+        return true;
+    }
+    SwitchToFileIfOpenByFullPath(desiredPath);
+    if (IsCurrentDocByFullPath(desiredPath)) {
         outOpenedPath = desiredPath;
         return true;
     }
 
-    // Normalize pseudo names to a full path upfront (e.g., "<NppDir>\new 1").
-    // All subsequent operations use targetPath, NOT desiredPath.
-    const std::wstring targetPath = isPseudo ? BuildDefaultPathForPseudo(desiredPath)
-        : desiredPath;
-
-    // Try to activate if already open (by full path)
-    if (IsCurrentDocByFullPath(targetPath)) {
-        outOpenedPath = targetPath;
-        return true;
-    }
-    SwitchToFileIfOpenByFullPath(targetPath);
-    if (IsCurrentDocByFullPath(targetPath)) {
-        outOpenedPath = targetPath;
-        return true;
-    }
+    // An unsaved tab that was closed has no file to open or create
+    if (IsPseudoPath(desiredPath)) return false;
 
     // Not currently active: try NPPM_DOOPEN (opens existing file or activates tab).
-    if (FileExistsW(targetPath)) {
-        ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
-        outOpenedPath = targetPath;
+    if (FileExistsW(desiredPath)) {
+        ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(desiredPath.c_str()));
+        outOpenedPath = desiredPath;
         // SendMessage is synchronous: the tab is active now unless Notepad++ refused the file.
-        return IsCurrentDocByFullPath(targetPath);
+        return IsCurrentDocByFullPath(desiredPath);
     }
 
     // File doesn't exist: prompt user to create it
     const std::wstring title = LM.get(L"msgbox_title_create_file");
-    const std::wstring prompt = LM.get(L"msgbox_prompt_create_file", { targetPath });
+    const std::wstring prompt = LM.get(L"msgbox_prompt_create_file", { desiredPath });
 
     const int res = ::MessageBoxW(nppData._nppHandle, prompt.c_str(), title.c_str(),
         MB_YESNO | MB_ICONQUESTION | MB_APPLMODAL);
     if (res != IDYES) return false;
 
     // Create the empty file
-    HANDLE hFile = ::CreateFileW(targetPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+    HANDLE hFile = ::CreateFileW(desiredPath.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr,
         CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE) {
-        const std::wstring err = LM.get(L"msgbox_error_create_file", { targetPath });
+        const std::wstring err = LM.get(L"msgbox_error_create_file", { desiredPath });
         ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_ICONERROR | MB_APPLMODAL);
         return false;
     }
     ::CloseHandle(hFile);
 
     // Open the newly created file
-    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(targetPath.c_str()));
+    const LRESULT ok = ::SendMessage(nppData._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(desiredPath.c_str()));
     if (ok) {
-        outOpenedPath = targetPath;
-        return IsCurrentDocByFullPath(targetPath);
+        outOpenedPath = desiredPath;
+        return IsCurrentDocByFullPath(desiredPath);
     }
 
     // Shouldn't happen, but handle gracefully
-    const std::wstring err = LM.get(L"msgbox_error_create_file", { targetPath });
+    const std::wstring err = LM.get(L"msgbox_error_create_file", { desiredPath });
     ::MessageBoxW(nppData._nppHandle, err.c_str(), title.c_str(), MB_OK | MB_ICONERROR | MB_APPLMODAL);
     return false;
 }

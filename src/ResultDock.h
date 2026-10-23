@@ -264,10 +264,7 @@ private:
     // -------------------- Path/File helpers -------------------
     static bool IsPseudoPath(const std::wstring& pathOrLabel);
     static bool FileExistsW(const std::wstring& fullPath);
-    static std::wstring GetNppProgramDir();
     static bool IsCurrentDocByFullPath(const std::wstring& fullPath);
-    static bool IsCurrentDocByTitle(const std::wstring& titleOnly);
-    static std::wstring BuildDefaultPathForPseudo(const std::wstring& label);
     static void SwitchToFileIfOpenByFullPath(const std::wstring& fullPath);
     // True when the document is the active tab afterwards
     static bool EnsureFileOpenOrOfferCreate(const std::wstring& desiredPath, std::wstring& outOpenedPath);
