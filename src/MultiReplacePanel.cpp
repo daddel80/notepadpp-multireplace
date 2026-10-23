@@ -6416,7 +6416,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             RECT textRect = pdis->rcItem;
             DrawTextW(pdis->hDC, text.data(), -1, &textRect,
-                DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 
             return TRUE;
         }
@@ -9603,7 +9603,7 @@ void MultiReplace::handleReplaceInFiles() {
         liveDocs ? OpenDocProbe::Enumerate : OpenDocProbe::Dirty);
     const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
-    showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
+    showStatusMessage(LM.get(L"status_scan_progress", { L"0" }), MessageStatus::Info);
     ScanStatusThrottle progress;
     ScanMessagePump pump;
 
@@ -10529,7 +10529,7 @@ void MultiReplace::handleFindInFiles() {
 
     int idx = 0;
     const int total = static_cast<int>(files.size());
-    showStatusMessage(L"Progress: [  0%]", MessageStatus::Info);
+    showStatusMessage(LM.get(L"status_scan_progress", { L"0" }), MessageStatus::Info);
     ScanStatusThrottle progress;
     ScanMessagePump pump;
 
@@ -15198,7 +15198,7 @@ void MultiReplace::refreshColumnStylesIfNeeded()
     }
 }
 
-// "Progress: [ 42%] C:\...\file.txt" for the status line during a file scan.
+// "Progress: [42%] C:\...\file.txt" for the status line during a file scan.
 // The path is shortened to the width the prefix leaves free in the status
 // control, measured with that control's own font.
 std::wstring MultiReplace::buildProgressStatus(const std::wstring& prefix, const std::wstring& path)
@@ -15231,7 +15231,7 @@ std::wstring MultiReplace::buildProgressStatus(const std::wstring& prefix, const
 void MultiReplace::showScanProgress(int done, int total, const std::wstring& path)
 {
     const int percent = static_cast<int>((static_cast<double>(done) / (std::max)(1, total)) * 100.0);
-    showStatusMessage(buildProgressStatus(L"Progress: [" + std::to_wstring(percent) + L"%] ", path), MessageStatus::Info);
+    showStatusMessage(buildProgressStatus(LM.get(L"status_scan_progress", { std::to_wstring(percent) }) + L" ", path), MessageStatus::Info);
 }
 
 std::wstring MultiReplace::getShortenedFilePath(const std::wstring& path, int maxLength, HDC hDC) {

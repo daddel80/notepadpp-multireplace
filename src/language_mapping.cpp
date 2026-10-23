@@ -193,6 +193,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_occurrences_found", L"$REPLACE_STRING occurrences found." },
 { L"status_canceled", L"Canceled" },
 { L"status_discovering_files", L"Discovering files... ($REPLACE_STRING)" },
+{ L"status_scan_progress", L"Progress: [$REPLACE_STRING%]" },
 { L"status_scan_skipped", L" $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2." },
 { L"status_scan_unreadable_folders", L" $REPLACE_STRING folder(s) unreadable." },
 { L"status_duplicates_skipped", L" $REPLACE_STRING duplicate list row(s) skipped." },
