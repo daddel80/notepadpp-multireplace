@@ -1070,6 +1070,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 {
     const UINT docCp = (UINT)sciSend(SCI_GETCODEPAGE, 0, 0);
     const bool isUtf8Doc = (docCp == SC_CP_UTF8);
+    CPINFO cpInfo{};
+    const bool isDbcsDoc = !isUtf8Doc && ::GetCPInfo(docCp, &cpInfo) && cpInfo.MaxCharSize == 2;
 
     const std::string  indentHitU8_str = getIndentStringU8(LineLevel::HitLine);
     const size_t       indentHitU8 = indentHitU8_str.size();
@@ -1332,7 +1334,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         return mapRawToFiltered[rawPos];
         };
 
-    // Hits of a line come in position order: only the bytes since the previous hit are converted
+    // Hits of a line come in position order: only the bytes since the previous hit are converted.
+    // A byte-wise regex can start a hit on a DBCS trail byte: the converted part ends before its lead byte.
     auto u8PrefixFromRawBytes = [&](size_t byteCount)->size_t {
         if (isUtf8Doc) return rawToFilteredPos(byteCount); // byte pos == UTF-8 pos
         const size_t filteredByteCount = rawToFilteredPos(byteCount);
@@ -1340,9 +1343,20 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             u8PrefixBytes = 0;
             u8PrefixLen = 0;
         }
-        u8PrefixLen += Encoding::bytesToUtf8(effectiveRaw->data() + u8PrefixBytes, filteredByteCount - u8PrefixBytes, docCp).size();
-        u8PrefixBytes = filteredByteCount;
-        return u8PrefixLen;
+        const char* const raw = effectiveRaw->data();
+        size_t charStart = filteredByteCount;
+        if (isDbcsDoc) {
+            charStart = u8PrefixBytes;
+            while (charStart < filteredByteCount) {
+                const size_t next = charStart + (::IsDBCSLeadByteEx(docCp, static_cast<BYTE>(raw[charStart])) ? 2 : 1);
+                if (next > filteredByteCount) break;
+                charStart = next;
+            }
+        }
+        u8PrefixLen += Encoding::bytesToUtf8(raw + u8PrefixBytes, charStart - u8PrefixBytes, docCp).size();
+        u8PrefixBytes = charStart;
+        if (charStart == filteredByteCount) return u8PrefixLen;
+        return u8PrefixLen + Encoding::bytesToUtf8(raw + charStart, filteredByteCount - charStart, docCp).size();
         };
 
     for (const SourceHit& source : hits) {

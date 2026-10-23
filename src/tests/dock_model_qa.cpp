@@ -33,6 +33,8 @@
 //            comparisons above
 // Then long lines in code page 1252, a hit every 32 bytes, compared as above and timed: a43e162
 // converts a line up to every hit again, the new dock must be at least 20 times as fast.
+// Then lines in code page 932 searched with regexes, which in a DBCS document also hit trail bytes,
+// compared as above.
 // Searches as Find in Files runs them: files of the given folders and generated texts (UTF-8 and
 // code page 1252, lines over the 2048-byte display cap, control characters, soft hyphens, no-break
 // spaces), one to four criteria with match case, whole word and regex, merged and grouped,
@@ -71,6 +73,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <iconv.h>
 
 #include "ScintillaTypes.h"
 #include "ScintillaMessages.h"
@@ -145,6 +149,10 @@ inline LRESULT SendMessage(HWND h, UINT m, WPARAM w, LPARAM l) {   // other wind
 }
 inline BOOL RedrawWindow(HWND, const void*, void*, UINT) { return TRUE; }
 inline BOOL UpdateWindow(HWND) { return TRUE; }
+struct CPINFO { UINT MaxCharSize; BYTE DefaultChar[2]; BYTE LeadByte[12]; };
+// Code page 932 is the one DBCS code page here
+inline BOOL IsDBCSLeadByteEx(UINT cp, BYTE b) { return cp == 932 && ((b >= 0x81 && b <= 0x9F) || (b >= 0xE0 && b <= 0xFC)); }
+inline BOOL GetCPInfo(UINT cp, CPINFO* info) { *info = CPINFO{}; info->MaxCharSize = (cp == 932) ? 2 : 1; return TRUE; }
 struct { HWND _nppHandle = nullptr; } nppData;
 using SciSendFn = std::function<LRESULT(UINT, WPARAM, LPARAM)>;
 
@@ -177,11 +185,29 @@ namespace Encoding {
         }
         return out;
     }
-    // Code page 1252 read as Latin-1, enough for display text; UTF-8 passes through
+    wchar_t cp932Pair(unsigned char lead, unsigned char trail) {
+        static const iconv_t cd = iconv_open("UTF-32LE", "CP932");
+        if (cd == reinterpret_cast<iconv_t>(-1)) return L'\x30FB';
+        char in[2] = { static_cast<char>(lead), static_cast<char>(trail) };
+        uint32_t out = 0;
+        char* ip = in;
+        char* op = reinterpret_cast<char*>(&out);
+        size_t il = sizeof(in), ol = sizeof(out);
+        iconv(cd, nullptr, nullptr, nullptr, nullptr);
+        const bool ok = iconv(cd, &ip, &il, &op, &ol) != static_cast<size_t>(-1) && il == 0 && ol == 0;
+        return ok ? static_cast<wchar_t>(out) : L'\x30FB';
+    }
+    // Code page 1252 read as Latin-1, enough for display text; UTF-8 passes through. Code page 932: a lead
+    // byte takes the next byte, an unmapped pair or a lone lead byte gives U+30FB.
     std::string bytesToUtf8(const char* data, size_t len, UINT cp) {
         if (cp == SC_CP_UTF8) return std::string(data, len);
         std::wstring w;
-        for (size_t i = 0; i < len; ++i) w += static_cast<wchar_t>(static_cast<unsigned char>(data[i]));
+        for (size_t i = 0; i < len; ++i) {
+            const unsigned char b = static_cast<unsigned char>(data[i]);
+            if (cp != 932) w += static_cast<wchar_t>(b);
+            else if (IsDBCSLeadByteEx(cp, b)) { w += (i + 1 < len) ? cp932Pair(b, static_cast<unsigned char>(data[i + 1])) : L'\x30FB'; ++i; }
+            else w += (b >= 0xA1 && b <= 0xDF) ? static_cast<wchar_t>(0xFF61 + b - 0xA1) : static_cast<wchar_t>(b);
+        }
         return wstringToUtf8(w);
     }
 }
@@ -2224,6 +2250,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 {
     const UINT docCp = (UINT)sciSend(SCI_GETCODEPAGE, 0, 0);
     const bool isUtf8Doc = (docCp == SC_CP_UTF8);
+    CPINFO cpInfo{};
+    const bool isDbcsDoc = !isUtf8Doc && ::GetCPInfo(docCp, &cpInfo) && cpInfo.MaxCharSize == 2;
 
     const std::string  indentHitU8_str = getIndentStringU8(LineLevel::HitLine);
     const size_t       indentHitU8 = indentHitU8_str.size();
@@ -2486,7 +2514,8 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         return mapRawToFiltered[rawPos];
         };
 
-    // Hits of a line come in position order: only the bytes since the previous hit are converted
+    // Hits of a line come in position order: only the bytes since the previous hit are converted.
+    // A byte-wise regex can start a hit on a DBCS trail byte: the converted part ends before its lead byte.
     auto u8PrefixFromRawBytes = [&](size_t byteCount)->size_t {
         if (isUtf8Doc) return rawToFilteredPos(byteCount); // byte pos == UTF-8 pos
         const size_t filteredByteCount = rawToFilteredPos(byteCount);
@@ -2494,9 +2523,20 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             u8PrefixBytes = 0;
             u8PrefixLen = 0;
         }
-        u8PrefixLen += Encoding::bytesToUtf8(effectiveRaw->data() + u8PrefixBytes, filteredByteCount - u8PrefixBytes, docCp).size();
-        u8PrefixBytes = filteredByteCount;
-        return u8PrefixLen;
+        const char* const raw = effectiveRaw->data();
+        size_t charStart = filteredByteCount;
+        if (isDbcsDoc) {
+            charStart = u8PrefixBytes;
+            while (charStart < filteredByteCount) {
+                const size_t next = charStart + (::IsDBCSLeadByteEx(docCp, static_cast<BYTE>(raw[charStart])) ? 2 : 1);
+                if (next > filteredByteCount) break;
+                charStart = next;
+            }
+        }
+        u8PrefixLen += Encoding::bytesToUtf8(raw + u8PrefixBytes, charStart - u8PrefixBytes, docCp).size();
+        u8PrefixBytes = charStart;
+        if (charStart == filteredByteCount) return u8PrefixLen;
+        return u8PrefixLen + Encoding::bytesToUtf8(raw + charStart, filteredByteCount - charStart, docCp).size();
         };
 
     for (const SourceHit& source : hits) {
@@ -3094,6 +3134,7 @@ struct Docks {
 };
 
 static long long g_checks = 0, g_failures = 0, g_wrapLines = 0, g_wrapWordDiffers = 0, g_deletions = 0;
+static long long g_dbcsHits = 0, g_trailByteHits = 0;
 static double g_oldAppendSeconds = 0, g_newAppendSeconds = 0;
 static void fail(const char* what, const std::string& detail) {
     if (++g_failures <= 15) std::printf("  FAIL %s: %s\n", what, detail.c_str());
@@ -3136,6 +3177,10 @@ static void searchBlock(Docks& docks, std::vector<SourceFile>& files, const std:
                 if (len > 0) pos = p + len;                               // MR's advanceAfterMatch
                 else { const Sci::Position after = src.send(SCI_POSITIONAFTER, static_cast<WPARAM>(p), 0); pos = std::min(after > p ? after : p + 1, docLength); }
                 const int line = static_cast<int>(src.send(SCI_LINEFROMPOSITION, static_cast<WPARAM>(p), 0));
+                if (f.codepage == 932) {
+                    ++g_dbcsHits;
+                    if (src.doc().MovePositionOutsideChar(p, 1, false) != p) ++g_trailByteHits;
+                }
 
                 olddock::ResultDock::Hit h{};
                 h.fullPathUtf8 = f.pathUtf8;
@@ -3436,6 +3481,77 @@ static void longLines() {
     }
 }
 
+// Lines in code page 932 searched with regexes. Boost reads a DBCS document byte by byte, so hits also
+// start on trail bytes, as on the 'e' (0x65) of テ (83 65).
+static void dbcsLines() {
+    struct Word { const char* u8; const char* bytes; };
+    static const Word words[] = {
+        { "テスト", "\x83\x65\x83\x58\x83\x67" }, { "データ", "\x83\x66\x81\x5B\x83\x5E" }, { "表示", "\x95\x5C\x8E\xA6" },
+        { "機能", "\x8B\x40\x94\x5C" }, { "ソフト", "\x83\x5C\x83\x74\x83\x67" }, { "漢字", "\x8A\xBF\x8E\x9A" },
+        { "日本語", "\x93\xFA\x96\x7B\x8C\xEA" }, { "ポイント", "\x83\x7C\x83\x43\x83\x93\x83\x67" },
+        { "ｶﾀｶﾅ", "\xB6\xC0\xB6\xC5" }, { "file", "file" }, { "Test", "Test" }, { "e", "e" }, { "x_1", "x_1" },
+        { "\\", "\\" }, { "\t", "\t" } };
+    static const char* regexes[] = { "\\w+", "e", "[a-z]+", "\\\\", "[@-~]{2}", "t.", "X" };
+    ++g_checks;
+    if (Encoding::bytesToUtf8(words[0].bytes, std::strlen(words[0].bytes), 932) != words[0].u8) { fail("code page 932", "no converter"); return; }
+    std::mt19937_64 rng(20261022);
+    int blocks = 0;
+    for (int round = 0; round < 60; ++round) {
+        std::vector<SourceFile> files;
+        for (int k = 0; k < 3; ++k) {
+            SourceFile f;
+            f.codepage = 932;
+            f.pathUtf8 = "C:\\gen\\sjis" + std::to_string(round) + "_" + std::to_string(k) + ".txt";
+            f.pathW = widen(f.pathUtf8);
+            const int lines = 1 + static_cast<int>(rng() % 30);
+            for (int l = 0; l < lines; ++l) {
+                const int n = (rng() % 10 == 0) ? 500 : static_cast<int>(rng() % 16);
+                for (int w = 0; w < n; ++w) { if (w && rng() % 2) f.text += ' '; f.text += words[rng() % std::size(words)].bytes; }
+                f.text += (rng() % 3 == 0) ? "\n" : "\r\n";
+            }
+            files.push_back(std::move(f));
+        }
+        ColumnTabs::g_indicatorId = (round % 4 == 3) ? 8 : -1;
+        for (SourceFile& f : files)
+            if (ColumnTabs::g_indicatorId >= 0)
+                for (int k = 0; k < 20; ++k) {
+                    const Sci::Position p = static_cast<Sci::Position>(rng() % f.text.size());
+                    f.padding.push_back({ p, std::min<Sci::Position>(1 + static_cast<Sci::Position>(rng() % 4), static_cast<Sci::Position>(f.text.size()) - p) });
+                }
+        const bool listMode = rng() % 2;
+        const bool groupView = rng() % 2;
+        std::vector<Criterion> crits;
+        const int count = listMode ? 1 + static_cast<int>(rng() % 3) : 1;
+        for (int i = 0; i < count; ++i) {
+            Criterion c;
+            if (rng() % 4) {
+                c.bytes = regexes[rng() % std::size(regexes)];
+                c.findW = widen(c.bytes);
+                c.flags = SCFIND_REGEXP | SCFIND_POSIX | SCFIND_REGEXP_SKIPCRLFASONE | SCFIND_REGEXP_EMPTYMATCH_ALL;
+            }
+            else {
+                const Word& w = words[rng() % std::size(words)];
+                c.bytes = w.bytes;
+                c.findW = widen(w.u8);
+            }
+            if (rng() % 2) c.flags |= SCFIND_MATCHCASE;
+            c.color = listMode ? i : 0;
+            crits.push_back(std::move(c));
+        }
+        Docks docks;
+        searchBlock(docks, files, crits, listMode, groupView);
+        ++blocks;
+        compareRows(docks);
+        compareDock(docks);
+        docks.oldDock.applyStyling();
+        docks.newDock.applyStyling();
+        compareDock(docks);
+    }
+    ++g_checks;
+    if (g_trailByteHits == 0) fail("code page 932", "no hit on a trail byte");
+    std::printf("J. code page 932: %d search blocks, %lld hits, %lld of them on a trail byte\n", blocks, g_dbcsHits, g_trailByteHits);
+}
+
 int main(int argc, char** argv) {
     std::printf("Result dock: new hit model against a43e162\n\n");
     const int drift = verbatimCheck();
@@ -3492,6 +3608,7 @@ int main(int argc, char** argv) {
     }
     std::printf("S. %d search blocks in 300 docks, %lld dock lines\n", blocks, rows);
     longLines();
+    dbcsLines();
     std::printf("W. wrap of %lld dock lines at 4 widths, a43e162 with SC_WRAP_WORD, now with %s; SC_WRAP_WORD would break %lld of them differently\n",
         g_wrapLines, wrapName.c_str(), g_wrapWordDiffers);
     std::printf("D. Delete key: %lld deletions of lines, blocks and selections\n", g_deletions);
