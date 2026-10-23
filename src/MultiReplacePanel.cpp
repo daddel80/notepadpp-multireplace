@@ -9350,6 +9350,7 @@ std::wstring MultiReplace::buildSkipBreakdown(const HiddenSciGuard& guard) const
     add(guard.getSkippedReadOnlyCount(),    L"dock_skip_readonly");
     add(guard.getSkippedOpenUnsavedCount(), L"dock_skip_open_unsaved");
     add(guard.getSkippedUnencodableCount(), L"dock_skip_unencodable");
+    add(guard.getSkippedUnwritableCount(),  L"dock_skip_unwritable");
     return breakdown;
 }
 
@@ -9771,20 +9772,20 @@ void MultiReplace::handleReplaceInFiles() {
         const bool modified = (u8out != u8in);
         if (modified && loadedAs && !FileLoad::unchangedSince(fp, *loadedAs)) return false;
 
-        accumulateListTotals();
-        if (!modified) return true;
-        if (loadKind == HiddenSciGuard::LoadKind::RawBytes) {
-            if (guard.writeFile(fp, u8out)) ++changed;
-        }
-        else {
+        if (modified) {
             std::string outBytes;
-            if (Encoding::convertUtf8ToOriginal(u8out, enc, outBytes)) {
-                if (guard.writeFile(fp, outBytes)) ++changed;
+            if (loadKind == HiddenSciGuard::LoadKind::RawBytes) {
+                outBytes.swap(u8out);
             }
-            else {
-                guard.noteSkip(HiddenSciGuard::SkipReason::Unencodable);
+            else if (!Encoding::convertUtf8ToOriginal(u8out, enc, outBytes)) {
+                guard.noteSkip(HiddenSciGuard::SkipReason::Unencodable); return true;
             }
+            if (!guard.writeFile(fp, outBytes)) {
+                guard.noteSkip(HiddenSciGuard::SkipReason::Unwritable); return true;
+            }
+            ++changed;
         }
+        accumulateListTotals();   // after the write: a skipped file adds nothing
         return true;
     };
 

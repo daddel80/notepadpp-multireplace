@@ -34,6 +34,7 @@ static const std::string L_skip_undecodable = "not decodable";
 static const std::string L_skip_readonly    = "read-only";
 static const std::string L_skip_open_unsaved= "open with unsaved changes";
 static const std::string L_skip_unencodable = "not encodable";
+static const std::string L_skip_unwritable  = "not writable";
 
 // the pre-change wording, kept so the tests can show the difference
 static const std::string OLD_scan_suffix = " [of $REPLACE_STRING1 searched$REPLACE_STRING2]";
@@ -61,10 +62,10 @@ static std::string LM_get(const std::string& tpl, const std::vector<std::string>
 // ------------------------------------------------------------- skip bookkeeping
 struct Guard {
     size_t binary = 0, large = 0, unreadable = 0, undecodable = 0;
-    size_t readOnly = 0, openUnsaved = 0, unencodable = 0;
+    size_t readOnly = 0, openUnsaved = 0, unencodable = 0, unwritable = 0;
     size_t unreadableFolders = 0;   // folders, not files: never part of total()
     size_t total() const {
-        return binary + large + unreadable + undecodable + readOnly + openUnsaved + unencodable;
+        return binary + large + unreadable + undecodable + readOnly + openUnsaved + unencodable + unwritable;
     }
 };
 
@@ -83,6 +84,7 @@ static std::string buildSkipBreakdown(const Guard& g) {
     add(g.readOnly, L_skip_readonly);
     add(g.openUnsaved, L_skip_open_unsaved);
     add(g.unencodable, L_skip_unencodable);
+    add(g.unwritable, L_skip_unwritable);
     return b;
 }
 
@@ -345,6 +347,16 @@ int main() {
         CHECK("Q after the file breakdown, set off by a semicolon",
               both.find("[1731 file(s) searched, 41 skipped: 38 binary, 2 too large, 1 unreadable; 12 folder(s) unreadable]") != std::string::npos);
         CHECK("Q well formed", wellFormed(only) && wellFormed(both));
+    }
+
+    // R) a file that could not be written: counted, named last, out of the searched count
+    {
+        Guard g{ 38, 0, 0, 0 }; g.unwritable = 1;
+        const std::string now = replaceStatusLine(48, 48, 2, g, false);
+        std::printf("  now:    %s\n\n", now.c_str());
+        CHECK("R exact wording",
+              now == "Replace in files: 2 of 9 file(s) modified. 39 file(s) skipped: 38 binary, 1 not writable.");
+        CHECK("R well formed", wellFormed(now));
     }
 
     // I) placeholder safety: substitution must not corrupt multi-digit numbers

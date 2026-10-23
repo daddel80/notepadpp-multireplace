@@ -31,6 +31,8 @@
 //   O. a worker's options: read-only files left out before opening, the file's state stamped
 //   K. changed since loaded: another size, a later write time, a new file in its place (atomic
 //      write) or a file that is gone; a hard link keeps the old file, a link to a file follows
+//   N. not writable: held open by another program that shares it for reading only, or its folder
+//      is gone; the file stays as it was, no temp file is left, the skip is counted once
 //   P. a worker's pace: it gets the size before the full read and may hold it back, a stop ends it
 //   D. kind of drive: the folder of the test files is on a local drive, a drive letter that is not
 //      there counts as fast
@@ -381,6 +383,23 @@ int main()
         }
 
         CHECK("K6 a file that is gone: changed", !FileLoad::unchangedSince(g_dir / "does_not_exist.txt", s1));
+    }
+
+    std::printf("\n=== N) not writable ===\n");
+    {
+        HiddenSciGuard g;
+        const fs::path held = write("n_held.txt", text8);
+        const HANDLE h = CreateFileW(held.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const Loaded l = load(g, held);
+        const bool written = g.writeFile(held, text8 + "changed");
+        if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+        HiddenSciGuard probe;
+        CHECK("N1 shared for reading only by another program: loads", h != INVALID_HANDLE_VALUE && l.reason == Skip::None);
+        CHECK("N2 but is not written and stays as it was", !written && load(probe, held).content == text8);
+        CHECK("N3 no temp file left", !fs::exists(held.wstring() + L".mr_tmp"));
+        CHECK("N4 folder gone: not written", !g.writeFile(g_dir / "gone" / "n.txt", text8));
+        g.noteSkip(Skip::Unwritable);
+        CHECK("N5 counted once", g.getSkippedUnwritableCount() == 1 && g.getSkippedTotalCount() == 1);
     }
 
     std::printf("\n=== P) a worker's pace ===\n");

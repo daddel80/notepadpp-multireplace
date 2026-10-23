@@ -252,10 +252,12 @@ public:
     size_t getSkippedReadOnlyCount() const    { return _skippedReadOnlyCount; }
     size_t getSkippedOpenUnsavedCount() const { return _skippedOpenUnsavedCount; }
     size_t getSkippedUnencodableCount() const { return _skippedUnencodableCount; }
+    size_t getSkippedUnwritableCount() const  { return _skippedUnwritableCount; }
     size_t getSkippedTotalCount() const {
         return _skippedBinaryCount + _skippedLargeCount
              + _skippedUnreadableCount + _skippedUndecodableCount
-             + _skippedReadOnlyCount + _skippedOpenUnsavedCount + _skippedUnencodableCount;
+             + _skippedReadOnlyCount + _skippedOpenUnsavedCount
+             + _skippedUnencodableCount + _skippedUnwritableCount;
     }
 
     void resetSkipCounters() {
@@ -266,11 +268,12 @@ public:
         _skippedReadOnlyCount = 0;
         _skippedOpenUnsavedCount = 0;
         _skippedUnencodableCount = 0;
+        _skippedUnwritableCount = 0;
         _unreadableFolderCount = 0;
     }
 
-    // For skips the caller decides: read-only, open with unsaved changes,
-    // oversized live document, replacement not encodable in the file's codepage
+    // For skips the caller decides: read-only, open with unsaved changes, oversized
+    // live document, replacement not encodable in the file's codepage, failed write
     void noteSkip(SkipReason reason) { fail(reason); }
 
     // Folders the directory scan could not read; not part of the file total
@@ -407,6 +410,7 @@ public:
         dbg << L"  Read-only Files:   " << _skippedReadOnlyCount << L"\n";
         dbg << L"  Open Unsaved:      " << _skippedOpenUnsavedCount << L"\n";
         dbg << L"  Unencodable Files: " << _skippedUnencodableCount << L"\n";
+        dbg << L"  Unwritable Files:  " << _skippedUnwritableCount << L"\n";
         dbg << L"  Unreadable Dirs:   " << _unreadableFolderCount << L"\n";
 
         return dbg.str();
@@ -459,6 +463,7 @@ private:
         case SkipReason::ReadOnly:    ++_skippedReadOnlyCount;    break;
         case SkipReason::OpenUnsaved: ++_skippedOpenUnsavedCount; break;
         case SkipReason::Unencodable: ++_skippedUnencodableCount; break;
+        case SkipReason::Unwritable:  ++_skippedUnwritableCount;  break;
         case SkipReason::None:        break;
         }
         return reason;
@@ -477,6 +482,7 @@ private:
     size_t _skippedReadOnlyCount = 0;
     size_t _skippedOpenUnsavedCount = 0;
     size_t _skippedUnencodableCount = 0;
+    size_t _skippedUnwritableCount = 0;
     size_t _unreadableFolderCount = 0;
 
     // Configuration

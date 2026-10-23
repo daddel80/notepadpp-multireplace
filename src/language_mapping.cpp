@@ -357,6 +357,7 @@ const LangKV kEnglishPairs[] = {
 { L"dock_skip_readonly", L"read-only" },
 { L"dock_skip_open_unsaved", L"open with unsaved changes" },
 { L"dock_skip_unencodable", L"not encodable" },
+{ L"dock_skip_unwritable", L"not writable" },
 { L"dock_crit_header",L"Search \"$REPLACE_STRING1\" ($REPLACE_STRING2 hits)" },
 { L"dock_hits_suffix", L"($REPLACE_STRING hits)" },
 { L"dock_line", L"Line" },

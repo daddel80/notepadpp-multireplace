@@ -37,7 +37,7 @@ namespace FileLoad {
     enum class LoadKind { Text, RawBytes };
 
     // Why a file was skipped (None = processed)
-    enum class SkipReason { None, Binary, TooLarge, Unreadable, Undecodable, ReadOnly, OpenUnsaved, Unencodable };
+    enum class SkipReason { None, Binary, TooLarge, Unreadable, Undecodable, ReadOnly, OpenUnsaved, Unencodable, Unwritable };
 
     struct Options {
         uint64_t maxFileSize = 0;        // 0 = unlimited
