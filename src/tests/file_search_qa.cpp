@@ -1,10 +1,11 @@
 // QA harness for the MultiReplace file-search loading pipeline (post-fix state).
-// Functions marked VERBATIM mirror the shipped logic 1:1 (HiddenSciGuard.h,
+// Functions marked VERBATIM mirror the shipped logic 1:1 (FileLoad.cpp,
 // Encoding.cpp) with Win32 shims: IsTextUnicode is stubbed with the documented
 // byte-pattern behavior for the synthetic inputs used here; converters carry
 // no claims beyond branch decisions.
 //
 // Build: g++ -std=c++20 -Wall -Wextra -fsanitize=address,undefined -o file_search_qa file_search_qa.cpp
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <cstdint>
@@ -26,7 +27,7 @@ static bool IsTextUnicode_stub(const char* data, int len) {
 }
 
 // ============================================================
-// VERBATIM: HiddenSciGuard section 3 (post-fix)
+// VERBATIM: FileLoad.cpp, binary and UTF-16 checks
 // ============================================================
 static constexpr size_t BINARY_CHECK_SIZE = 8192;
 
@@ -46,18 +47,12 @@ bool hasNullBytes(const char* data, size_t len)
     return std::memchr(data, '\0', checkLen) != nullptr;
 }
 
-bool isUtf16NoBomLE(const char* data, size_t len)
+bool isUtf16NoBomLE(const char* data, size_t len, uint64_t fileSize)
 {
+    constexpr uint64_t nppFirstBlock = 128 * 1024 + 4;
     const unsigned char* u = reinterpret_cast<const unsigned char*>(data);
-    if (!(len > 1 && (len % 2) == 0 && u[0] != 0 && u[1] == 0)) return false;
+    if (!(len > 1 && (std::min)(fileSize, nppFirstBlock) % 2 == 0 && u[0] != 0 && u[1] == 0)) return false;
     return IsTextUnicode_stub(data, static_cast<int>(len));
-}
-
-bool shouldSkipAsBinary(const char* data, size_t len)
-{
-    if (hasBOM(data, len)) return false;
-    if (isUtf16NoBomLE(data, len)) return false;
-    return hasNullBytes(data, len);
 }
 
 // ============================================================
@@ -159,14 +154,18 @@ PipelineResult loadTextFile_decide(const std::string& fileBytes, bool skipBinary
     if (fileSize == 0) fileSize = fileBytes.size();
     const size_t headerSize = (fileBytes.size() < BINARY_CHECK_SIZE) ? fileBytes.size() : BINARY_CHECK_SIZE;
 
-    const bool binary = shouldSkipAsBinary(fileBytes.data(), headerSize);
+    const bool bom = hasBOM(fileBytes.data(), headerSize);
+    const bool utf16NoBom = !bom && isUtf16NoBomLE(fileBytes.data(), headerSize, fileSize);
+    const bool binary = !bom && !utf16NoBom && hasNullBytes(fileBytes.data(), headerSize);
     if (binary && skipBinaryFiles) { ++c.binary; r.reason = SkipReason::Binary; return r; }
 
     if (!binary && fileSize > Encoding::MAX_CONVERT_LENGTH) { ++c.tooLarge; r.reason = SkipReason::TooLarge; return r; }
 
     if (binary) { r.kind = LoadKind::RawBytes; return r; }
 
-    const auto enc = Encoding::detectEncoding(fileBytes.data(), fileBytes.size());
+    Encoding::EncodingInfo enc;
+    if (utf16NoBom) enc.kind = Encoding::Kind::UTF16LE;
+    else enc = Encoding::detectEncoding(fileBytes.data(), fileBytes.size());
     r.encKind = enc.kind;
     if (enc.kind == Encoding::Kind::UTF16LE || enc.kind == Encoding::Kind::UTF16BE) {
         r.units = Encoding::utf16UnitsDecoded(fileBytes.size(), enc);
@@ -229,6 +228,24 @@ int main() {
         auto re = loadTextFile_decide(utf16le(text, true), true, c, true);
         CHECK("F4'' even-length UTF-16 (Replace) -> roundtrip passes",
               re.reason == SkipReason::None && c.undecodable == 1);
+    }
+
+    // ---------- Odd length without BOM: N++ tests its first block of 128 KB + 4 bytes ----------
+    {
+        auto asciiOf = [&](size_t n) { std::string a; while (a.size() < n) a += text; a.resize(n); return a; };
+        Counters c{};
+        auto s = loadTextFile_decide(utf16le(asciiOf(100), false) + "X", true, c);
+        CHECK("F5 no BOM, odd within the 8 KB header -> Binary", s.reason == SkipReason::Binary && c.binary == 1);
+        auto m = loadTextFile_decide(utf16le(asciiOf(20000), false) + "X", true, c);
+        CHECK("F5 no BOM, odd within N++'s first block -> Binary, not UTF-8 text",
+              m.reason == SkipReason::Binary && c.binary == 2);
+        const std::string big = utf16le(asciiOf(70000), false) + "X";
+        auto l = loadTextFile_decide(big, true, c);
+        CHECK("F5 no BOM, odd beyond N++'s first block (Find) -> Text/UTF16LE, dangling byte dropped",
+              l.reason == SkipReason::None && l.encKind == Encoding::Kind::UTF16LE && l.units == 70000);
+        auto lr = loadTextFile_decide(big, true, c, true);
+        CHECK("F5 no BOM, odd beyond N++'s first block (Replace) -> Undecodable",
+              lr.reason == SkipReason::Undecodable && c.undecodable == 1);
     }
 
     // ---------- Text beyond the converters' reach is refused before the full read ----------

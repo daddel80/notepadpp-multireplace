@@ -18,7 +18,8 @@
 // on real files, with the expected text worked out independently here:
 //   U. UTF-8 is taken as it is, a BOM dropped
 //   W. UTF-16 LE/BE with BOM and LE without BOM are decoded; an odd length is read like
-//      N++ in Find and refused in Replace (the dangling byte cannot be written back)
+//      N++ in Find and refused in Replace (the dangling byte cannot be written back); without
+//      BOM it is binary within N++'s first block of 128 KB + 4 bytes, as N++ takes no UTF-16 there
 //   A. ANSI is decoded through the system codepage
 //   B. binary: skipped, or taken as raw bytes with the binary skip off
 //   S. sizes around the 8 KB header and a large file arrive whole; a NUL after the
@@ -151,6 +152,18 @@ int main()
         CHECK("W5 odd length in Replace: not decodable, nothing loaded", orp.reason == Skip::Undecodable && orp.content.empty());
         const Loaded er = load(replace, write("ler.txt", utf16(textW, false, true)));
         CHECK("W6 even length in Replace: decoded", er.reason == Skip::None && er.content == text8);
+        auto asciiUnits = [&](size_t units) { std::wstring w; while (w.size() < units) w += ascii; w.resize(units); return w; };
+        const Loaded os = load(find, write("oddsmall.txt", utf16(asciiUnits(100), false, false) + "X"));
+        CHECK("W7 no BOM, odd length within the 8 KB header: binary", os.reason == Skip::Binary);
+        const Loaded om = load(find, write("oddmid.txt", utf16(asciiUnits(20000), false, false) + "X"));
+        CHECK("W8 no BOM, odd length within N++'s first block: binary, not UTF-8 text", om.reason == Skip::Binary);
+        const std::wstring bigW = asciiUnits(70000);
+        const fs::path big = write("oddbig.txt", utf16(bigW, false, false) + "X");
+        const Loaded ol = load(find, big);
+        CHECK("W9 no BOM, odd length beyond N++'s first block: UTF-16 LE, the dangling byte dropped", ol.reason == Skip::None
+            && ol.enc.kind == Encoding::Kind::UTF16LE && ol.content == utf8Of(bigW));
+        const Loaded olr = load(replace, big);
+        CHECK("W10 the same in Replace: not decodable, nothing loaded", olr.reason == Skip::Undecodable && olr.content.empty());
     }
 
     std::printf("\n=== A) ANSI ===\n");

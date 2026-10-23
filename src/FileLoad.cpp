@@ -111,26 +111,16 @@ namespace FileLoad {
             return std::memchr(data, '\0', checkLen) != nullptr;
         }
 
-        // UTF-16 LE without BOM: same pre-checks and probe as N++ and Encoding::detectEncoding
-        bool isUtf16NoBomLE(const char* data, size_t len)
+        // UTF-16 LE without BOM: the pre-checks and probe of N++, which tests its first block of 128 KB + 4 bytes.
+        // A file of odd length within that block is no UTF-16; a longer one is, its dangling last byte dropped.
+        bool isUtf16NoBomLE(const char* data, size_t len, uint64_t fileSize)
         {
+            constexpr uint64_t nppFirstBlock = 128 * 1024 + 4;
             const unsigned char* u = reinterpret_cast<const unsigned char*>(data);
-            if (!(len > 1 && (len % 2) == 0 && u[0] != 0 && u[1] == 0))
+            if (!(len > 1 && (std::min)(fileSize, nppFirstBlock) % 2 == 0 && u[0] != 0 && u[1] == 0))
                 return false;
             INT uniTest = IS_TEXT_UNICODE_STATISTICS;
             return ::IsTextUnicode(data, static_cast<int>(len), &uniTest) != FALSE;
-        }
-
-        // Combined check: returns true if content is binary (no BOM, not UTF-16, NUL bytes)
-        bool shouldSkipAsBinary(const char* data, size_t len)
-        {
-            if (hasBOM(data, len))
-                return false;
-
-            if (isUtf16NoBomLE(data, len))
-                return false;
-
-            return hasNullBytes(data, len);
         }
     }
 
@@ -162,7 +152,9 @@ namespace FileLoad {
             if (!in.read(content.data(), headerSize, headerLen, nullptr)) return skip(SkipReason::Unreadable);
             content.resize(headerLen);
 
-            const bool binary = shouldSkipAsBinary(content.data(), content.size());
+            const bool bom = hasBOM(content.data(), content.size());
+            const bool utf16NoBom = !bom && isUtf16NoBomLE(content.data(), content.size(), fileSize);
+            const bool binary = !bom && !utf16NoBom && hasNullBytes(content.data(), content.size());
             if (binary && options.skipBinary) return skip(SkipReason::Binary);
 
             // Text beyond the converters' reach is refused before the full read
@@ -191,7 +183,9 @@ namespace FileLoad {
                 return r;
             }
 
-            r.enc = Encoding::detectEncoding(content.data(), content.size());
+            // UTF-16 without BOM stays decided on the header: the whole file may have an odd length
+            if (utf16NoBom) r.enc.kind = Encoding::Kind::UTF16LE;
+            else r.enc = Encoding::detectEncoding(content.data(), content.size());
 
             // UTF-8 is searched as it is: decoding would copy the same bytes, and they write back unchanged
             if (r.enc.kind == Encoding::Kind::UTF8) {
