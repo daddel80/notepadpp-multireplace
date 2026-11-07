@@ -140,8 +140,9 @@ Execution targets define **which files** an operation is applied to. They are ac
 
 - **Replace All** / **Find All** — Executes the operation in the **current document only**.
 - **Replace All in Open Documents** / **Find All in Open Documents** — Executes the operation across **open documents** in Notepad++. When selected, a filter panel appears for configuration.
-  - **All documents** — When checked, all open documents are processed. When unchecked, only documents matching the filter pattern are included.
+  - **All documents** — When checked, all open documents are processed. When unchecked, only documents matching the filter pattern and the tab color are included; if none matches, the run does not start.
   - **Filter:** Semicolon-separated list of filename patterns to include or exclude (e.g., `*.cpp; *.h; !test_*`). Supports filenames with spaces.
+  - **Tab color:** Limits the run to tabs colored in Notepad++ (right-click a tab, *Apply Color to Tab*): **Any** ignores the color, **Marked (any color)** takes every colored tab, **Color 1** to **Color 5** a single color. Requires Notepad++ 8.6.8 or later.
 - **Replace All in Files** / **Find All in Files** — Extends the operation scope to entire directory structures. When selected, a dedicated panel appears for configuration.
   - **Directory:** The starting folder for the file search.
   - **Filter:** Semicolon-separated list of patterns to include or exclude files and folders (e.g., `*.cpp; *.h; !*.bak`).
@@ -417,6 +418,8 @@ Control how the replacement list behaves and how the Search Results Window shows
   - **Show full text on hover** — Displays a tooltip with the complete text for long entries that are truncated in the view.
   - **Select list entry on Find Next/Prev** — Selects the list entry that produced the current match when stepping through matches with Find Next/Prev or Replace.
   - **Keep list always visible** — When enabled, toggling the list off no longer collapses it. The list stays visible and is dimmed instead, so you can keep using it as a reference while working with the single input fields. The same switch is available by right-clicking the **"Use List"** button in the panel. See [List Toggling](#list-toggling) for details.
+  - **Add new entries at the top** — When enabled, **Add into List** inserts new entries at the top of the list instead of the end. The list order is also the processing order: Replace All applies the entries from top to bottom, and in one-pass mode the topmost matching entry wins.
+  - **Scroll to new entries** — When enabled (default), the list scrolls to an entry added with **Add into List** and selects it. When disabled, the list stays where it is and keeps its selection, so you can go on working through a long list.
   - **Expanded edit height (lines)** — Defines how many lines the in-place edit box expands to when modifying multiline text (Range: 2–20).
 - **Result Dock:**
   - **Find All: Group hits by list entry** — When On, search results in the docking window are grouped hierarchically by the list entry that found them. When Off, results are displayed as a flat list sorted by position.

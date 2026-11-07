@@ -18,6 +18,8 @@
 #include "Notepad_plus_msgs.h"
 #include "Scintilla.h"
 
+#include <shlwapi.h>
+
 namespace NppStyleKit {
 
     // ---------- Globals ----------
@@ -96,9 +98,41 @@ namespace NppStyleKit {
     }
 
     // ---------- ThemeUtils ----------
+    namespace {
+        // NppDarkMode::Colors, the layout NPPM_GETDARKMODECOLORS fills
+        struct DarkModeColors
+        {
+            COLORREF background, softerBackground, hotBackground, pureBackground, errorBackground;
+            COLORREF text, darkerText, disabledText, linkText;
+            COLORREF edge, hotEdge, disabledEdge;
+        };
+
+        // Colors of the active dark mode tone; Notepad++'s defaults if the query fails
+        DarkModeColors darkModeColors(HWND hNpp)
+        {
+            DarkModeColors colors{};
+            if (!::SendMessage(hNpp, NPPM_GETDARKMODECOLORS, sizeof(colors), reinterpret_cast<LPARAM>(&colors)))
+            {
+                colors.disabledText = RGB(0x80, 0x80, 0x80);
+                colors.linkText = RGB(0xFF, 0xFF, 0x00);
+            }
+            return colors;
+        }
+    }
+
     bool ThemeUtils::isDarkMode(HWND hNpp)
     {
         return (::SendMessage(hNpp, NPPM_ISDARKMODEENABLED, 0, 0) != 0);
+    }
+
+    COLORREF ThemeUtils::linkTextColor(HWND hNpp)
+    {
+        return isDarkMode(hNpp) ? darkModeColors(hNpp).linkText : ::GetSysColor(COLOR_HOTLIGHT);
+    }
+
+    COLORREF ThemeUtils::disabledTextColor(HWND hNpp)
+    {
+        return isDarkMode(hNpp) ? darkModeColors(hNpp).disabledText : ::GetSysColor(COLOR_GRAYTEXT);
     }
 
     // ---------- ColorTools ----------
@@ -113,6 +147,22 @@ namespace NppStyleKit {
         const int b = (int)(h & 0xFF);
 
         return (uint32_t)((r << 16) | (g << 8) | b);
+    }
+
+    COLORREF ColorTools::tabColorSwatch(int colorId, bool darkMode)
+    {
+        // Default tab colors of Notepad++ (stylers.model.xml, the same in every bundled theme)
+        static constexpr COLORREF kLight[] = { RGB(0xF3, 0xF0, 0xCB), RGB(0xDB, 0xF3, 0xCB), RGB(0xCB, 0xDB, 0xF3), RGB(0xF3, 0xDB, 0xCB), RGB(0xF3, 0xCB, 0xEE) };
+        static constexpr COLORREF kDark[]  = { RGB(0x80, 0x78, 0x48), RGB(0x56, 0x80, 0x48), RGB(0x50, 0x70, 0x94), RGB(0x80, 0x48, 0x49), RGB(0x75, 0x48, 0x80) };
+        if (colorId < 0 || colorId >= static_cast<int>(std::size(kLight)))
+            return CLR_INVALID;
+
+        // Lightness and saturation as Notepad++ sets them for its menu swatches
+        WORD hue = 0, lightness = 0, saturation = 0;
+        ::ColorRGBToHLS((darkMode ? kDark : kLight)[colorId], &hue, &lightness, &saturation);
+        lightness = darkMode ? 146 : 140;
+        saturation = static_cast<WORD>((std::min)(240, saturation + (darkMode ? 100 : 30)));
+        return ::ColorHLSToRGB(hue, lightness, saturation);
     }
 
     // ---------- IndicatorRegistry ----------

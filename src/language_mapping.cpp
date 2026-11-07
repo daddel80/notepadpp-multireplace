@@ -61,6 +61,14 @@ const LangKV kEnglishPairs[] = {
 { L"panel_find_in_docs", L"Find in Open Documents" },
 { L"panel_find_replace_in_docs", L"Find/Replace in Open Documents" },
 { L"panel_all_documents", L"All documents" },
+{ L"panel_tab_color", L"Tab color:" },
+{ L"panel_tab_color_any", L"Any" },
+{ L"panel_tab_color_marked", L"Marked (any color)" },
+{ L"panel_tab_color_1", L"Color 1" },
+{ L"panel_tab_color_2", L"Color 2" },
+{ L"panel_tab_color_3", L"Color 3" },
+{ L"panel_tab_color_4", L"Color 4" },
+{ L"panel_tab_color_5", L"Color 5" },
 { L"panel_directory", L"Directory:" },
 { L"panel_filter", L"Filter:" },
 { L"panel_in_subfolders", L"In all sub-folders" },
@@ -95,6 +103,7 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_enable_list", L"Enable list (Ctrl+L). Right-click for options." },
 { L"tooltip_disable_list", L"Disable list (Ctrl+L). Right-click for options." },
 { L"tooltip_filter_help", L"Separate patterns with semicolons (;)\n\nFind in specific file types:\n*.cpp; *.h; *.txt\n\nExclude file patterns:\n*.*; !*.exe; !*.obj; !*.log\n\nMatch a specific filename:\nmy report.txt\n\nExclude folders (in Files mode):\n*.*; !\\tests\\; !\\bin*\n\nExclude folders recursively:\n*.*; !+\\log*" },
+{ L"tooltip_tab_color", L"Only tabs with this color. In Notepad++, right-click a tab and choose 'Apply Color to Tab'." },
 { L"tooltip_report_template_help", L"Available placeholders:\n\nData fields:\n  %FIND%              - Find what\n  %REPLACE%       - Replace with\n  %COMMENT%    - Comments\n  %FCOUNT%        - Matches\n  %RCOUNT%        - Replaced\n  %MODIFIED%      - Modified\n\nRow info:\n  %ROW%              - Row number\n  %SEL%                 - Enabled (1/0)\n\nOptions:\n  %REGEX%           - Regular expression (1/0)\n  %CASE%             - Match case (1/0)\n  %WORD%           - Match whole word only (1/0)\n  %EXT%                - Extended (1/0)\n  %VAR%               - Formula Support (1/0)\n\nUse \\t for tab delimiter" },
 { L"tooltip_move_up", L"Move selected rows up (Ctrl+Up)" },
 { L"tooltip_move_down", L"Move selected rows down (Ctrl+Down)" },
@@ -254,6 +263,7 @@ const LangKV kEnglishPairs[] = {
 
 // MessageBox Messages
 { L"msgbox_confirm_replace_all", L"Are you sure you want to replace all occurrences in all open documents?" },
+{ L"msgbox_confirm_replace_docs", L"Are you sure you want to replace all occurrences in $REPLACE_STRING1 of $REPLACE_STRING2 open documents?" },
 { L"msgbox_confirm_delete_columns", L"Are you sure you want to delete $REPLACE_STRING column(s)?" },
 { L"msgbox_error_saving_settings", L"An error occurred while saving the settings:<br/>$REPLACE_STRING" },
 { L"msgbox_engine_error_body", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2) - Compile Error:<br/>$REPLACE_STRING3" },
@@ -282,6 +292,7 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_file_modified_prompt", L"'$REPLACE_STRING'<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
 { L"msgbox_reload_discard_prompt", L"'$REPLACE_STRING'<br/><br/>This list has unsaved changes.<br/>Reload from disk and lose them?" },
 { L"msgbox_no_files", L"No files matched the specified filter." },
+{ L"msgbox_no_docs", L"No open documents matched the specified filter." },
 { L"msgbox_confirm_replace_in_files", L"Do you want to perform replacements in $REPLACE_STRING1 files?<br/><br/>In the directory:<br/>  $REPLACE_STRING2<br/><br/>For file type:<br/>  $REPLACE_STRING3" },
 { L"msgbox_flowtabs_intro_body",
   L"Activating Flow-Tabs (Column Alignment)\n\n"
@@ -400,6 +411,8 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_hover_text", L"Show full text on hover" },
 { L"config_chk_highlight_match", L"Select list entry on Find Next/Prev" },
 { L"config_chk_keep_list_visible", L"Keep list always visible" },
+{ L"config_chk_new_entries_at_top", L"Add new entries at the top" },
+{ L"config_chk_scroll_new_entries", L"Scroll to new entries" },
 { L"config_lbl_edit_height", L"Expanded edit height (lines):" },
 { L"config_grp_result_dock", L"Result Dock" },
 { L"config_chk_group_results", L"Find All: Group hits by list entry" },
@@ -490,6 +503,7 @@ const LangKV kEnglishPairs[] = {
     L"On:  cat dog -> dog cat\n"
     L"Off: cat dog -> cat cat" },
 { L"tab_duplicate_suffix",         L"(copy)" },
+{ L"tab_untitled",                 L"Untitled" },
 
 };
 
@@ -543,6 +557,7 @@ const UITextMapping kControlTextMappings[] = {
     { IDC_SUBFOLDERS_CHECKBOX,         L"panel_in_subfolders" },
     { IDC_HIDDENFILES_CHECKBOX,        L"panel_in_hidden_folders" },
     { IDC_ALL_DOCS_CHECKBOX,           L"panel_all_documents" },
+    { IDC_TAB_COLOR_STATIC,            L"panel_tab_color" },
     { IDC_CANCEL_REPLACE_BUTTON,       L"panel_cancel_replace" },
 };
 

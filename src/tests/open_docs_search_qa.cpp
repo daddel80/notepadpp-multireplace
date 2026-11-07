@@ -35,21 +35,32 @@
 //      every file ends as before: read-only, live, unsaved or from disk. A file that changed on
 //      disk after a worker loaded it is loaded again and replaced once more, counted once and
 //      never written over the change.
+//  11. Scope of a Docs run (DocScope.h, planOpenDocsRun): the tabs to visit are decided before the
+//      run from buffer path and tab color, without activating a tab, and the run visits exactly
+//      those, in the order the two view loops visited them before. Name filter and tab color apply
+//      together, an empty scope stops before the run, Notepad++ before 8.6.8 is not asked for
+//      colors, and a document that fails ends the run in both views.
 //
 // Mirrors the panel/guard logic verbatim where mirrorable; Scintilla calls
 // are replaced by a reference-counting mock that asserts protocol violations.
 //
 // Build: g++ -std=c++20 -Wall -Wextra -fsanitize=address,undefined
 //        -o open_docs_search_qa open_docs_search_qa.cpp
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cwctype>
 #include <map>
 #include <memory>
+#include <random>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
+
+#include "../DocScope.h"
 
 static int failures = 0;
 static void CHECK(const std::string& d, bool ok) {
@@ -244,6 +255,178 @@ static size_t searchedFiles(size_t reached, const SkipCountersM& c) {
 // -------------------------- MIRROR: visibility gate (collectOpenScanDocs)
 static bool viewIsProbed(bool handleValid, bool visible) {
     return handleValid && visible;   // if (!viewSci || !IsWindowVisible(viewSci)) continue;
+}
+
+// -------------------------- VERBATIM: name filter of the Docs runs (StringUtils, matchesDocFilter)
+// PathMatchSpecW is replaced by a plain '*'/'?' glob, PathFindFileNameW by the part after the last separator.
+static bool globMatch(const std::wstring& s, const std::wstring& p, size_t si = 0, size_t pi = 0) {
+    while (pi < p.size()) {
+        if (p[pi] == L'*') {
+            for (size_t k = si; k <= s.size(); ++k)
+                if (globMatch(s, p, k, pi + 1)) return true;
+            return false;
+        }
+        if (si >= s.size()) return false;
+        if (p[pi] != L'?' && towlower(p[pi]) != towlower(s[si])) return false;
+        ++si; ++pi;
+    }
+    return si == s.size();
+}
+#define PathMatchSpecW(name, pat) globMatch(name, pat)
+
+static std::wstring pathFindFileName(const std::wstring& path) {
+    const size_t sep = path.find_last_of(L"\\/");
+    return (sep == std::wstring::npos) ? path : path.substr(sep + 1);
+}
+
+static std::wstring trimW(const std::wstring& str) {
+    const auto first = str.find_first_not_of(L" \t\r\n");
+    if (first == std::wstring::npos) return L"";
+    const auto last = str.find_last_not_of(L" \t\r\n");
+    return str.substr(first, last - first + 1);
+}
+
+static std::vector<std::wstring> splitFilterPatterns(const std::wstring& filter) {
+    std::vector<std::wstring> out;
+    size_t pos = 0;
+    while (pos <= filter.size()) {
+        const size_t sep = filter.find(L';', pos);
+        const size_t end = (sep == std::wstring::npos) ? filter.size() : sep;
+        std::wstring pattern = trimW(filter.substr(pos, end - pos));
+        if (!pattern.empty()) out.push_back(std::move(pattern));
+        if (sep == std::wstring::npos) break;
+        pos = sep + 1;
+    }
+    return out;
+}
+
+static bool matchesDocFilter(const std::wstring& fileName, const std::wstring& filter) {
+    if (filter.empty() || filter == L"*.*" || filter == L"*") return true;
+    bool hasPositivePattern = false, matchedPositive = false;
+    for (const std::wstring& pattern : splitFilterPatterns(filter)) {
+        if (pattern[0] == L'!') {
+            std::wstring excl = pattern.substr(1);
+            if (!excl.empty() && PathMatchSpecW(fileName, excl)) return false;
+        }
+        else {
+            hasPositivePattern = true;
+            if (PathMatchSpecW(fileName, pattern)) matchedPositive = true;
+        }
+    }
+    return hasPositivePattern ? matchedPositive : true;
+}
+
+// -------------------------- MIRROR: planOpenDocsRun and the Docs loops; Notepad++ as a mock
+static constexpr int MAIN_VIEW = 0, SUB_VIEW = 1;          // tab messages (ACTIVATEDOC, GETTABCOLORID, ...)
+static constexpr int PRIMARY_VIEW = 1, SECOND_VIEW = 2;    // NPPM_GETNBOPENFILES only
+
+struct TabM { std::wstring path; int color; };            // full path (tab name when unsaved), color id
+
+struct NppTabsM {
+    std::vector<TabM> tabs[2];
+    bool visible[2] = { true, true };
+    bool tabColors = true;                                 // Notepad++ 8.6.8 or later
+    int activeView = MAIN_VIEW;
+    std::ptrdiff_t activeIndex = 0;
+    std::vector<std::pair<int, std::ptrdiff_t>> activations;
+    int colorQueries = 0;
+
+    std::ptrdiff_t nbOpenFiles(int nbView) const {         // NPPM_GETNBOPENFILES
+        return static_cast<std::ptrdiff_t>(tabs[nbView == PRIMARY_VIEW ? MAIN_VIEW : SUB_VIEW].size());
+    }
+    int tabColorId(int view, std::ptrdiff_t index) {       // NPPM_GETTABCOLORID; older builds answer 0
+        ++colorQueries;
+        return tabColors ? tabs[view][static_cast<size_t>(index)].color : 0;
+    }
+    std::wstring fullPath(int view, std::ptrdiff_t index) const {   // GETBUFFERIDFROMPOS + GETFULLPATHFROMBUFFERID
+        return tabs[view][static_cast<size_t>(index)].path;
+    }
+    void activate(int view, std::ptrdiff_t index) {        // NPPM_ACTIVATEDOC
+        activations.push_back({ view, index });
+        activeView = view;
+        activeIndex = index;
+    }
+    std::wstring activeFileName() const {                  // NPPM_GETFILENAME
+        return pathFindFileName(tabs[activeView][static_cast<size_t>(activeIndex)].path);
+    }
+};
+
+struct PanelM { bool docsMode = true; bool allDocs = false; std::wstring filter = L"*.*"; unsigned colorMask = 0; };
+
+// MIRROR (now): planOpenDocsRun
+static DocScope::Plan planOpenDocsRunM(NppTabsM& npp, const PanelM& panel) {
+    const bool limited = panel.docsMode && !panel.allDocs;
+    const std::wstring filter = limited ? panel.filter : std::wstring();
+    const unsigned colors = (limited && npp.tabColors) ? panel.colorMask : 0;   // tabColorsSupported()
+    std::vector<int> views;
+    if (npp.visible[MAIN_VIEW]) views.push_back(MAIN_VIEW);
+    if (npp.visible[SUB_VIEW]) views.push_back(SUB_VIEW);
+    auto tabCount = [&](int view) { return npp.nbOpenFiles((view == MAIN_VIEW) ? PRIMARY_VIEW : SECOND_VIEW); };
+    auto inScope = [&](int view, std::ptrdiff_t index) {
+        if (!limited) return true;
+        if (colors != 0 && !DocScope::colorMatches(colors, npp.tabColorId(view, index))) return false;
+        return matchesDocFilter(pathFindFileName(npp.fullPath(view, index)), filter);
+    };
+    return DocScope::plan(views, tabCount, inScope);
+}
+
+struct DocsRunM {
+    bool stopped = false;               // "No open documents matched": no run, no dock block
+    size_t searched = 0, excluded = 0;
+    std::vector<std::wstring> visited;  // file names in visiting order
+};
+
+// MIRROR (now): handleFindAllInDocsButton / replaceAllInOpenedDocs - plan, stopper, one loop, restore.
+// failAt: the attempt whose processing returns false (Stop, error), SIZE_MAX for none.
+static DocsRunM runNowM(NppTabsM& npp, const PanelM& panel, size_t failAt = SIZE_MAX) {
+    DocsRunM r;
+    const DocScope::Plan scope = planOpenDocsRunM(npp, panel);
+    r.excluded = scope.excluded();
+    if (scope.tabs.empty()) { r.stopped = true; return r; }
+    const auto start = std::make_pair(npp.activeView, npp.activeIndex);   // DocCycleGuard
+    size_t attempt = 0;
+    for (const DocScope::Tab& tab : scope.tabs) {
+        npp.activate(tab.view, tab.index);
+        if (attempt++ == failAt) break;
+        r.visited.push_back(npp.activeFileName());
+        ++r.searched;
+    }
+    npp.activate(start.first, start.second);                               // cycle.restore()
+    return r;
+}
+
+// MIRROR (before): one loop per view, the name read after the activation
+static DocsRunM runBeforeM(NppTabsM& npp, const PanelM& panel, size_t failAt = SIZE_MAX) {
+    DocsRunM r;
+    const bool filterDocs = panel.docsMode && !panel.allDocs;
+    std::wstring docFilter;
+    if (filterDocs) {
+        docFilter = panel.filter;
+        if (docFilter.empty()) docFilter = L"*.*";
+    }
+    const auto start = std::make_pair(npp.activeView, npp.activeIndex);
+    size_t attempt = 0;
+    auto one = [&](int view, std::ptrdiff_t index) {
+        npp.activate(view, index);
+        if (filterDocs && !matchesDocFilter(npp.activeFileName(), docFilter)) { ++r.excluded; return true; }
+        if (attempt++ == failAt) return false;
+        r.visited.push_back(npp.activeFileName());
+        ++r.searched;
+        return true;
+    };
+    if (npp.visible[MAIN_VIEW])
+        for (std::ptrdiff_t i = 0; i < npp.nbOpenFiles(PRIMARY_VIEW); ++i)
+            if (!one(MAIN_VIEW, i)) break;
+    if (npp.visible[SUB_VIEW])
+        for (std::ptrdiff_t i = 0; i < npp.nbOpenFiles(SECOND_VIEW); ++i)
+            if (!one(SUB_VIEW, i)) break;
+    npp.activate(start.first, start.second);
+    return r;
+}
+
+static bool visitedOnlyScope(const NppTabsM& npp, const std::pair<int, std::ptrdiff_t>& start, size_t searched) {
+    // every activation but the last (the return to the start tab) is a searched tab
+    return npp.activations.size() == searched + 1 && npp.activations.back() == start;
 }
 
 int main() {
@@ -797,6 +980,157 @@ int main() {
         CHECK("S10 changed on disk and the run canceled: not written over the change, no second try",
               canceled.replaced == 1 && canceled.written == 0);
         CHECK("S10 loaded on the UI thread (LoadThreads=0): as before, no check", serial.replaced == 1 && serial.written == 1);
+    }
+
+    std::printf("\n=== S11 scope of a Docs run: decided before the run, name filter and tab color ===\n\n");
+    {
+        using namespace DocScope;
+        bool roundTrip = true;
+        for (int c = 0; c < CHOICE_COUNT; ++c) roundTrip = roundTrip && choiceFromMask(maskFromChoice(c)) == c;
+        CHECK("S11 dropdown: every entry maps to its mask and back", roundTrip);
+        CHECK("S11 dropdown: Any = 0, Marked = all five colors, Color 1 = id 0, Color 5 = id 4",
+              maskFromChoice(CHOICE_ANY) == 0 && maskFromChoice(CHOICE_MARKED) == 0x1Fu
+              && maskFromChoice(2) == 1u && maskFromChoice(6) == 16u);
+        bool swatchIsMask = true;
+        for (int c = 0; c < CHOICE_COUNT; ++c)
+            if (colorFromChoice(c) >= 0) swatchIsMask = swatchIsMask && maskFromChoice(c) == 1u << colorFromChoice(c);
+        CHECK("S11 dropdown: the swatch of a color entry is the color its mask selects", swatchIsMask);
+        CHECK("S11 dropdown: no swatch for Any, Marked and out-of-range choices",
+              colorFromChoice(CHOICE_ANY) == -1 && colorFromChoice(CHOICE_MARKED) == -1
+              && colorFromChoice(-1) == -1 && colorFromChoice(CHOICE_COUNT) == -1
+              && colorFromChoice(2) == 0 && colorFromChoice(6) == 4);
+        CHECK("S11 INI: a mask without an entry, out-of-range choices and CB_ERR fall back to Any",
+              choiceFromMask(3u) == CHOICE_ANY && choiceFromMask(0xFFFFFFFFu) == CHOICE_ANY
+              && maskFromChoice(-1) == 0 && maskFromChoice(CHOICE_COUNT) == 0);
+        CHECK("S11 colors: mask 0 takes every tab, an uncolored one too",
+              colorMatches(0, -1) && colorMatches(0, 0) && colorMatches(0, 4));
+        CHECK("S11 colors: Marked takes ids 0 to 4, never an uncolored tab or an unknown id",
+              colorMatches(ALL_COLORS, 0) && colorMatches(ALL_COLORS, 4)
+              && !colorMatches(ALL_COLORS, -1) && !colorMatches(ALL_COLORS, 5));
+        CHECK("S11 colors: one color takes only its id",
+              colorMatches(maskFromChoice(3), 1) && !colorMatches(maskFromChoice(3), 0)
+              && !colorMatches(maskFromChoice(3), -1));
+        CHECK("S11 version gate: 8.6.8 and later (zero-padded), 8.5.4 and 8.6.7 not",
+              tabColorsAvailable(8, 680) && tabColorsAvailable(8, 964) && tabColorsAvailable(9, 0)
+              && !tabColorsAvailable(8, 679) && !tabColorsAvailable(8, 540) && !tabColorsAvailable(7, 999));
+
+        // The editor of the scenarios: main view and sub view, colors 0 to 4, -1 for none
+        auto editor = [] {
+            NppTabsM npp;
+            npp.tabs[MAIN_VIEW] = { { L"C:\\src\\a.cpp", 0 }, { L"C:\\src\\b.cpp", -1 }, { L"C:\\doc\\c.txt", 1 },
+                                    { L"new 1", 1 }, { L"C:\\src\\d.h", 0 } };
+            npp.tabs[SUB_VIEW] = { { L"C:\\doc\\e.txt", -1 }, { L"C:\\src\\a.cpp", 0 } };   // a.cpp cloned
+            npp.activeView = MAIN_VIEW;
+            npp.activeIndex = 1;                                                           // the user's tab: b.cpp, no color
+            return npp;
+        };
+        auto names = [](const DocsRunM& r) {
+            std::wstring s;
+            for (const auto& v : r.visited) s += (s.empty() ? L"" : L",") + v;
+            return s;
+        };
+
+        {
+            NppTabsM npp = editor();
+            PanelM p; p.colorMask = maskFromChoice(3);                                     // Color 2 = id 1
+            const DocsRunM r = runNowM(npp, p);
+            CHECK("S11 tab color only: the green tabs, saved and unsaved", names(r) == L"c.txt,new 1" && r.excluded == 5);
+        }
+        {
+            NppTabsM npp = editor();
+            PanelM p; p.colorMask = maskFromChoice(2); p.filter = L"*.cpp";                // Color 1 and *.cpp
+            const DocsRunM r = runNowM(npp, p);
+            CHECK("S11 tab color and name filter apply together (clone counted per view)",
+                  names(r) == L"a.cpp,a.cpp" && r.searched == 2 && r.excluded == 5);
+        }
+        {
+            NppTabsM npp = editor();
+            PanelM p; p.colorMask = ALL_COLORS;                                           // Marked (any color)
+            const DocsRunM r = runNowM(npp, p);
+            CHECK("S11 Marked: every colored tab, no uncolored one", names(r) == L"a.cpp,c.txt,new 1,d.h,a.cpp");
+            CHECK("S11 the user's tab is outside the scope: never activated in the run, the editor returns to it",
+                  visitedOnlyScope(npp, { MAIN_VIEW, 1 }, r.searched) && npp.activeView == MAIN_VIEW && npp.activeIndex == 1);
+        }
+        {
+            NppTabsM npp = editor();
+            PanelM p; p.colorMask = maskFromChoice(3); p.filter = L"*.txt";
+            CHECK("S11 unsaved tab: its name is its tab name ('new 1' fails *.txt)", names(runNowM(npp, p)) == L"c.txt");
+            NppTabsM npp2 = editor();
+            p.filter = L"new*";
+            CHECK("S11 unsaved tab: 'new*' takes it", names(runNowM(npp2, p)) == L"new 1");
+        }
+        {
+            NppTabsM npp = editor();
+            PanelM p; p.colorMask = maskFromChoice(6);                                     // Color 5: none
+            const DocsRunM r = runNowM(npp, p);
+            CHECK("S11 empty scope: stopped before the run, no tab activated", r.stopped && npp.activations.empty() && r.excluded == 7);
+        }
+        {
+            NppTabsM npp = editor();
+            npp.tabColors = false;                                                         // before 8.6.8
+            PanelM p; p.colorMask = maskFromChoice(3);
+            const DocsRunM r = runNowM(npp, p);
+            CHECK("S11 Notepad++ before 8.6.8: no color asked, the color is ignored",
+                  npp.colorQueries == 0 && r.searched == 7 && r.excluded == 0);
+        }
+        {
+            NppTabsM npp = editor();
+            PanelM p; p.allDocs = true; p.filter = L"*.md"; p.colorMask = ALL_COLORS;
+            const DocsRunM r = runNowM(npp, p);
+            CHECK("S11 'All documents': neither filter nor color, no color asked",
+                  r.searched == 7 && r.excluded == 0 && npp.colorQueries == 0);
+        }
+        {
+            NppTabsM npp = editor();
+            npp.visible[SUB_VIEW] = false;
+            PanelM p; p.colorMask = ALL_COLORS;
+            const DocsRunM r = runNowM(npp, p);
+            CHECK("S11 hidden sub view: its tabs are neither visited nor counted",
+                  names(r) == L"a.cpp,c.txt,new 1,d.h" && r.searched + r.excluded == 5);
+        }
+        {
+            NppTabsM before = editor(), now = editor();
+            PanelM p;
+            const DocsRunM b = runBeforeM(before, p, 1), n = runNowM(now, p, 1);
+            CHECK("S11 a failed document ends the run in both views (before, the sub view went on)",
+                  n.searched == 1 && b.searched == 1 + 2);
+        }
+
+        // Before and now visit the same tabs in the same order whenever no color is chosen
+        std::mt19937 rng(11);
+        std::uniform_int_distribution<int> count(0, 6), pick(0, 4), coin(0, 1);
+        const std::wstring names5[5] = { L"x.cpp", L"y.txt", L"z.log", L"new 3", L"w.h" };
+        const std::wstring filters[6] = { L"", L"*.*", L"*.cpp; *.h", L"*.*; !*.log", L"*.md", L"new*" };
+        int sameOrder = 0, scenarios = 0, stopOk = 0, stops = 0, onlyScope = 0;
+        for (int t = 0; t < 3000; ++t) {
+            NppTabsM base;
+            for (int v = 0; v < 2; ++v) {
+                const int n = count(rng);
+                for (int i = 0; i < n; ++i)
+                    base.tabs[v].push_back({ L"C:\\d" + std::to_wstring(i) + L"\\" + names5[pick(rng)], pick(rng) - 1 });
+            }
+            if (base.tabs[MAIN_VIEW].empty()) base.tabs[MAIN_VIEW].push_back({ L"new 1", -1 });   // N++ keeps one tab
+            base.visible[SUB_VIEW] = !base.tabs[SUB_VIEW].empty() && coin(rng) == 1;
+            base.activeIndex = static_cast<std::ptrdiff_t>(base.tabs[MAIN_VIEW].size() - 1);
+            PanelM p;
+            p.allDocs = coin(rng) == 1;
+            p.filter = filters[static_cast<size_t>(t) % 6];
+            NppTabsM before = base, now = base;
+            const DocsRunM b = runBeforeM(before, p), n = runNowM(now, p);
+            if (n.stopped) {
+                ++stops;
+                stopOk += (b.searched == 0 && now.activations.empty()) ? 1 : 0;
+                continue;
+            }
+            ++scenarios;
+            sameOrder += (b.visited == n.visited && b.searched == n.searched && b.excluded == n.excluded) ? 1 : 0;
+            onlyScope += visitedOnlyScope(now, { MAIN_VIEW, base.activeIndex }, n.searched) ? 1 : 0;
+        }
+        CHECK("S11 3000 scenarios without color: same tabs, same order, same counts as before ("
+              + std::to_string(scenarios) + " runs)", sameOrder == scenarios);
+        CHECK("S11 ... and the run activates only the tabs it searches, then the user's tab", onlyScope == scenarios);
+        CHECK("S11 ... an empty scope stops where the loops used to search nothing ("
+              + std::to_string(stops) + " stops)", stopOk == stops && stops > 0);
     }
 
     std::printf("\n%s (%d failure%s)\n",

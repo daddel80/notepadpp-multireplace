@@ -51,6 +51,8 @@ void MultiReplaceConfigDialog::registerBindingsOnce()
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_DOUBLECLICK_EDITS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, doubleClickEditsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HOVER_TEXT_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, isHoverTextEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_KEEP_LIST_VISIBLE, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, keepListVisible), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_NEW_ENTRIES_AT_TOP, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, newEntriesAtTop), 0, 0 });
+    _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_SCROLL_TO_NEW_ENTRIES, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, scrollToNewEntries), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_HIGHLIGHT_MATCH, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, highlightMatchEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_GROUPRESULTS_ENABLED, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, groupResultsEnabled), 0, 0 });
     _bindings.push_back(Binding{ &_hListViewLayoutPanel, IDC_CFG_RESULT_DOCK_ENTRY_COLORS, ControlType::Checkbox, ValueType::Bool, offsetof(MultiReplace::Settings, resultDockPerEntryColorsEnabled), 0, 0 });
@@ -216,6 +218,8 @@ void MultiReplaceConfigDialog::refreshUILanguage()
         { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          416, 18 },
         { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     416, 18 },
         { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible",   416, 18 },
+        { IDC_CFG_NEW_ENTRIES_AT_TOP,      L"config_chk_new_entries_at_top",  416, 18 },
+        { IDC_CFG_SCROLL_TO_NEW_ENTRIES,   L"config_chk_scroll_new_entries",  416, 18 },
         { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height",         190, 18 },
 
         // List View Panel - Result Dock: groupW=460, innerWidth=460-44=416
@@ -306,18 +310,9 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
         // Calculate dimensions based on scale
-        int baseWidth = 810;
-        int baseHeight = 380;
-
-        int clientW = scaleX(baseWidth);
-        int clientH = scaleY(baseHeight);
-
-        RECT rc = { 0, 0, clientW, clientH };
-        DWORD style = GetWindowLong(_hSelf, GWL_STYLE);
-        DWORD exStyle = GetWindowLong(_hSelf, GWL_EXSTYLE);
-        AdjustWindowRectEx(&rc, style, FALSE, exStyle);
-        int finalW = rc.right - rc.left;
-        int finalH = rc.bottom - rc.top;
+        const SIZE windowSize = scaledWindowSize();
+        const int finalW = windowSize.cx;
+        const int finalH = windowSize.cy;
 
         RECT rcParent;
         if (GetWindowRect(::GetParent(_hSelf), &rcParent)) {
@@ -388,9 +383,8 @@ intptr_t CALLBACK MultiReplaceConfigDialog::run_dlgProc(UINT message, WPARAM wPa
             wchar_t buffer[16];
             GetWindowTextW(pdis->hwndItem, buffer, 16);
 
-            // Yellow in dark mode, blue in light mode
-            bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            SetTextColor(pdis->hDC, isDark ? RGB(255, 235, 59) : RGB(0, 0, 255));
+            // Colored like Notepad++'s (?) markers, as on the panel
+            SetTextColor(pdis->hDC, NppStyleKit::ThemeUtils::linkTextColor(nppData._nppHandle));
             SetBkMode(pdis->hDC, TRANSPARENT);
 
             DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -482,6 +476,15 @@ int MultiReplaceConfigDialog::scaleX(int value) const {
 int MultiReplaceConfigDialog::scaleY(int value) const {
     int sysScaled = dpiMgr ? dpiMgr->scaleY(value) : value;
     return sysScaled;
+}
+
+// Outer window size for the base client size at the current scale
+SIZE MultiReplaceConfigDialog::scaledWindowSize() const {
+    RECT rc = { 0, 0, scaleX(BASE_WIDTH), scaleY(BASE_HEIGHT) };
+    const DWORD style = static_cast<DWORD>(GetWindowLong(_hSelf, GWL_STYLE));
+    const DWORD exStyle = static_cast<DWORD>(GetWindowLong(_hSelf, GWL_EXSTYLE));
+    AdjustWindowRectEx(&rc, style, FALSE, exStyle);
+    return { rc.right - rc.left, rc.bottom - rc.top };
 }
 
 INT_PTR MultiReplaceConfigDialog::handleCtlColorStatic(WPARAM wParam, LPARAM lParam) {
@@ -869,7 +872,7 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     const int left = 90;
     const int groupW = 460;
     const int topY = 20;
-    const int topGroupH = 186;
+    const int topGroupH = 238;
     const int gapBetween = 14;
     const int bottomGroupH = 94;
 
@@ -885,6 +888,8 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
         lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
         lb.AddCheckbox(IDC_CFG_KEEP_LIST_VISIBLE, LM.getLPCW(L"config_chk_keep_list_visible"));
+        lb.AddCheckbox(IDC_CFG_NEW_ENTRIES_AT_TOP, LM.getLPCW(L"config_chk_new_entries_at_top"));
+        lb.AddCheckbox(IDC_CFG_SCROLL_TO_NEW_ENTRIES, LM.getLPCW(L"config_chk_scroll_new_entries"));
         lb.AddSpace(6);
         lb.AddLabel(IDC_CFG_EDITFIELD_LABEL, LM.getLPCW(L"config_lbl_edit_height"), 190, 18);
         lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 198, -2, 45, 22);
@@ -1039,6 +1044,8 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     s.groupResultsEnabled = CFG.readBool(MultiReplace::optSec(L"GroupResults"), L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(MultiReplace::optSec(L"AllFromCursor"), L"AllFromCursor", false);
     s.keepListVisible = CFG.readBool(MultiReplace::optSec(L"KeepListVisible"), L"KeepListVisible", false);
+    s.newEntriesAtTop = CFG.readBool(MultiReplace::optSec(L"NewEntriesAtTop"), L"NewEntriesAtTop", false);
+    s.scrollToNewEntries = CFG.readBool(MultiReplace::optSec(L"ScrollToNewEntries"), L"ScrollToNewEntries", true);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
     s.maxFileSizeMB = CFG.readInt(L"ReplaceInFiles", L"MaxFileSizeMB", 100);
     s.skipBinaryFilesEnabled = CFG.readBool(L"ReplaceInFiles", L"SkipBinaryFiles", true);
@@ -1178,18 +1185,8 @@ void MultiReplaceConfigDialog::applyConfigToSettings()
         _userScaleFactor = newScaleFactor;
         dpiMgr->setCustomScaleFactor((float)_userScaleFactor);
 
-        int baseWidth = 810; int baseHeight = 380;
-        int clientW = scaleX(baseWidth);
-        int clientH = scaleY(baseHeight);
-
-        RECT rc = { 0, 0, clientW, clientH };
-        DWORD style = GetWindowLong(_hSelf, GWL_STYLE);
-        DWORD exStyle = GetWindowLong(_hSelf, GWL_EXSTYLE);
-        AdjustWindowRectEx(&rc, style, FALSE, exStyle);
-
-        int finalW = rc.right - rc.left;
-        int finalH = rc.bottom - rc.top;
-        SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        const SIZE windowSize = scaledWindowSize();
+        SetWindowPos(_hSelf, nullptr, 0, 0, windowSize.cx, windowSize.cy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
         int savedCategory = _currentCategory;
 
@@ -1248,6 +1245,8 @@ void MultiReplaceConfigDialog::resetToDefaults()
     def.highlightMatchEnabled = true;
     def.doubleClickEditsEnabled = true;
     def.isHoverTextEnabled = true;
+    def.newEntriesAtTop = false;
+    def.scrollToNewEntries = true;
     def.csvHeaderLinesCount = 1;
     def.flowTabsNumericAlignEnabled = true;
     def.flowTabsIntroDontShowEnabled = false;
@@ -1286,18 +1285,8 @@ void MultiReplaceConfigDialog::resetToDefaults()
     loadSettingsToConfigUI(false);
 
     if (std::abs(oldScale - 1.0) > 0.001) {
-        int baseWidth = 810; int baseHeight = 380;
-        int clientW = scaleX(baseWidth);
-        int clientH = scaleY(baseHeight);
-
-        RECT rc = { 0, 0, clientW, clientH };
-        DWORD style = GetWindowLong(_hSelf, GWL_STYLE);
-        DWORD exStyle = GetWindowLong(_hSelf, GWL_EXSTYLE);
-        AdjustWindowRectEx(&rc, style, FALSE, exStyle);
-        int finalW = rc.right - rc.left;
-        int finalH = rc.bottom - rc.top;
-
-        SetWindowPos(_hSelf, nullptr, 0, 0, finalW, finalH, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        const SIZE windowSize = scaledWindowSize();
+        SetWindowPos(_hSelf, nullptr, 0, 0, windowSize.cx, windowSize.cy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 
         int savedCategory = _currentCategory;
 

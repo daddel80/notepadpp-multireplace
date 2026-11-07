@@ -21,6 +21,7 @@
 #include "ColumnTabs.h"
 #include "ConfigManager.h"
 #include "DPIManager.h"
+#include "DocScope.h"
 #include "DropTarget.h"
 #include "Encoding.h"
 #include "LanguageManager.h"
@@ -30,6 +31,7 @@
 #include "ResultDock.h"
 #include "SciUndoGuard.h"
 #include "StaticDialog/resource.h"
+#include "TabStripLayout.h"
 
 // Standard library
 #include <array>
@@ -746,6 +748,8 @@ public:
         bool groupResultsEnabled;
         bool allFromCursorEnabled;
         bool keepListVisible;
+        bool newEntriesAtTop;
+        bool scrollToNewEntries;
         int  listDimIntensity;
         int  tabMaxLength;
         bool limitFileSizeEnabled;
@@ -785,17 +789,11 @@ public:
     static constexpr COLORREF LMODE_SUCCESS = RGB(0, 128, 0);
     static constexpr COLORREF LMODE_ERROR = RGB(200, 0, 0);
     static constexpr COLORREF LMODE_INFO = RGB(0, 0, 128);
-    static constexpr COLORREF LMODE_FILTER_HELP = RGB(0, 0, 255);
-    static constexpr COLORREF LMODE_ENGINE_LINK = RGB(0, 0, 255);
-    static constexpr COLORREF LMODE_DISABLED = RGB(109, 109, 109);
 
     // Dark Mode Colors for Message
     static constexpr COLORREF DMODE_SUCCESS = RGB(120, 220, 120);
     static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
     static constexpr COLORREF DMODE_INFO = RGB(180, 180, 255);
-    static constexpr COLORREF DMODE_FILTER_HELP = RGB(255, 235, 59);
-    static constexpr COLORREF DMODE_ENGINE_LINK = RGB(100, 180, 255);
-    static constexpr COLORREF DMODE_DISABLED = RGB(128, 128, 128);
 
     inline static bool isWindowOpen = false;
     inline static bool textModified = true;
@@ -893,6 +891,8 @@ private:
     // Separate filter strings for each panel mode (swapped into IDC_FILTER_EDIT on mode switch)
     std::wstring _filesFilter = L"*.*";
     std::wstring _docsFilter = L"*.*";
+    // Tab color of the Docs panel as a DocScope mask, 0 for any tab; panel-wide, INI [OpenDocs] TabColorMask
+    unsigned _docsTabColorMask = 0;
 
     static constexpr int MIN_GENERAL_WIDTH = 40;
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND = 150;   // Default size for Find Column
@@ -933,12 +933,8 @@ private:
     COLORREF COLOR_ERROR;
     COLORREF COLOR_INFO;
     COLORREF _statusMessageColor = LMODE_INFO; // Holds the actual color to be drawn. Initialized for light mode.
-    COLORREF _filterHelpColor;
-    // Engine selector marker colour (theme-aware). Updated by
-    // applyThemePalette so the (L)/(E) marker renders in link blue
-    // in both light and dark mode.
-    COLORREF _engineLinkColor = LMODE_ENGINE_LINK;
-    COLORREF _disabledColor = LMODE_DISABLED; // owner-drawn controls while disabled
+    COLORREF _linkColor = 0;     // (?) and (L)/(E) markers, Notepad++'s link color
+    COLORREF _disabledColor = 0; // owner-drawn controls while disabled
     MessageStatus _lastMessageStatus = MessageStatus::Info; // Holds the TYPE of the last message.
     HWND _hHeaderTooltip;        // Handle to the tooltip for the ListView header
     HWND _hUseListButtonTooltip; // Handle to the tooltip for the Use List Button
@@ -1050,11 +1046,11 @@ private:
     int                                    _tabMenuTargetIndex = -1;   // set during context menu invocation
     HWND                                   _hTabTooltip = nullptr;
     std::wstring                           _tabTooltipText;   // owned storage; TTM_ADDTOOL keeps a pointer
+    int                                    _tabFirstVisible = 0;   // first tab in view of the strip
 
     // Inline rename state for the tab control.
     HWND                                   _hTabRenameEdit = nullptr;
     int                                    _tabRenameIndex = -1;
-    WNDPROC                                _prevTabEditProc = nullptr;
     HHOOK                                  _hTabRenameMouseHook = nullptr;
     static MultiReplace* _tabRenameHookOwner;
 
@@ -1152,6 +1148,8 @@ private:
     inline static bool _luaSafeModeEnabled = false;        // Safer Lua mode: disables system/file/debug libs; common libs stay enabled
     inline static bool allFromCursorEnabled = false;      // Controls the starting point for Replace All, Find All and Mark when wrap is OFF.
     inline static bool keepListVisible = false;            // Library mode: list stays visible when toggled off, only dims
+    inline static bool newEntriesAtTop = false;            // Add into List inserts at the top instead of the end
+    inline static bool scrollToNewEntries = true;          // Add into List shows and selects the new entry
     // INI [Options] DimIntensity (0-100): dimming of the inactive list.
     // Persisted, not shown in the config dialog.
     inline static int  listDimIntensity = 50;
@@ -1198,7 +1196,6 @@ private:
     bool _editIsExpanded = false; // track expand state
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     inline static bool  _isShuttingDown = false; // Flag to signal app shutdown
-    HBRUSH _hDlgBrush = nullptr; // Handle for the dialog's background brush
     bool _flowTabsActive = false;   // current visual state (editor tabstops)
     int  _flowPaddingPx = 8;       // min pixel gap after each column
 
@@ -1278,9 +1275,19 @@ private:
     void updateListViewFrame();
     void repaintPanelContents(HWND hGrp, const std::wstring& title);
     void updateFilesPanel();
-    void updateAllDocsCheckboxState();
+    void updateFilterControlsState();
+    void swapFilterText(bool toDocsMode);
+    void showFilesPanelMode(bool inDocsMode, bool inFilesMode);
+    void fillTabColorCombo();
+    struct TabColorItemLayout { int swatchLeft; int swatchSide; int textLeft; };  // pixels from the row's left edge
+    TabColorItemLayout tabColorItemLayout(int textHeight);
+    int tabColorComboWidth();
+    void syncTabColorComboHeights();
+    void drawTabColorItem(const DRAWITEMSTRUCT& dis);
     bool isFilesPanelNeeded() const;
     bool matchesDocFilter(const std::wstring& fileName, const std::wstring& filter) const;
+    DocScope::Plan planOpenDocsRun() const;
+    static bool tabColorsSupported();
     void setUIElementVisibility();
     void drawGripper();
     void SetWindowTransparency(HWND hwnd, BYTE alpha);
@@ -1662,17 +1669,20 @@ private:
 
     // Tab control rendering.
     void rebuildTabControl();
-    void repositionNewTabButton();
+    void layoutTabStrip();
+    TabStripLayout::Metrics tabStripMetrics();
+    void refreshTabLabels(int from, int to);
     void showTabListPopup();
     void ensureTabVisible(int tabIndex);
     void scrollTabStrip(int direction);
-    void updateTabTooltip(int tabIndex);
+    void updateTabTooltip();
     static std::wstring truncateTabName(const std::wstring& name, size_t maxChars = 14);
     std::wstring buildTabLabel(int tabIndex) const;
     void markActiveTabDirty();
     void clearTabDirty(int tabIndex);
     void setBottomRowVisible(bool visible);
     void switchToTab(int newIndex);
+    static std::wstring untitledTabName(int number);
     void addNewTab();
     void applyDefaultColumnState();
     void copyLayoutFields(const TabState& src, TabState& dst) const;
@@ -1701,7 +1711,8 @@ private:
     void commitInlineTabRename();
     void cancelInlineTabRename();
     void renameTabFile(int tabIndex);
-    static LRESULT CALLBACK tabRenameEditProc(HWND, UINT, WPARAM, LPARAM);
+    static LRESULT CALLBACK tabRenameEditProc(HWND, UINT, WPARAM, LPARAM,
+        UINT_PTR, DWORD_PTR);
     static LRESULT CALLBACK tabControlSubclassProc(HWND, UINT, WPARAM, LPARAM,
         UINT_PTR, DWORD_PTR);
     static LRESULT CALLBACK tabRenameMouseHookProc(int, WPARAM, LPARAM);

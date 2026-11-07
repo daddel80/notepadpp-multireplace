@@ -537,6 +537,7 @@ void MultiReplace::applyFonts() {
             }
         }
     }
+    syncTabColorComboHeights();
 }
 
 RECT MultiReplace::calculateMinWindowFrame(HWND hwnd) {
@@ -770,13 +771,13 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // Overflow dropdown for the tab strip. Sits right of "+" and is
     // shown only when tabs do not fit. Glyph U+25BE is a small "down"
     // triangle; final position and visibility are driven by
-    // repositionNewTabButton.
+    // layoutTabStrip.
     ctrlMap[IDC_TAB_LIST_DROPDOWN] = { newListBtnX + sx(24), newListBtnY, sx(22), sy(22), WC_STATIC, L"\u25BE", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, nullptr, false, FontRole::Standard };
 
     // Excel-style horizontal scroll indicators. They sit left/right
     // of the tab strip (inside the tab band) and only appear when
     // tabs are clipped on that side. Final position and visibility
-    // are driven by repositionNewTabButton. U+2026 = "..."
+    // are driven by layoutTabStrip. U+2026 = "..."
     ctrlMap[IDC_TAB_SCROLL_LEFT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_TAB_SCROLL_RIGHT] = { newListBtnX, newListBtnY, sx(18), sy(22), WC_STATIC, L"\u2026", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, nullptr, false, FontRole::Standard };
 
@@ -800,6 +801,10 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(42), sy(257), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+
+    // Docs mode uses the Directory row for the tab color; a pure choice list, so only as wide as its entries
+    ctrlMap[IDC_TAB_COLOR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_tab_color"), SS_RIGHT, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_TAB_COLOR_COMBO] = { sx(96),  sy(257), std::min(comboWidth - sx(170), tabColorComboWidth()),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP, LM.getLPCW(L"tooltip_tab_color"), false, FontRole::Normal1 };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
@@ -852,23 +857,44 @@ void MultiReplace::initializeCtrlMap() {
     isWindowOpen = true;
 }
 
-bool MultiReplace::createAndShowWindows() {
-    // IDs of all controls in the "Replace/Find in Files" panel
-    static const std::vector<int> repInFilesIds = {
-        IDC_FILE_OPS_GROUP,
-        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
-        IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
-        IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-        IDC_CANCEL_REPLACE_BUTTON, IDC_ALL_DOCS_CHECKBOX
+namespace {
+    // Controls of the Files/Docs panel and the mode that shows them
+    enum class FilesPanelMode { Both, Files, Docs };
+    struct FilesPanelCtrl { int id; FilesPanelMode mode; };
+    constexpr FilesPanelCtrl kFilesPanelCtrls[] = {
+        { IDC_FILE_OPS_GROUP,        FilesPanelMode::Both  },
+        { IDC_FILTER_STATIC,         FilesPanelMode::Both  },
+        { IDC_FILTER_EDIT,           FilesPanelMode::Both  },
+        { IDC_FILTER_HELP,           FilesPanelMode::Both  },
+        { IDC_DIR_STATIC,            FilesPanelMode::Files },
+        { IDC_DIR_EDIT,              FilesPanelMode::Files },
+        { IDC_BROWSE_DIR_BUTTON,     FilesPanelMode::Files },
+        { IDC_SUBFOLDERS_CHECKBOX,   FilesPanelMode::Files },
+        { IDC_HIDDENFILES_CHECKBOX,  FilesPanelMode::Files },
+        { IDC_CANCEL_REPLACE_BUTTON, FilesPanelMode::Files },
+        { IDC_ALL_DOCS_CHECKBOX,     FilesPanelMode::Docs  },
+        { IDC_TAB_COLOR_STATIC,      FilesPanelMode::Docs  },
+        { IDC_TAB_COLOR_COMBO,       FilesPanelMode::Docs  },
     };
 
+    // Tab color dropdown entries in DocScope's choice order
+    constexpr const wchar_t* kTabColorChoiceKeys[] = {
+        L"panel_tab_color_any", L"panel_tab_color_marked",
+        L"panel_tab_color_1", L"panel_tab_color_2", L"panel_tab_color_3",
+        L"panel_tab_color_4", L"panel_tab_color_5"
+    };
+    static_assert(static_cast<int>(std::size(kTabColorChoiceKeys)) == DocScope::CHOICE_COUNT, "one text per dropdown entry");
+}
+
+bool MultiReplace::createAndShowWindows() {
     // IDs of List Search Bar controls (initially hidden)
     static const std::vector<int> listSearchBarIds = {
         IDC_LIST_SEARCH_COMBO, IDC_LIST_SEARCH_BUTTON, IDC_LIST_SEARCH_CLOSE
     };
 
-    auto isRepInFilesId = [&](int id) {
-        return std::find(repInFilesIds.begin(), repInFilesIds.end(), id) != repInFilesIds.end();
+    auto isRepInFilesId = [](int id) {
+        return std::any_of(std::begin(kFilesPanelCtrls), std::end(kFilesPanelCtrls),
+            [id](const FilesPanelCtrl& ctrl) { return ctrl.id == id; });
         };
 
     auto isListSearchBarId = [&](int id) {
@@ -1147,11 +1173,10 @@ void MultiReplace::moveAndResizeControls(bool moveStatic) {
 
     EndDeferWindowPos(hdwp);
 
-    // The New-List "+" anchors to the last tab's right edge, computed
-    // dynamically. Running this at the end of every layout pass keeps it
-    // anchored regardless of which caller triggered the pass (resize,
-    // visibility toggle, search bar show/hide, scale change).
-    repositionNewTabButton();
+    // The tab row follows its tabs, not the control map. Running this at the end
+    // of every layout pass keeps it right whichever caller triggered the pass
+    // (resize, visibility toggle, search bar show/hide, scale change).
+    layoutTabStrip();
 }
 
 void MultiReplace::applyNppDarkModeTheme(ULONG flags) {
@@ -1197,15 +1222,6 @@ void MultiReplace::updateListViewFrame()
 
 void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
 {
-    // All controls inside the "Replace/Find in Files" panel
-    static const std::vector<int> repInFilesIds = {
-        IDC_FILE_OPS_GROUP,
-        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
-        IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
-        IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-        IDC_CANCEL_REPLACE_BUTTON, IDC_ALL_DOCS_CHECKBOX
-    };
-
     // Keep the caption in sync
     SetDlgItemText(_hSelf, IDC_FILE_OPS_GROUP, title.c_str());
 
@@ -1228,9 +1244,9 @@ void MultiReplace::repaintPanelContents(HWND hGrp, const std::wstring& title)
         RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE | RDW_NOCHILDREN | RDW_FRAME);
 
     // Redraw visible children (no erase to prevent flicker)
-    for (int id : repInFilesIds) {
-        if (id == IDC_FILE_OPS_GROUP) continue;
-        HWND hChild = GetDlgItem(_hSelf, id);
+    for (const FilesPanelCtrl& ctrl : kFilesPanelCtrls) {
+        if (ctrl.id == IDC_FILE_OPS_GROUP) continue;
+        HWND hChild = GetDlgItem(_hSelf, ctrl.id);
         if (IsWindow(hChild) && IsWindowVisible(hChild)) {
             RedrawWindow(hChild, nullptr, nullptr,
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
@@ -1272,13 +1288,166 @@ bool MultiReplace::matchesDocFilter(const std::wstring& fileName, const std::wst
     return hasPositivePattern ? matchedPositive : true;
 }
 
-// Enable/disable the filter controls based on the "All documents" checkbox.
-void MultiReplace::updateAllDocsCheckboxState()
+// Filter and Tab color follow "All documents" in Docs mode; Files mode always uses the filter.
+void MultiReplace::updateFilterControlsState()
 {
-    bool allDocs = (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) == BST_CHECKED);
-    EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_EDIT), !allDocs);
-    EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), !allDocs);
+    const bool inDocsMode = (isReplaceAllInDocs || isFindAllInDocs);
+    const bool filtered = !inDocsMode || (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
+    EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_EDIT), filtered);
+    EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), filtered);
     // IDC_FILTER_HELP (?) stays always enabled so its tooltip remains accessible
+
+    const bool byColor = inDocsMode && filtered && tabColorsSupported();
+    EnableWindow(GetDlgItem(_hSelf, IDC_TAB_COLOR_STATIC), byColor);
+    EnableWindow(GetDlgItem(_hSelf, IDC_TAB_COLOR_COMBO), byColor);
+}
+
+// The filter field keeps one text per mode: the outgoing mode keeps what was typed.
+void MultiReplace::swapFilterText(bool toDocsMode)
+{
+    std::wstring& outgoing = toDocsMode ? _filesFilter : _docsFilter;
+    outgoing = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
+    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, toDocsMode ? _docsFilter : _filesFilter);
+}
+
+// Shows the controls of the active mode beside the shared ones.
+void MultiReplace::showFilesPanelMode(bool inDocsMode, bool inFilesMode)
+{
+    for (const FilesPanelCtrl& ctrl : kFilesPanelCtrls) {
+        if (ctrl.mode == FilesPanelMode::Both) continue;
+        const bool visible = (ctrl.mode == FilesPanelMode::Docs) ? inDocsMode : inFilesMode;
+        ShowWindow(GetDlgItem(_hSelf, ctrl.id), visible ? SW_SHOW : SW_HIDE);
+    }
+    updateFilterControlsState();
+}
+
+// The Tab color entries in DocScope's choice order; selects the stored mask.
+void MultiReplace::fillTabColorCombo()
+{
+    HWND hCombo = GetDlgItem(_hSelf, IDC_TAB_COLOR_COMBO);
+    if (!hCombo) return;
+
+    SendMessage(hCombo, CB_RESETCONTENT, 0, 0);
+    for (const wchar_t* key : kTabColorChoiceKeys)
+        SendMessage(hCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getW(key)));
+    SendMessage(hCombo, CB_SETCURSEL, static_cast<WPARAM>(DocScope::choiceFromMask(_docsTabColorMask)), 0);
+}
+
+// Tab color entry for the font's text height: swatch square, then the text
+MultiReplace::TabColorItemLayout MultiReplace::tabColorItemLayout(int textHeight)
+{
+    const int swatchLeft = sx(3);
+    const int swatchSide = std::max(6, textHeight * 3 / 4);
+    return { swatchLeft, swatchSide, swatchLeft + swatchSide + sx(5) };
+}
+
+// Widest entry of the current language behind its swatch, plus frame and arrow button
+int MultiReplace::tabColorComboWidth()
+{
+    HDC hdc = GetDC(nullptr);
+    if (!hdc) return 0;
+    const HGDIOBJ oldFont = SelectObject(hdc, font(FontRole::Normal1));
+
+    TEXTMETRICW tm{};
+    GetTextMetricsW(hdc, &tm);
+    int textWidth = 0;
+    for (const wchar_t* key : kTabColorChoiceKeys) {
+        const std::wstring text = LM.get(key);
+        SIZE size{};
+        GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.size()), &size);
+        textWidth = std::max(textWidth, static_cast<int>(size.cx));
+    }
+    SelectObject(hdc, oldFont);
+    ReleaseDC(nullptr, hdc);
+
+    const int arrowWidth = dpiMgr->getCustomMetricOrFallback(SM_CXVSCROLL, static_cast<UINT>(dpiMgr->getDPIX()), sx(17));
+    return tabColorItemLayout(tm.tmHeight).textLeft + textWidth + sx(8) + arrowWidth;
+}
+
+// Owner-drawn rows ignore WM_SETFONT: take field and row height from the Filter field
+void MultiReplace::syncTabColorComboHeights()
+{
+    HWND hFilter = GetDlgItem(_hSelf, IDC_FILTER_EDIT);
+    HWND hCombo = GetDlgItem(_hSelf, IDC_TAB_COLOR_COMBO);
+    if (!hFilter || !hCombo) return;
+
+    for (const WPARAM part : { static_cast<WPARAM>(-1), WPARAM{ 0 } }) {  // selection field, list rows
+        const LRESULT height = SendMessage(hFilter, CB_GETITEMHEIGHT, part, 0);
+        if (height > 0) SendMessage(hCombo, CB_SETITEMHEIGHT, part, height);
+    }
+}
+
+// The list shows Notepad++'s swatch before each color, like its Apply Color to Tab menu.
+// The closed field shows the name only: in dark mode Notepad++ paints that field itself.
+void MultiReplace::drawTabColorItem(const DRAWITEMSTRUCT& dis)
+{
+    const int choice = static_cast<int>(dis.itemID);  // -1 while the list is empty
+    if (choice < 0) return;
+    const LRESULT length = SendMessage(dis.hwndItem, CB_GETLBTEXTLEN, dis.itemID, 0);
+    if (length == CB_ERR) return;
+
+    std::wstring text(static_cast<size_t>(length) + 1, L'\0');
+    SendMessage(dis.hwndItem, CB_GETLBTEXT, dis.itemID, reinterpret_cast<LPARAM>(text.data()));
+    text.resize(static_cast<size_t>(length));
+
+    // The list draws every row into the same DC: keep its colors (WM_CTLCOLORLISTBOX) for the next row
+    const int savedDC = SaveDC(dis.hDC);
+    const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    const bool inField = (dis.itemState & ODS_COMBOBOXEDIT) != 0;
+    // A focused field is highlighted in light mode; in dark mode Notepad++ gives it a focus frame
+    const bool highlight = (dis.itemState & ODS_SELECTED) != 0 && !(inField && isDark);
+    COLORREF textColor = GetTextColor(dis.hDC);
+    if (highlight) {
+        FillRect(dis.hDC, &dis.rcItem, GetSysColorBrush(COLOR_HIGHLIGHT));
+        textColor = GetSysColor(COLOR_HIGHLIGHTTEXT);
+    }
+    else if (!inField) {
+        SetDCBrushColor(dis.hDC, GetBkColor(dis.hDC));
+        FillRect(dis.hDC, &dis.rcItem, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
+    }
+    if (dis.itemState & ODS_DISABLED) textColor = _disabledColor;
+
+    RECT textRect = dis.rcItem;
+    if (inField) {
+        textRect.left += sx(2);
+    }
+    else {
+        TEXTMETRICW tm{};
+        GetTextMetricsW(dis.hDC, &tm);
+        const TabColorItemLayout layout = tabColorItemLayout(tm.tmHeight);
+        const int colorId = DocScope::colorFromChoice(choice);
+        if (colorId >= 0) {
+            const int left = dis.rcItem.left + layout.swatchLeft;
+            const int top = dis.rcItem.top + (dis.rcItem.bottom - dis.rcItem.top - layout.swatchSide) / 2;
+            RECT swatch = { left, top, left + layout.swatchSide, top + layout.swatchSide };
+
+            // Black frame around the color, as on the Notepad++ menu icon
+            SetDCBrushColor(dis.hDC, RGB(0, 0, 0));
+            FillRect(dis.hDC, &swatch, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
+            InflateRect(&swatch, -1, -1);
+            SetDCBrushColor(dis.hDC, NppStyleKit::ColorTools::tabColorSwatch(colorId, isDark));
+            FillRect(dis.hDC, &swatch, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
+        }
+        textRect.left += layout.textLeft;
+    }
+
+    SetBkMode(dis.hDC, TRANSPARENT);
+    SetTextColor(dis.hDC, textColor);
+    DrawTextW(dis.hDC, text.c_str(), static_cast<int>(text.size()), &textRect,
+        DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX | DT_END_ELLIPSIS);
+    if (inField && isDark && (dis.itemState & ODS_FOCUS))
+        DrawFocusRect(dis.hDC, &dis.rcItem);
+    RestoreDC(dis.hDC, savedDC);
+}
+
+// Notepad++ reports tab colors to plugins from 8.6.8 on; asked once.
+bool MultiReplace::tabColorsSupported()
+{
+    static const bool supported = [] {
+        const LRESULT version = ::SendMessage(nppData._nppHandle, NPPM_GETNPPVERSION, TRUE, 0);
+        return DocScope::tabColorsAvailable(HIWORD(version), LOWORD(version));
+    }();
+    return supported;
 }
 
 // Discard stale mouse/command messages after a synchronous UI-blocking
@@ -1297,15 +1466,6 @@ void MultiReplace::drainMessageQueue()
 
 void MultiReplace::updateFilesPanel()
 {
-    // All controls inside the "Replace/Find in Files" panel
-    static const std::vector<int> repInFilesIds = {
-        IDC_FILE_OPS_GROUP,
-        IDC_FILTER_STATIC,  IDC_FILTER_EDIT,  IDC_FILTER_HELP,
-        IDC_DIR_STATIC,     IDC_DIR_EDIT,     IDC_BROWSE_DIR_BUTTON,
-        IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-        IDC_CANCEL_REPLACE_BUTTON, IDC_ALL_DOCS_CHECKBOX
-    };
-
     // Persisted UI state to avoid unnecessary work
     static bool lastShow = false;
     static bool lastInDocsMode = false;
@@ -1354,8 +1514,8 @@ void MultiReplace::updateFilesPanel()
     {
 
         // Toggle visibility of all panel controls
-        for (int id : repInFilesIds) {
-            ShowWindow(GetDlgItem(_hSelf, id), show ? SW_SHOW : SW_HIDE);
+        for (const FilesPanelCtrl& ctrl : kFilesPanelCtrls) {
+            ShowWindow(GetDlgItem(_hSelf, ctrl.id), show ? SW_SHOW : SW_HIDE);
         }
 
         // Layout after visibility change
@@ -1379,38 +1539,9 @@ void MultiReplace::updateFilesPanel()
         if (show) {
             EnableWindow(GetDlgItem(_hSelf, IDC_CANCEL_REPLACE_BUTTON), FALSE);
 
-            if (inDocsMode != lastInDocsMode) {
-                if (inDocsMode) {
-                    _filesFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-                    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _docsFilter);
-                }
-                else {
-                    _docsFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-                    setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _filesFilter);
-                }
-            }
-
-            // Mode-specific control visibility within the panel.
-            // Both modes share: GroupBox, Filter label, Filter edit, Filter help, Cancel.
-            // Files mode adds:  Dir label, Dir edit, Browse, Subfolders, Hidden.
-            // Docs mode  adds:  "All documents" checkbox.
-            const int filesOnlyIds[] = {
-                IDC_DIR_STATIC, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON,
-                IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-                IDC_CANCEL_REPLACE_BUTTON
-            };
-            for (int id : filesOnlyIds)
-                ShowWindow(GetDlgItem(_hSelf, id), inFilesMode ? SW_SHOW : SW_HIDE);
-            ShowWindow(GetDlgItem(_hSelf, IDC_ALL_DOCS_CHECKBOX), inDocsMode ? SW_SHOW : SW_HIDE);
-
-            // In docs mode: apply "All documents" checkbox state to filter enable/disable
-            if (inDocsMode)
-                updateAllDocsCheckboxState();
-            else {
-                // Files mode: filter is always enabled (no "All documents" checkbox)
-                EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_EDIT), TRUE);
-                EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), TRUE);
-            }
+            if (inDocsMode != lastInDocsMode)
+                swapFilterText(inDocsMode);
+            showFilesPanelMode(inDocsMode, inFilesMode);
 
             // Showing: repaint panel (title + frame + children) safely
             repaintPanelContents(hGrp, titleText);
@@ -1460,33 +1591,8 @@ void MultiReplace::updateFilesPanel()
 
     if (modeChanged)
     {
-        // Swap filter text: save current edit to outgoing mode, load incoming mode
-        if (inDocsMode) {
-            _filesFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-            setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _docsFilter);
-        }
-        else {
-            _docsFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-            setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, _filesFilter);
-        }
-
-        // Switch controls between Files mode and Docs mode
-        const int filesOnlyIds[] = {
-            IDC_DIR_STATIC, IDC_DIR_EDIT, IDC_BROWSE_DIR_BUTTON,
-            IDC_SUBFOLDERS_CHECKBOX, IDC_HIDDENFILES_CHECKBOX,
-            IDC_CANCEL_REPLACE_BUTTON
-        };
-        for (int id : filesOnlyIds)
-            ShowWindow(GetDlgItem(_hSelf, id), inFilesMode ? SW_SHOW : SW_HIDE);
-        ShowWindow(GetDlgItem(_hSelf, IDC_ALL_DOCS_CHECKBOX), inDocsMode ? SW_SHOW : SW_HIDE);
-
-        if (inDocsMode)
-            updateAllDocsCheckboxState();
-        else {
-            EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_EDIT), TRUE);
-            EnableWindow(GetDlgItem(_hSelf, IDC_FILTER_STATIC), TRUE);
-        }
-
+        swapFilterText(inDocsMode);
+        showFilesPanelMode(inDocsMode, inFilesMode);
         onSelectionChanged();
         lastInDocsMode = inDocsMode;
     }
@@ -1773,6 +1879,9 @@ void MultiReplace::refreshUILanguage()
                 SWP_NOZORDER | SWP_NOACTIVATE);
         }
     }
+
+    // The tab color entries are list items, not window texts
+    _MultiReplace.fillTabColorCombo();
 
     // The ctrlMap loop above resets split-button labels to their defaults
     // ("Find All" / "Replace All").  Re-apply the correct texts for the
@@ -2812,7 +2921,22 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     std::vector<ReplaceItemData> itemsToAdd = { itemData };
     itemsToAdd[0].isDirty = true;
     itemsToAdd[0].lastModified = getCurrentTimestamp();
-    addItemsToReplaceList(itemsToAdd, 0);  // 0 = insert at top
+    // The list order is the processing order: new entries go last unless the user wants them first
+    const size_t newItemIndex = newEntriesAtTop ? 0 : replaceListData.size();
+
+    // Without scrolling, an insert at the top carries selection and view one row down with the entries
+    const bool shiftRows = !scrollToNewEntries && newItemIndex == 0;
+    std::vector<int> selectedRows;
+    int focusedRow = -1;
+    if (shiftRows) {
+        focusedRow = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
+        for (int row = ListView_GetNextItem(_replaceListView, -1, LVNI_SELECTED); row != -1;
+            row = ListView_GetNextItem(_replaceListView, row, LVNI_SELECTED)) {
+            selectedRows.push_back(row);
+        }
+    }
+
+    addItemsToReplaceList(itemsToAdd, newItemIndex);
 
     // Show a status message indicating the value added to the list
     std::wstring message;
@@ -2827,11 +2951,25 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);
 
-    // Select newly added line (now at the top)
-    size_t newItemIndex = 0;
-    ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Delete previous selection
-    ListView_SetItemState(_replaceListView, static_cast<int>(newItemIndex), LVIS_SELECTED, LVIS_SELECTED);
-    ListView_EnsureVisible(_replaceListView, static_cast<int>(newItemIndex), FALSE);
+    if (scrollToNewEntries) {
+        // Select and focus the new entry, so a following paste or Add lands below it
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED); // Delete previous selection
+        ListView_SetItemState(_replaceListView, static_cast<int>(newItemIndex), LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_EnsureVisible(_replaceListView, static_cast<int>(newItemIndex), FALSE);
+    }
+    else if (shiftRows) {
+        ListView_SetItemState(_replaceListView, -1, 0, LVIS_SELECTED | LVIS_FOCUSED);
+        for (int row : selectedRows) {
+            ListView_SetItemState(_replaceListView, row + 1, LVIS_SELECTED, LVIS_SELECTED);
+        }
+        if (focusedRow != -1) {
+            ListView_SetItemState(_replaceListView, focusedRow + 1, LVIS_FOCUSED, LVIS_FOCUSED);
+        }
+        RECT rowRect{};
+        if (ListView_GetItemRect(_replaceListView, 0, &rowRect, LVIR_BOUNDS)) {
+            ListView_Scroll(_replaceListView, 0, rowRect.bottom - rowRect.top);
+        }
+    }
 
     // Update Header if there might be any changes
     updateHeaderSelection();
@@ -5478,6 +5616,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         checkForFileChangesAtStartup();
 
+        // The panel has its final bounds now
+        ensureTabVisible(_activeTabIndex);
+
         // Auto-restore tandem mode from INI. Deferred to WM_POST_INIT
         // so the panel has its final bounds by the time the solver
         // runs. Only sync the menu checkmark when state actually changed.
@@ -5852,13 +5993,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 markAllTabsNeedRelayout();
             }
 
-            // Move all Elements (also reanchors the New-List "+" via
-            // repositionNewTabButton at the end of the move pass).
+            // Move all Elements (also lays out the tab row via
+            // layoutTabStrip at the end of the move pass).
             moveAndResizeControls(false);
-
-            // Per-tab tooltip tools use absolute tab rects that change
-            // on resize; refresh them so hover still hits the right tab.
-            updateTabTooltip(_activeTabIndex);
 
             // Targeted refresh: invalidate without erase for controls,
             // but erase the gripper corner to prevent artifacts
@@ -5931,21 +6068,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 if (idx < 0) return TRUE;  // click on empty area
 
                 showTabContextMenu(idx, pt.x, pt.y);
-                return TRUE;
-            }
-            if (pnmh->code == NM_DBLCLK) {
-                HWND hTab = pnmh->hwndFrom;
-                POINT pt;
-                GetCursorPos(&pt);
-                POINT client = pt;
-                ScreenToClient(hTab, &client);
-
-                TCHITTESTINFO hti = {};
-                hti.pt = client;
-                int idx = TabCtrl_HitTest(hTab, &hti);
-                if (idx >= 0) {
-                    beginInlineTabRename(idx);
-                }
                 return TRUE;
             }
         }
@@ -6399,7 +6521,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     case WM_DRAWITEM:
     {
         DRAWITEMSTRUCT* pdis = (DRAWITEMSTRUCT*)lParam;
-        const bool disabled = (pdis->itemState & ODS_DISABLED) != 0;
+        // comctl32 6 flags owner-drawn statics ODS_DISABLED even while enabled
+        const bool disabled = !IsWindowEnabled(pdis->hwndItem);
 
         if (pdis->CtlID == IDC_STATUS_MESSAGE) {
             // Read the full text. A fixed buffer would cut mid-word, without an
@@ -6420,31 +6543,20 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             return TRUE;
         }
-        else if (pdis->CtlID == IDC_FILTER_HELP) {
-
+        else if (pdis->CtlID == IDC_FILTER_HELP || pdis->CtlID == IDC_FORMULA_SUPPORT_ENGINE) {
+            // Help and engine markers, colored like Notepad++'s (?) markers
             wchar_t buffer[16];
             GetWindowTextW(pdis->hwndItem, buffer, 16);
 
-            SetTextColor(pdis->hDC, disabled ? _disabledColor : _filterHelpColor);
+            SetTextColor(pdis->hDC, disabled ? _disabledColor : _linkColor);
             SetBkMode(pdis->hDC, TRANSPARENT);
 
             DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
             return TRUE;
         }
-        else if (pdis->CtlID == IDC_FORMULA_SUPPORT_ENGINE) {
-            // Engine selector renders as a small clickable marker in
-            // link blue. Colour comes from applyThemePalette() so it
-            // stays in sync with theme changes.
-            wchar_t buffer[16];
-            GetWindowTextW(pdis->hwndItem, buffer, 16);
-
-            SetTextColor(pdis->hDC, disabled ? _disabledColor : _engineLinkColor);
-            SetBkMode(pdis->hDC, TRANSPARENT);
-
-            DrawTextW(pdis->hDC, buffer, -1, &pdis->rcItem,
-                DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
+        else if (pdis->CtlID == IDC_TAB_COLOR_COMBO) {
+            drawTabColorItem(*pdis);
             return TRUE;
         }
         else if (pdis->CtlID == IDC_TAB_LIST_DROPDOWN) {
@@ -6502,14 +6614,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // crisp pixels, full foreground contrast - matches the
             // weight of "+" and the dropdown glyph rather than the
             // thin grey ellipsis a font draws.
+            // No fill: the panel background shows through, as behind "+".
             const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-
-            // Match an inactive tab body so the indicator reads as
-            // part of the tab strip, not the dialog background.
-            const COLORREF tabBg = isDark ? RGB(45, 45, 45) : RGB(240, 240, 240);
-            HBRUSH hBg = CreateSolidBrush(tabBg);
-            FillRect(pdis->hDC, &pdis->rcItem, hBg);
-            DeleteObject(hBg);
 
             // Same contrast as "+" so they read with equal weight.
             const COLORREF fg = disabled ? _disabledColor : (isDark ? RGB(220, 220, 220) : RGB(60, 60, 60));
@@ -6571,13 +6677,6 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             return TRUE;
         }
         return FALSE;
-    }
-
-    case WM_CTLCOLORDLG:
-    {
-        // Store the handle to the brush that the dialog will use to paint its background
-        _hDlgBrush = reinterpret_cast<HBRUSH>(wParam);
-        return (INT_PTR)_hDlgBrush;
     }
 
     case WM_COMMAND:
@@ -6692,7 +6791,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_ALL_DOCS_CHECKBOX:
         {
             if (HIWORD(wParam) == BN_CLICKED)
-                updateAllDocsCheckboxState();
+                updateFilterControlsState();
+            return TRUE;
+        }
+
+        case IDC_TAB_COLOR_COMBO:
+        {
+            if (HIWORD(wParam) == CBN_SELCHANGE) {
+                const LRESULT choice = SendDlgItemMessage(_hSelf, IDC_TAB_COLOR_COMBO, CB_GETCURSEL, 0, 0);
+                _docsTabColorMask = DocScope::maskFromChoice(static_cast<int>(choice));
+            }
             return TRUE;
         }
 
@@ -7588,9 +7696,20 @@ void MultiReplace::replaceAllInOpenedDocs()
     // CSV config (no-op if column mode is off)
     if (!validateDelimiterData()) return;
 
+    const DocScope::Plan scope = planOpenDocsRun();
+    if (scope.tabs.empty()) {
+        MessageBox(_hSelf, LM.getW(L"msgbox_no_docs"), LM.getW(L"msgbox_title_confirm"), MB_OK);
+        return;
+    }
+
+    // A limited scope names how many documents the run will change
+    const std::wstring question = (scope.excluded() > 0)
+        ? LM.get(L"msgbox_confirm_replace_docs",
+            { StringUtils::formatNumber(scope.tabs.size()), StringUtils::formatNumber(scope.total) })
+        : LM.get(L"msgbox_confirm_replace_all");
     if (MessageBox(
         nppData._nppHandle,
-        LM.get(L"msgbox_confirm_replace_all").c_str(),
+        question.c_str(),
         LM.get(L"msgbox_title_confirm").c_str(),
         MB_ICONWARNING | MB_OKCANCEL
     ) != IDOK)
@@ -7604,47 +7723,16 @@ void MultiReplace::replaceAllInOpenedDocs()
     std::vector<int> listReplaceTotals(replaceListData.size(), 0);
     int grandTotalReplace = 0;
 
-    // How many docs are open in each view? The only place in this function
-    // that takes PRIMARY_VIEW/SECOND_VIEW, not MAIN_VIEW/SUB_VIEW (tests/replace_safety_qa.cpp).
-    LRESULT docCountMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
-    LRESULT docCountSecondary = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
-
-    bool visibleMain = IsWindowVisible(nppData._scintillaMainHandle);
-    bool visibleSecond = IsWindowVisible(nppData._scintillaSecondHandle);
-
     // The run switches tabs itself: the editor returns to its documents on exit
     DocCycleGuard cycle;
     const bool columnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
 
-    // Read document filter: when "All documents" is unchecked in the
-    // Open Documents panel, skip files that don't match the filter.
-    // An empty filter is treated as *.* (match all) - same as "in Files".
-    const bool filterDocs = (isReplaceAllInDocs || isFindAllInDocs)
-        && (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
-    std::wstring docFilter;
-    if (filterDocs) {
-        docFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-        if (docFilter.empty()) docFilter = L"*.*";
-    }
-
-    // Summary counters: filtered-out docs are reported, never silently dropped.
+    // Summary counter; the documents the scope excludes are reported, never silently dropped.
     size_t docsSearched = 0;
-    size_t docsFilteredOut = 0;
 
     // Local lambda to process one document
     auto processOneDoc = [&](int view, LRESULT idx) -> bool {
         ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, view, idx);
-
-        // Apply document filter (skip non-matching files)
-        if (filterDocs) {
-            wchar_t fnBuf[MAX_PATH]{};
-            ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
-                reinterpret_cast<LPARAM>(fnBuf));
-            if (!matchesDocFilter(fnBuf, docFilter)) {
-                ++docsFilteredOut;
-                return true;  // skip this doc, continue with next
-            }
-        }
         ++docsSearched;
 
         bindToView(view);  // rebind _hScintilla to the activated view
@@ -7667,17 +7755,8 @@ void MultiReplace::replaceAllInOpenedDocs()
         return true;
         };
 
-    // Iterate main view
-    if (visibleMain) {
-        for (LRESULT i = 0; i < docCountMain; ++i) {
-            if (!processOneDoc(MAIN_VIEW, i)) break;
-        }
-    }
-    // Iterate secondary view
-    if (visibleSecond) {
-        for (LRESULT i = 0; i < docCountSecondary; ++i) {
-            if (!processOneDoc(SUB_VIEW, i)) break;
-        }
+    for (const DocScope::Tab& tab : scope.tabs) {
+        if (!processOneDoc(tab.view, tab.index)) break;   // aborted via Stop/Error
     }
 
     discardDelimiterSnapshot();
@@ -7690,13 +7769,13 @@ void MultiReplace::replaceAllInOpenedDocs()
     }
     refreshUIListView();
 
-    // Show summary: total replacements across all documents. When the doc
-    // filter excluded documents, append how many were searched vs. excluded.
+    // Show summary: total replacements across all documents. When the
+    // scope excluded documents, append how many were searched vs. excluded.
     std::wstring docsSummary = LM.get(L"status_replace_in_docs_summary",
         { StringUtils::formatNumber(grandTotalReplace) });
-    if (docsFilteredOut > 0)
+    if (scope.excluded() > 0)
         docsSummary += LM.get(L"status_docs_filtered",
-            { StringUtils::formatNumber(docsSearched), StringUtils::formatNumber(docsFilteredOut) });
+            { StringUtils::formatNumber(docsSearched), StringUtils::formatNumber(scope.excluded()) });
     showStatusMessage(docsSummary, MessageStatus::Success);
 }
 
@@ -9409,6 +9488,49 @@ static std::wstring openDocPathKey(std::wstring s) {
     return s;
 }
 
+// Full path of a Notepad++ buffer, the tab name for an unsaved one; empty if unknown.
+static std::wstring bufferFullPath(LRESULT bufId) {
+    if (bufId == 0) return {};
+    // NPPM_GETFULLPATHFROMBUFFERID has no size parameter and copies
+    // unchecked - query the length first, then size the buffer exactly.
+    const LRESULT pathLen = ::SendMessage(nppData._nppHandle, NPPM_GETFULLPATHFROMBUFFERID, bufId, 0);
+    if (pathLen <= 0) return {};
+    std::wstring path(static_cast<size_t>(pathLen) + 1, L'\0');
+    if (::SendMessage(nppData._nppHandle, NPPM_GETFULLPATHFROMBUFFERID,
+        bufId, reinterpret_cast<LPARAM>(path.data())) <= 0) return {};
+    path.resize(wcslen(path.c_str()));
+    return path;
+}
+
+// The tabs a Find/Replace in Open Documents run visits: those of the visible views (a hidden
+// view cannot be activated), limited by Filter and Tab color while "All documents" is off.
+// Decided before the run, so the run activates only the tabs it searches.
+DocScope::Plan MultiReplace::planOpenDocsRun() const
+{
+    const bool limited = (isReplaceAllInDocs || isFindAllInDocs)
+        && (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
+    const std::wstring filter = limited ? getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT) : std::wstring();
+    const unsigned colors = (limited && tabColorsSupported()) ? _docsTabColorMask : 0;
+
+    std::vector<int> views;
+    if (IsWindowVisible(nppData._scintillaMainHandle)) views.push_back(MAIN_VIEW);
+    if (IsWindowVisible(nppData._scintillaSecondHandle)) views.push_back(SUB_VIEW);
+
+    // NPPM_GETNBOPENFILES counts by PRIMARY_VIEW/SECOND_VIEW, the tab messages take MAIN_VIEW/SUB_VIEW
+    auto tabCount = [](int view) {
+        return ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, (view == MAIN_VIEW) ? PRIMARY_VIEW : SECOND_VIEW);
+    };
+    auto inScope = [&](int view, std::ptrdiff_t index) {
+        if (!limited) return true;
+        if (colors != 0 && !DocScope::colorMatches(colors,
+            static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETTABCOLORID, view, index))))
+            return false;
+        const LRESULT bufId = ::SendMessage(nppData._nppHandle, NPPM_GETBUFFERIDFROMPOS, index, view);
+        return matchesDocFilter(PathFindFileNameW(bufferFullPath(bufId).c_str()), filter);
+    };
+    return DocScope::plan(views, tabCount, inScope);
+}
+
 static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
     const std::vector<std::filesystem::path>& files, OpenDocProbe probe)
 {
@@ -9437,16 +9559,7 @@ static std::unordered_map<std::wstring, OpenScanDoc> collectOpenScanDocs(
         for (LRESULT i = 0; i < nb; ++i) {
             const LRESULT bufId = ::SendMessage(nppData._nppHandle, NPPM_GETBUFFERIDFROMPOS, i, docView);
             if (bufId == 0) continue;
-            // NPPM_GETFULLPATHFROMBUFFERID has no size parameter and copies
-            // unchecked - query the length first, then size the buffer exactly.
-            const LRESULT pathLen = ::SendMessage(nppData._nppHandle,
-                NPPM_GETFULLPATHFROMBUFFERID, bufId, 0);
-            if (pathLen <= 0) continue;
-            std::wstring pathBuf(static_cast<size_t>(pathLen) + 1, L'\0');
-            if (::SendMessage(nppData._nppHandle, NPPM_GETFULLPATHFROMBUFFERID,
-                bufId, reinterpret_cast<LPARAM>(pathBuf.data())) <= 0) continue;
-            pathBuf.resize(wcslen(pathBuf.c_str()));
-            std::wstring key = openDocPathKey(std::move(pathBuf));
+            std::wstring key = openDocPathKey(bufferFullPath(bufId));
             if (!key.empty() && scanSet.count(key) != 0 && probeKeys.insert(key).second)
                 toProbe.push_back({ docView, i, bufId, std::move(key) });
         }
@@ -10149,6 +10262,12 @@ void MultiReplace::handleFindAllInDocsButton()
         }
     }
 
+    const DocScope::Plan scope = planOpenDocsRun();
+    if (scope.tabs.empty()) {
+        MessageBox(_hSelf, LM.getW(L"msgbox_no_docs"), LM.getW(L"msgbox_title_confirm"), MB_OK);
+        return;
+    }
+
     ResultDock& dock = ResultDock::instance();
     dock.ensureCreated(nppData);
 
@@ -10284,53 +10403,17 @@ void MultiReplace::handleFindAllInDocsButton()
 
     // The run switches tabs itself: the editor returns to its documents on exit
     DocCycleGuard cycle;
-    const bool mainVis = !!::IsWindowVisible(nppData._scintillaMainHandle);
-    const bool subVis = !!::IsWindowVisible(nppData._scintillaSecondHandle);
-
-    // Document filter - same logic as in replaceAllInOpenedDocs
-    const bool filterDocs = (isReplaceAllInDocs || isFindAllInDocs)
-        && (IsDlgButtonChecked(_hSelf, IDC_ALL_DOCS_CHECKBOX) != BST_CHECKED);
-    std::wstring docFilter;
-    if (filterDocs) {
-        docFilter = getTextFromDialogItem(_hSelf, IDC_FILTER_EDIT);
-        if (docFilter.empty()) docFilter = L"*.*";
-    }
 
     // Header transparency, mirroring the Files path: how many open docs
-    // were searched and how many the doc filter excluded. "Skip binary
+    // were searched and how many the scope excluded. "Skip binary
     // files" deliberately does NOT apply here - open docs are a hand-picked
     // set, and native N++ searches all of them too. A doc cloned into both
     // views counts once per view ("searched" means searched).
     size_t docsSearched = 0;
-    size_t docsFilteredOut = 0;
-
-    if (mainVis) {
-        LRESULT nbMain = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, PRIMARY_VIEW);
-        for (LRESULT i = 0; i < nbMain; ++i) {
-            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, MAIN_VIEW, i);
-            if (filterDocs) {
-                wchar_t fnBuf[MAX_PATH]{};
-                ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
-                    reinterpret_cast<LPARAM>(fnBuf));
-                if (!matchesDocFilter(fnBuf, docFilter)) { ++docsFilteredOut; continue; }
-            }
-            if (!processCurrentBuffer(MAIN_VIEW)) break;
-            ++docsSearched;
-        }
-    }
-    if (subVis) {
-        LRESULT nbSub = ::SendMessage(nppData._nppHandle, NPPM_GETNBOPENFILES, 0, SECOND_VIEW);
-        for (LRESULT i = 0; i < nbSub; ++i) {
-            ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, SUB_VIEW, i);
-            if (filterDocs) {
-                wchar_t fnBuf[MAX_PATH]{};
-                ::SendMessage(nppData._nppHandle, NPPM_GETFILENAME, MAX_PATH,
-                    reinterpret_cast<LPARAM>(fnBuf));
-                if (!matchesDocFilter(fnBuf, docFilter)) { ++docsFilteredOut; continue; }
-            }
-            if (!processCurrentBuffer(SUB_VIEW)) break;
-            ++docsSearched;
-        }
+    for (const DocScope::Tab& tab : scope.tabs) {
+        ::SendMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, tab.view, tab.index);
+        if (!processCurrentBuffer(tab.view)) break;
+        ++docsSearched;
     }
     discardDelimiterSnapshot();
     cycle.restore();
@@ -10351,8 +10434,8 @@ void MultiReplace::handleFindAllInDocsButton()
     {
         // " [7 document(s) searched]" / " [3 document(s) searched, 4 excluded by filter]"
         std::wstring filterClause;
-        if (docsFilteredOut > 0)
-            filterClause = LM.get(L"dock_docs_filtered", { StringUtils::formatNumber(docsFilteredOut) });
+        if (scope.excluded() > 0)
+            filterClause = LM.get(L"dock_docs_filtered", { StringUtils::formatNumber(scope.excluded()) });
         dock.closeSearchBlock(totalHits, static_cast<int>(uniqueFiles.size()),
             LM.get(L"dock_docs_scan_suffix", { StringUtils::formatNumber(docsSearched), filterClause }));
     }
@@ -15142,18 +15225,16 @@ void MultiReplace::applyThemePalette()
         COLOR_SUCCESS = DMODE_SUCCESS;
         COLOR_ERROR = DMODE_ERROR;
         COLOR_INFO = DMODE_INFO;
-        _filterHelpColor = DMODE_FILTER_HELP;
-        _engineLinkColor = DMODE_ENGINE_LINK;
-        _disabledColor = DMODE_DISABLED;
     }
     else {
         COLOR_SUCCESS = LMODE_SUCCESS;
         COLOR_ERROR = LMODE_ERROR;
         COLOR_INFO = LMODE_INFO;
-        _filterHelpColor = LMODE_FILTER_HELP;
-        _engineLinkColor = LMODE_ENGINE_LINK;
-        _disabledColor = LMODE_DISABLED;
     }
+
+    // Markers and disabled owner-drawn controls follow Notepad++'s own dialog colors
+    _linkColor = NppStyleKit::ThemeUtils::linkTextColor(nppData._nppHandle);
+    _disabledColor = NppStyleKit::ThemeUtils::disabledTextColor(nppData._nppHandle);
 
     // Update the active colour based on the last message status
     switch (_lastMessageStatus) {
@@ -15657,7 +15738,7 @@ std::wstring MultiReplace::promptSaveListToCsv(const TabState* tabHint) {
         dlg.defaultPath = tab->name + L".mrl";
     }
     else {
-        dlg.defaultPath = L"Untitled.mrl";
+        dlg.defaultPath = LM.get(L"tab_untitled") + L".mrl";
     }
 
     // Pre-select the filter that matches the current file's extension, so a
@@ -15962,7 +16043,6 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
         }
         catch (...) {}
 
-        updateTabTooltip(_activeTabIndex);
         clearTabDirty(_activeTabIndex);
         rebuildTabControl();
     }
@@ -16036,7 +16116,6 @@ void MultiReplace::saveAllTabs()
             for (auto& item : tab.data) item.isDirty = false;
         }
 
-        updateTabTooltip(static_cast<int>(i));
         clearTabDirty(static_cast<int>(i));
         ++savedCount;
     }
@@ -16370,7 +16449,7 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
         tabName = std::filesystem::path(filePath).stem().wstring();
     }
     catch (...) {}
-    if (tabName.empty()) tabName = L"Untitled";
+    if (tabName.empty()) tabName = LM.get(L"tab_untitled");
     tab->name = tabName;
 
     tab->id = _nextTabId++;
@@ -16652,6 +16731,8 @@ void MultiReplace::loadSettingsToPanelUI() {
     ResultDock::setPurgeEnabled(CFG.readBool(optSec(L"DockPurge"), L"DockPurge", false));
 
     highlightMatchEnabled = CFG.readBool(optSec(L"HighlightMatch"), L"HighlightMatch", true);
+    newEntriesAtTop = CFG.readBool(optSec(L"NewEntriesAtTop"), L"NewEntriesAtTop", false);
+    scrollToNewEntries = CFG.readBool(optSec(L"ScrollToNewEntries"), L"ScrollToNewEntries", true);
     flowTabsIntroDontShowEnabled = CFG.readBool(optSec(L"FlowTabsIntroDontShow"), L"FlowTabsIntroDontShow", false);
     flowTabsNumericAlignEnabled = CFG.readBool(optSec(L"FlowTabsNumericAlign"), L"FlowTabsNumericAlign", true);
 
@@ -16724,6 +16805,11 @@ void MultiReplace::loadSettingsToPanelUI() {
     SendMessage(GetDlgItem(_hSelf, IDC_ALL_DOCS_CHECKBOX), BM_SETCHECK,
         allDocs ? BST_CHECKED : BST_UNCHECKED, 0);
 
+    // Panel-wide, not per list tab; a mask without a dropdown entry falls back to Any
+    _docsTabColorMask = DocScope::maskFromChoice(DocScope::choiceFromMask(
+        static_cast<unsigned>(CFG.readInt(L"OpenDocs", L"TabColorMask", 0))));
+    fillTabColorCombo();
+
     // Set filter edit field to the active mode's value
     const bool docsActive = (isReplaceAllInDocs || isFindAllInDocs);
     setTextInDialogItem(_hSelf, IDC_FILTER_EDIT, docsActive ? _docsFilter : _filesFilter);
@@ -16767,20 +16853,13 @@ void MultiReplace::loadSettingsToPanelUI() {
         // 2. Update toolbar / use-list state
         instance->updateUseListState(false);
 
-        // 2b. Sync toolbar icon button visibility with list state
+        // 2b. Sync toolbar icon button and tab row visibility with list state
         {
-            int showCmd = (instance->useListEnabled || instance->keepListVisible) ? SW_SHOW : SW_HIDE;
-            for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-                IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
-                ShowWindow(GetDlgItem(instance->_hSelf, id), showCmd);
+            const bool listShown = instance->useListEnabled || instance->keepListVisible;
+            for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
+                ShowWindow(GetDlgItem(instance->_hSelf, id), listShown ? SW_SHOW : SW_HIDE);
             }
-            // Tab list dropdown follows the bottom row; final visibility
-            // (overflow only) is decided by repositionNewTabButton.
-            if (showCmd == SW_HIDE) {
-                ShowWindow(GetDlgItem(instance->_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
-                ShowWindow(GetDlgItem(instance->_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
-                ShowWindow(GetDlgItem(instance->_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
-            }
+            instance->setBottomRowVisible(listShown);
         }
 
         // 4. Rebuild ListView columns to reflect visibility changes
@@ -16806,13 +16885,13 @@ void MultiReplace::dropLegacyConfigEntries()
     // [Options], by optSec() routing. Dropping [Options] also clears
     // leftovers an accidental V5 downgrade may have re-pinned.
     static const wchar_t* const legacySections[] = {
-        L"File", L"Current", L"OpenDocs", L"ListColumns", L"Options"
+        L"File", L"Current", L"ListColumns", L"Options"
     };
     for (const wchar_t* sec : legacySections) {
         CFG.eraseSection(sec);
     }
 
-    // Keys moved from [Scope]/[ReplaceInFiles] into per-tab storage;
+    // Keys moved from [Scope]/[ReplaceInFiles]/[OpenDocs] into per-tab storage;
     // those sections stay for their current globals.
     struct LegacyKey { const wchar_t* sec; const wchar_t* key; };
     static const LegacyKey legacyKeys[] = {
@@ -16825,6 +16904,8 @@ void MultiReplace::dropLegacyConfigEntries()
         { L"ReplaceInFiles", L"Directory"        },
         { L"ReplaceInFiles", L"InSubfolders"     },
         { L"ReplaceInFiles", L"InHiddenFolders"  },
+        { L"OpenDocs",       L"Filter"           },
+        { L"OpenDocs",       L"AllDocuments"     },
         { L"General",        L"OpenOnStartup"    },  // superseded by ReopenOnStartup
     };
     for (const auto& e : legacyKeys) {
@@ -16898,7 +16979,7 @@ void MultiReplace::ensurePrimaryTabExists()
         tab->filePath = listFilePath;
     }
     else {
-        tab->name = L"Untitled 1";
+        tab->name = untitledTabName(1);
         tab->filePath.clear();
     }
 
@@ -17072,6 +17153,7 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     CheckDlgButton(_hSelf, IDC_SUBFOLDERS_CHECKBOX, tab.inSubfolders ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_HIDDENFILES_CHECKBOX, tab.inHiddenFolders ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(_hSelf, IDC_ALL_DOCS_CHECKBOX, tab.allDocuments ? BST_CHECKED : BST_UNCHECKED);
+    updateFilterControlsState();
 
     // Column layout - push into globals; ListView rebuild happens in switchToTab
     findCountColumnWidth = tab.findCountWidth;
@@ -17128,6 +17210,8 @@ void MultiReplace::writeTabsToConfig()
         }
     }
 
+    // Rewritten whole, so keys of tabs closed since the last save don't linger
+    CFG.eraseSection(L"Tabs");
     CFG.writeInt(L"Tabs", L"Count", static_cast<int>(_tabs.size()));
     CFG.writeInt(L"Tabs", L"Active", _activeTabIndex);
 
@@ -17292,7 +17376,7 @@ void MultiReplace::loadTabsFromConfig()
         tab->snapshotPath = dir + L"\\" + snapshotName;
 
         if (tab->name.empty()) {
-            tab->name = L"Untitled " + std::to_wstring(i + 1);
+            tab->name = untitledTabName(i + 1);
         }
 
         // Panel settings. Defaults here match TabState's member
@@ -18505,6 +18589,12 @@ void MultiReplace::tandemHandleExitSizeMove()
     }
 }
 
+// "Untitled 3" in the UI language, as Notepad++ names its new documents "new 3"
+std::wstring MultiReplace::untitledTabName(int number)
+{
+    return LM.get(L"tab_untitled") + L" " + std::to_wstring(number);
+}
+
 void MultiReplace::addNewTab()
 {
     // Commit an in-progress list cell edit before we move away.
@@ -18517,21 +18607,16 @@ void MultiReplace::addNewTab()
         captureStateIntoTab(*_tabs[_activeTabIndex]);
     }
 
-    // Build a unique "List N" label.
-    int n = 1;
-    for (;;) {
-        std::wstring candidate = L"Untitled " + std::to_wstring(n);
-        bool taken = false;
-        for (const auto& t : _tabs) {
-            if (t->name == candidate) { taken = true; break; }
-        }
-        if (!taken) break;
-        ++n;
+    // Lowest free number, like Notepad++ numbers its new documents
+    std::wstring name;
+    for (int n = 1; ; ++n) {
+        name = untitledTabName(n);
+        if (std::none_of(_tabs.begin(), _tabs.end(), [&](const auto& t) { return t->name == name; })) break;
     }
 
     auto tab = std::make_unique<TabState>();
     tab->id = _nextTabId++;
-    tab->name = L"Untitled " + std::to_wstring(n);
+    tab->name = name;
 
     // Engine for a freshly created tab follows the user's preference
     // (last deliberate engine selection). It deliberately does NOT
@@ -18643,39 +18728,10 @@ void MultiReplace::moveTab(int fromIdx, int toIdx)
         }
     }
 
-    // In-place label update on the existing tab items. Do NOT delete
-    // and re-insert: that would trigger Win32's auto-scroll behaviour
-    // and reset the scroll position of the strip. Only the labels in
-    // the affected range [min(from,to), max(from,to)] actually changed.
-    const int lo = std::min(fromIdx, toIdx);
-    const int hi = std::max(fromIdx, toIdx);
-    SendMessage(hTab, WM_SETREDRAW, FALSE, 0);
-    for (int i = lo; i <= hi; ++i) {
-        std::wstring label = buildTabLabel(i);
-        TCITEM item = {};
-        item.mask = TCIF_TEXT;
-        item.pszText = const_cast<LPWSTR>(label.c_str());
-        TabCtrl_SetItem(hTab, i, &item);
-    }
-
-    // Re-sync Win32 selection with our model. SetCurSel doesn't scroll
-    // when the target is already visible, so the strip position is
-    // preserved.
+    // Only the labels in [min(from,to), max(from,to)] changed; the
+    // selection follows the active tab, which stays in view while dragged.
     TabCtrl_SetCurSel(hTab, _activeTabIndex);
-
-    SendMessage(hTab, WM_SETREDRAW, TRUE, 0);
-    RedrawWindow(hTab, nullptr, nullptr,
-        RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE);
-
-    // Indicators may need to update (active tab visibility may have
-    // changed clippedLeft/Right). repositionNewTabButton only moves the
-    // ancillary controls; it does not scroll the strip.
-    repositionNewTabButton();
-
-    // Tooltips bind to fixed rects at TTM_ADDTOOL time, so after the
-    // tabs shifted their positions the tooltip-to-tab mapping is
-    // stale. Re-register so each tooltip points to the right tab.
-    updateTabTooltip(_activeTabIndex);
+    refreshTabLabels(std::min(fromIdx, toIdx), std::max(fromIdx, toIdx));
 }
 
 void MultiReplace::showTabContextMenu(int tabIndex, int screenX, int screenY)
@@ -18976,6 +19032,12 @@ void MultiReplace::onTabCloseAll()
     // addNewTab + onTabClose pair, avoiding manual TabState resets.
     if (_tabs.size() != 1) return;
 
+    // An untouched untitled list stays, as Notepad++ keeps an untouched "new 1"
+    const TabState& last = *_tabs[0];
+    const bool emptyList = (_activeTabIndex == 0) ? replaceListData.empty() : last.data.empty();
+    const bool defaultName = last.name.rfind(LM.get(L"tab_untitled") + L" ", 0) == 0;
+    if (last.filePath.empty() && !last.isDirty && emptyList && defaultName) return;
+
     if (checkForUnsavedChanges(0) == IDCANCEL) return;
 
     // Mark the surviving tab as "no unsaved changes" so the subsequent
@@ -19143,7 +19205,6 @@ void MultiReplace::onTabSaveAs(int tabIndex)
         // tab-switch capture doesn't reintroduce stale dirty marks.
         for (auto& item : tab.data)        item.isDirty = false;
         InvalidateRect(_replaceListView, nullptr, TRUE);
-        updateTabTooltip(tabIndex);
     }
     else {
         // Non-active tab: clear per-item dirty markers on the stored
@@ -19339,6 +19400,9 @@ void MultiReplace::beginInlineTabRename(int tabIndex)
     HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
     if (!hTab) return;
 
+    // The edit covers the tab, so all of the tab has to be in view
+    ensureTabVisible(tabIndex);
+
     RECT rc = {};
     if (!TabCtrl_GetItemRect(hTab, tabIndex, &rc)) return;
 
@@ -19376,10 +19440,8 @@ void MultiReplace::beginInlineTabRename(int tabIndex)
     if (hFont) SendMessage(_hTabRenameEdit, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), TRUE);
 
     // Subclass so Enter / Escape / focus-lost end the edit cleanly.
-    SetWindowLongPtr(_hTabRenameEdit, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
-    _prevTabEditProc = reinterpret_cast<WNDPROC>(
-        SetWindowLongPtr(_hTabRenameEdit, GWLP_WNDPROC,
-            reinterpret_cast<LONG_PTR>(&MultiReplace::tabRenameEditProc)));
+    SetWindowSubclass(_hTabRenameEdit, &MultiReplace::tabRenameEditProc, 1,
+        reinterpret_cast<DWORD_PTR>(this));
 
     SendMessage(_hTabRenameEdit, EM_SETSEL, 0, -1);
     SetFocus(_hTabRenameEdit);
@@ -19406,13 +19468,14 @@ void MultiReplace::commitInlineTabRename()
     wchar_t buf[512] = {};
     GetWindowTextW(_hTabRenameEdit, buf, 512);
     std::wstring newName = buf;
+    // A pasted tab or line break would break the label and the dropdown entry
+    std::replace_if(newName.begin(), newName.end(), [](wchar_t c) { return c < L' '; }, L' ');
 
     int idx = _tabRenameIndex;
 
     // Tear down the edit first so focus/paint stays clean.
     DestroyWindow(_hTabRenameEdit);
     _hTabRenameEdit = nullptr;
-    _prevTabEditProc = nullptr;
     _tabRenameIndex = -1;
 
     if (idx < 0 || idx >= static_cast<int>(_tabs.size())) return;
@@ -19422,24 +19485,8 @@ void MultiReplace::commitInlineTabRename()
     // so this only ever updates an untitled tab's draft label.
     if (!newName.empty() && newName != _tabs[idx]->name) {
         _tabs[idx]->name = newName;
-
-        // In-place label update on the existing tab item. Avoid
-        // rebuildTabControl here: a full delete-and-reinsert would
-        // trigger Win32's auto-scroll and shift the strip just as the
-        // user is about to click on another tab.
-        HWND hTab = GetDlgItem(_hSelf, IDC_LIST_TABS);
-        if (hTab) {
-            std::wstring label = buildTabLabel(idx);
-            TCITEM item = {};
-            item.mask = TCIF_TEXT;
-            item.pszText = const_cast<LPWSTR>(label.c_str());
-            TabCtrl_SetItem(hTab, idx, &item);
-
-            // Width may have changed, so re-evaluate "+" / "..." layout.
-            repositionNewTabButton();
-        }
-
-        if (idx == _activeTabIndex) updateTabTooltip(idx);
+        refreshTabLabels(idx, idx);
+        ensureTabVisible(idx);
     }
 }
 
@@ -19455,7 +19502,6 @@ void MultiReplace::cancelInlineTabRename()
 
     DestroyWindow(_hTabRenameEdit);
     _hTabRenameEdit = nullptr;
-    _prevTabEditProc = nullptr;
     _tabRenameIndex = -1;
 }
 
@@ -19536,24 +19582,24 @@ void MultiReplace::renameTabFile(int tabIndex)
         InvalidateRect(_replaceListView, nullptr, TRUE);
     }
 
-    updateTabTooltip(tabIndex);
     clearTabDirty(tabIndex);
     rebuildTabControl();
 }
 
-LRESULT CALLBACK MultiReplace::tabRenameEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+LRESULT CALLBACK MultiReplace::tabRenameEditProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+    UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
-    MultiReplace* self = reinterpret_cast<MultiReplace*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-    WNDPROC prev = self ? self->_prevTabEditProc : nullptr;
+    MultiReplace* self = reinterpret_cast<MultiReplace*>(dwRefData);
+    if (!self) return DefSubclassProc(hwnd, msg, wp, lp);
 
     switch (msg) {
     case WM_KEYDOWN:
         if (wp == VK_RETURN) {
-            if (self) PostMessage(self->_hSelf, WM_TAB_RENAME_COMMIT, 0, 0);
+            PostMessage(self->_hSelf, WM_TAB_RENAME_COMMIT, 0, 0);
             return 0;
         }
         if (wp == VK_ESCAPE) {
-            if (self) PostMessage(self->_hSelf, WM_TAB_RENAME_CANCEL, 0, 0);
+            PostMessage(self->_hSelf, WM_TAB_RENAME_CANCEL, 0, 0);
             return 0;
         }
         break;
@@ -19563,37 +19609,36 @@ LRESULT CALLBACK MultiReplace::tabRenameEditProc(HWND hwnd, UINT msg, WPARAM wp,
         // runs after the current message dispatch unwinds, otherwise
         // the edit would be destroyed inside its own WM_KILLFOCUS and
         // Windows leaves repaint state inconsistent.
-        if (self) PostMessage(self->_hSelf, WM_TAB_RENAME_COMMIT, 0, 0);
-        break;  // still let DefWindowProc handle the focus change
+        PostMessage(self->_hSelf, WM_TAB_RENAME_COMMIT, 0, 0);
+        break;  // still let the edit handle the focus change
 
-    case WM_GETDLGCODE: {
+    case WM_GETDLGCODE:
         // Ask for Enter and Escape on top of whatever the default edit
         // control wants. Returning only DLGC_WANTALLKEYS would strip
         // useful defaults like arrow-key handling.
-        LRESULT def = prev ? CallWindowProc(prev, hwnd, msg, wp, lp)
-            : DefWindowProc(hwnd, msg, wp, lp);
-        return def | DLGC_WANTALLKEYS | DLGC_WANTCHARS;
-    }
+        return DefSubclassProc(hwnd, msg, wp, lp) | DLGC_WANTALLKEYS | DLGC_WANTCHARS;
+
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, &MultiReplace::tabRenameEditProc, uIdSubclass);
+        break;
     }
 
-    return prev ? CallWindowProc(prev, hwnd, msg, wp, lp)
-        : DefWindowProc(hwnd, msg, wp, lp);
+    return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
 LRESULT CALLBACK MultiReplace::tabControlSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-    UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData)
+    UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
 {
     MultiReplace* self = reinterpret_cast<MultiReplace*>(dwRefData);
     if (!self) return DefSubclassProc(hwnd, msg, wp, lp);
 
     switch (msg) {
     case WM_LBUTTONDBLCLK: {
-        POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
         TCHITTESTINFO hti = {};
-        hti.pt = pt;
-        int idx = TabCtrl_HitTest(hwnd, &hti);
-        if (idx >= 0) {
-            self->beginInlineTabRename(idx);
+        hti.pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        if (TabCtrl_HitTest(hwnd, &hti) >= 0) {
+            // The first click activated the tab meant, even if showing it moved the strip
+            self->beginInlineTabRename(self->_activeTabIndex);
             return 0;
         }
         break;
@@ -19606,27 +19651,24 @@ LRESULT CALLBACK MultiReplace::tabControlSubclassProc(HWND hwnd, UINT msg, WPARA
             self->commitInlineTabRename();
         }
 
-        POINT pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
         TCHITTESTINFO hti = {};
-        hti.pt = pt;
-        int idx = TabCtrl_HitTest(hwnd, &hti);
-        if (idx >= 0) {
+        hti.pt = { GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
+        const int idx = TabCtrl_HitTest(hwnd, &hti);
+        const int firstBefore = self->_tabFirstVisible;
+
+        // The default handling selects the tab and sends TCN_SELCHANGE; a cut tab then shows completely
+        const LRESULT result = DefSubclassProc(hwnd, msg, wp, lp);
+        if (idx < 0) return result;
+        self->ensureTabVisible(idx);
+
+        // Showing the tab moved the strip away from the cursor, so this press starts no drag
+        if (self->_tabFirstVisible == firstBefore) {
             self->_tabDragSourceIdx = idx;
-            self->_tabDragStartPt = pt;
+            self->_tabDragStartPt = hti.pt;
             self->_tabDragActive = false;   // becomes true after threshold
             SetCapture(hwnd);
-
-            // Win32's default tab-control occasionally swallows
-            // TCN_SELCHANGE for the rightmost tab when it sits close
-            // to the client edge - the click registers but the
-            // selection never advances. Drive the switch ourselves so
-            // the click is honoured regardless of internal quirks.
-            if (idx != TabCtrl_GetCurSel(hwnd)) {
-                TabCtrl_SetCurSel(hwnd, idx);
-                self->switchToTab(idx);
-            }
         }
-        break;  // let default proc also process the click
+        return result;
     }
 
     case WM_MOUSEMOVE: {
@@ -19705,6 +19747,10 @@ LRESULT CALLBACK MultiReplace::tabControlSubclassProc(HWND hwnd, UINT msg, WPARA
         }
         break;
     }
+
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, &MultiReplace::tabControlSubclassProc, uIdSubclass);
+        break;
     }
 
     return DefSubclassProc(hwnd, msg, wp, lp);
@@ -19782,6 +19828,9 @@ void MultiReplace::loadUIConfigFromIni()
             // We pass 'true' to override the static filter.
             moveAndResizeControls(true);
         }
+
+        // Tab padding is scaled too; the panel has its new size now
+        rebuildTabControl();
     }
 
     int savedLeft = CFG.readInt(L"Window", L"PosX", CENTER_ON_NPP);
@@ -19900,6 +19949,8 @@ const wchar_t* MultiReplace::optSec(const std::wstring& key)
         { L"HoverText",                L"ListView" },
         { L"HighlightMatch",           L"ListView" },
         { L"KeepListVisible",          L"ListView" },
+        { L"NewEntriesAtTop",          L"ListView" },
+        { L"ScrollToNewEntries",       L"ListView" },
         { L"EditFieldSize",            L"ListView" },
         { L"UseList",                  L"ListView" },
         { L"DimIntensity",             L"ListView" },
@@ -19937,6 +19988,8 @@ MultiReplace::Settings MultiReplace::getSettings()
     s.groupResultsEnabled = CFG.readBool(optSec(L"GroupResults"), L"GroupResults", false);
     s.allFromCursorEnabled = CFG.readBool(optSec(L"AllFromCursor"), L"AllFromCursor", false);
     s.keepListVisible = CFG.readBool(optSec(L"KeepListVisible"), L"KeepListVisible", false);
+    s.newEntriesAtTop = CFG.readBool(optSec(L"NewEntriesAtTop"), L"NewEntriesAtTop", false);
+    s.scrollToNewEntries = CFG.readBool(optSec(L"ScrollToNewEntries"), L"ScrollToNewEntries", true);
     s.listDimIntensity = CFG.readInt(optSec(L"DimIntensity"), L"DimIntensity", 50);
     s.tabMaxLength = std::clamp(CFG.readInt(optSec(L"TabMaxLength"), L"TabMaxLength", 15), 4, 60);
     s.limitFileSizeEnabled = CFG.readBool(L"ReplaceInFiles", L"LimitFileSize", false);
@@ -19967,6 +20020,8 @@ void MultiReplace::writeStructToConfig(const Settings& s)
     CFG.writeBool(optSec(L"GroupResults"), L"GroupResults", s.groupResultsEnabled);
     CFG.writeBool(optSec(L"AllFromCursor"), L"AllFromCursor", s.allFromCursorEnabled);
     CFG.writeBool(optSec(L"KeepListVisible"), L"KeepListVisible", s.keepListVisible);
+    CFG.writeBool(optSec(L"NewEntriesAtTop"), L"NewEntriesAtTop", s.newEntriesAtTop);
+    CFG.writeBool(optSec(L"ScrollToNewEntries"), L"ScrollToNewEntries", s.scrollToNewEntries);
     CFG.writeInt(optSec(L"DimIntensity"), L"DimIntensity", s.listDimIntensity);
     CFG.writeInt(optSec(L"TabMaxLength"), L"TabMaxLength", s.tabMaxLength);
     CFG.writeBool(L"ReplaceInFiles", L"LimitFileSize", s.limitFileSizeEnabled);
@@ -20116,6 +20171,8 @@ void MultiReplace::syncUIToCache()
     CFG.writeBool(optSec(L"AllFromCursor"), L"AllFromCursor", allFromCursorEnabled);
     CFG.writeBool(optSec(L"GroupResults"), L"GroupResults", groupResultsEnabled);
     CFG.writeBool(optSec(L"KeepListVisible"), L"KeepListVisible", keepListVisible);
+    CFG.writeBool(optSec(L"NewEntriesAtTop"), L"NewEntriesAtTop", newEntriesAtTop);
+    CFG.writeBool(optSec(L"ScrollToNewEntries"), L"ScrollToNewEntries", scrollToNewEntries);
     CFG.writeInt(optSec(L"DimIntensity"), L"DimIntensity", listDimIntensity);
     CFG.writeInt(optSec(L"TabMaxLength"), L"TabMaxLength", tabMaxLength);
     CFG.writeString(optSec(L"DefaultEngine"), L"DefaultEngine",
@@ -20150,6 +20207,9 @@ void MultiReplace::syncUIToCache()
 
     // INI only; "auto" is written too, so the switch can be found
     CFG.writeString(L"ReplaceInFiles", L"LoadThreads", (loadThreads < 0) ? L"auto" : std::to_wstring(loadThreads));
+
+    // Open Documents - the tab color is panel-wide, not per list tab
+    CFG.writeInt(L"OpenDocs", L"TabColorMask", static_cast<int>(_docsTabColorMask));
 
     // [File]/ListFilePath and [File]/OriginalListHash are no longer
     // written - per-tab equivalents are under [Tabs]. Legacy reads
@@ -20191,6 +20251,8 @@ void MultiReplace::applyConfigSettingsOnly()
     muteSounds = CFG.readBool(optSec(L"MuteSounds"), L"MuteSounds", false);
     doubleClickEditsEnabled = CFG.readBool(optSec(L"DoubleClickEdits"), L"DoubleClickEdits", true);
     highlightMatchEnabled = CFG.readBool(optSec(L"HighlightMatch"), L"HighlightMatch", true);
+    newEntriesAtTop = CFG.readBool(optSec(L"NewEntriesAtTop"), L"NewEntriesAtTop", false);
+    scrollToNewEntries = CFG.readBool(optSec(L"ScrollToNewEntries"), L"ScrollToNewEntries", true);
     stayAfterReplaceEnabled = CFG.readBool(optSec(L"StayAfterReplace"), L"StayAfterReplace", false);
     allFromCursorEnabled = CFG.readBool(optSec(L"AllFromCursor"), L"AllFromCursor", false);
     groupResultsEnabled = CFG.readBool(optSec(L"GroupResults"), L"GroupResults", false);
@@ -20271,18 +20333,13 @@ void MultiReplace::applyConfigSettingsOnly()
 
     updateUseListState(false);
 
-    // Sync toolbar icon button visibility with list state
+    // Sync toolbar icon button and tab row visibility with list state
     {
-        int showCmd = (useListEnabled || keepListVisible) ? SW_SHOW : SW_HIDE;
-        for (int id : { IDC_NEW_LIST_BUTTON, IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-            IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
-            ShowWindow(GetDlgItem(_hSelf, id), showCmd);
+        const bool listShown = useListEnabled || keepListVisible;
+        for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON }) {
+            ShowWindow(GetDlgItem(_hSelf, id), listShown ? SW_SHOW : SW_HIDE);
         }
-        if (showCmd == SW_HIDE) {
-            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_LIST_DROPDOWN), SW_HIDE);
-            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_LEFT), SW_HIDE);
-            ShowWindow(GetDlgItem(_hSelf, IDC_TAB_SCROLL_RIGHT), SW_HIDE);
-        }
+        setBottomRowVisible(listShown);
     }
 
     // ListView-affecting settings (Hover/InfoTip, KeepListVisible,

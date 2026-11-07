@@ -32,12 +32,19 @@ namespace NppStyleKit {
     namespace ThemeUtils {
         // Query Notepad++ dark mode state (uses NPPM_ISDARKMODEENABLED).
         bool isDarkMode(HWND hNpp);
+
+        // Text colors of Notepad++'s dialog links and (?) markers: dark mode tone, else system colors.
+        COLORREF linkTextColor(HWND hNpp);
+        COLORREF disabledTextColor(HWND hNpp);
     }
 
     // ---------- Colors ----------
     namespace ColorTools {
         // Hash-based stable RGB color (0xRRGGBB) for a given string.
         uint32_t djb2Color(const std::string& s);
+
+        // Swatch of Notepad++ tab color 0..4 as its Apply Color menu shows it; CLR_INVALID otherwise.
+        COLORREF tabColorSwatch(int colorId, bool darkMode);
     }
 
     // ---------- IndicatorRegistry (color -> indicator id) ----------

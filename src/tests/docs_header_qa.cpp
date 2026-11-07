@@ -11,12 +11,13 @@
 //   LanguageManager::get substitution         (LanguageManager.cpp:
 //                                              <br/> -> CRLF, $REPLACE_STRINGn
 //                                              high->low, then $REPLACE_STRING)
-//   the counting skeleton of findAllInOpenedDocs / replaceAllInOpenedDocs
-//     (filter gate -> ++docsFilteredOut/continue, else search -> ++docsSearched,
-//      uniqueFiles/hit aggregation only for hits > 0)
+//   the counting skeleton of handleFindAllInDocsButton / replaceAllInOpenedDocs
+//     (the scope plan counts the excluded tabs before the run (DocScope::plan),
+//      an empty scope stops the run, the run searches the planned tabs ->
+//      ++docsSearched, uniqueFiles/hit aggregation only for hits > 0)
 //
 // Template strings are copied verbatim from language_mapping.cpp (EN) and
-// languages.ini [german].
+// languages.ini [german] and [turkish].
 //
 // Build: g++ -std=c++20 -Wall -Wextra -fsanitize=address,undefined
 //        -o docs_header_qa docs_header_qa.cpp
@@ -26,6 +27,8 @@
 #include <string>
 #include <vector>
 #include <cwctype>
+
+#include "../DocScope.h"
 
 // ------------------------------------------------------- glob stand-in
 static bool globMatch(const std::wstring& s, const std::wstring& p,
@@ -121,18 +124,22 @@ static std::wstring lmGet(const std::wstring& tpl, const std::vector<std::wstrin
 }
 
 // ------- template strings, verbatim from language_mapping.cpp (EN) and
-// ------- languages.ini [german]
+// ------- languages.ini [german] and [turkish]
 static const std::wstring kDockDocsSuffixEN   = L" [$REPLACE_STRING1 document(s) searched$REPLACE_STRING2]";
 static const std::wstring kDockDocsFilteredEN = L", $REPLACE_STRING1 excluded by filter";
 static const std::wstring kStatusDocsFilteredEN = L" $REPLACE_STRING1 document(s) searched, $REPLACE_STRING2 excluded by filter.";
 static const std::wstring kReplaceSummaryEN   = L"Replace in documents: $REPLACE_STRING occurrences replaced.";
 static const std::wstring kDockDocsSuffixDE   = L" [$REPLACE_STRING1 Dokument(e) durchsucht$REPLACE_STRING2]";
 static const std::wstring kDockDocsFilteredDE = L", $REPLACE_STRING1 durch Filter ausgeschlossen";
+static const std::wstring kConfirmDocsEN = L"Are you sure you want to replace all occurrences in $REPLACE_STRING1 of $REPLACE_STRING2 open documents?";
+static const std::wstring kConfirmDocsDE = L"Alle Vorkommen in $REPLACE_STRING1 von $REPLACE_STRING2 geöffneten Dokumenten ersetzen?";
+static const std::wstring kConfirmDocsTR = L"$REPLACE_STRING2 açık belgeden $REPLACE_STRING1 tanesindeki tüm eşleşmeleri değiştirmek istediğinizden emin misiniz?";
 
 // -------------------- MIRROR: the counting skeleton of the two doc loops
 struct Doc { std::wstring name; int hits; };
 
 struct ScanResult {
+    bool stopped = false;  // "No open documents matched": no run, no dock block
     int totalHits = 0;
     size_t uniqueFiles = 0;
     size_t docsSearched = 0;
@@ -145,19 +152,22 @@ static ScanResult simulateFindInDocs(const std::vector<Doc>& mainView,
                                      bool filterDocs, const std::wstring& docFilter)
 {
     ScanResult r;
+    const std::vector<Doc>* views[2] = { &mainView, &subView };
+    const DocScope::Plan scope = DocScope::plan({ 0, 1 },
+        [&](int view) { return views[view]->size(); },
+        [&](int view, std::ptrdiff_t i) {
+            return !filterDocs || matchesDocFilter((*views[view])[static_cast<size_t>(i)].name, docFilter);
+        });
+    r.docsFilteredOut = scope.excluded();
+    if (scope.tabs.empty()) { r.stopped = true; return r; }
+
     std::set<std::wstring> unique;
-    auto oneView = [&](const std::vector<Doc>& docs) {
-        for (const Doc& d : docs) {
-            if (filterDocs) {
-                if (!matchesDocFilter(d.name, docFilter)) { ++r.docsFilteredOut; continue; }
-            }
-            // processCurrentBuffer: aggregate only when the doc has hits
-            if (d.hits > 0) { unique.insert(d.name); r.totalHits += d.hits; }
-            ++r.docsSearched;
-        }
-    };
-    oneView(mainView);
-    oneView(subView);
+    for (const DocScope::Tab& tab : scope.tabs) {
+        const Doc& d = (*views[tab.view])[static_cast<size_t>(tab.index)];
+        // processCurrentBuffer: aggregate only when the doc has hits
+        if (d.hits > 0) { unique.insert(d.name); r.totalHits += d.hits; }
+        ++r.docsSearched;
+    }
     r.uniqueFiles = unique.size();
 
     std::wstring filterClause;
@@ -237,15 +247,14 @@ int main() {
               r.docsSearched == 1 && r.docsFilteredOut == 2 && r.totalHits == 1);
     }
 
-    std::printf("\n=== D4 filter excludes everything ===\n\n");
+    std::printf("\n=== D4 filter excludes everything: the run stops before the dock ===\n\n");
     {
         std::vector<Doc> m = { {L"a.txt",3}, {L"b.txt",1}, {L"c.txt",0},
                                {L"d.txt",0}, {L"e.txt",9} };
         auto r = simulateFindInDocs(m, {}, true, L"*.md");
-        CHECK("D4 0 searched, 5 filtered, 0 hits",
-              r.docsSearched == 0 && r.docsFilteredOut == 5 && r.totalHits == 0);
-        CHECK("D4 suffix ' [0 document(s) searched, 5 excluded by filter]'",
-              r.suffix == L" [0 document(s) searched, 5 excluded by filter]");
+        CHECK("D4 stopped: 0 searched, 5 excluded, 0 hits",
+              r.stopped && r.docsSearched == 0 && r.docsFilteredOut == 5 && r.totalHits == 0);
+        CHECK("D4 no dock header for an empty scope", r.suffix.empty());
     }
 
     std::printf("\n=== D5 clone: same file open in both views ===\n\n");
@@ -280,6 +289,7 @@ int main() {
             if (r.docsSearched + r.docsFilteredOut != open) ++bad;           // every open doc accounted for
             if (!useFilter && r.docsFilteredOut != 0) ++bad;                 // no filter, no exclusions
             if (r.totalHits == 0 && r.uniqueFiles != 0) ++bad;               // no hits, no hit-files
+            if (r.stopped != (r.docsFilteredOut == open)) ++bad;             // stops exactly on an empty scope
         }
         CHECK("D6 2000 scenarios: unique<=searched, searched+filtered==open, "
               "no phantom exclusions", bad == 0);
@@ -304,6 +314,17 @@ int main() {
         CHECK("D8 without exclusions: summary unchanged (bare $REPLACE_STRING form)",
               simulateReplaceSummary(7, 5, 0) ==
               L"Replace in documents: 7 occurrences replaced.");
+    }
+
+    std::printf("\n=== D9 Replace-in-Docs confirmation: tabs in scope of all open tabs ===\n\n");
+    {
+        const std::vector<std::wstring> counts = { L"3", L"10" };  // scope.tabs.size(), scope.total
+        CHECK("D9 EN 'in 3 of 10 open documents'",
+              lmGet(kConfirmDocsEN, counts) == L"Are you sure you want to replace all occurrences in 3 of 10 open documents?");
+        CHECK("D9 DE 'in 3 von 10 geöffneten Dokumenten'",
+              lmGet(kConfirmDocsDE, counts) == L"Alle Vorkommen in 3 von 10 geöffneten Dokumenten ersetzen?");
+        CHECK("D9 TR names the total first: placeholders are matched by number, not position",
+              lmGet(kConfirmDocsTR, counts) == L"10 açık belgeden 3 tanesindeki tüm eşleşmeleri değiştirmek istediğinizden emin misiniz?");
     }
 
     std::printf("\n%s (%d failure%s)\n",

@@ -35,6 +35,7 @@
     <ClInclude Include="..\src\CsvListFormat.h" />
     <ClInclude Include="..\src\DialogFreeze.h" />
     <ClInclude Include="..\src\DirectoryWalk.h" />
+    <ClInclude Include="..\src\DocScope.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
     <ClInclude Include="..\src\Encoding.h" />
@@ -103,6 +104,7 @@
     <ClInclude Include="..\src\StaticDialog\resource.h" />
     <ClInclude Include="..\src\StaticDialog\StaticDialog.h" />
     <ClInclude Include="..\src\StringUtils.h" />
+    <ClInclude Include="..\src\TabStripLayout.h" />
     <ClInclude Include="..\src\TandemDock.h" />
     <ClInclude Include="..\src\UndoRedoManager.h" />
     <ClInclude Include="SciUndoGuard.h" />
@@ -221,6 +223,7 @@
     <ClCompile Include="..\src\ResultDock.cpp" />
     <ClCompile Include="..\src\StaticDialog\StaticDialog.cpp" />
     <ClCompile Include="..\src\StringUtils.cpp" />
+    <ClCompile Include="..\src\TabStripLayout.cpp" />
     <ClCompile Include="..\src\TandemDock.cpp" />
     <ClCompile Include="..\src\UndoRedoManager.cpp" />
   </ItemGroup>
@@ -351,7 +354,8 @@
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
 copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html
+copy ..\help_formula_support_light.html $(OutDir)help_formula_support_light.html
+copy ..\help_formula_support_dark.html $(OutDir)help_formula_support_dark.html
 copy ..\languages.ini $(OutDir)languages.ini</Command>
     </PostBuildEvent>
     <PreBuildEvent>
@@ -389,7 +393,8 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
 copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html
+copy ..\help_formula_support_light.html $(OutDir)help_formula_support_light.html
+copy ..\help_formula_support_dark.html $(OutDir)help_formula_support_dark.html
 copy ..\languages.ini $(OutDir)languages.ini</Command>
     </PostBuildEvent>
     <PreBuildEvent>
@@ -418,7 +423,8 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
 copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html
+copy ..\help_formula_support_light.html $(OutDir)help_formula_support_light.html
+copy ..\help_formula_support_dark.html $(OutDir)help_formula_support_dark.html
 copy ..\languages.ini $(OutDir)languages.ini</Command>
     </PostBuildEvent>
     <PreBuildEvent>
@@ -450,7 +456,8 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
 copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html
+copy ..\help_formula_support_light.html $(OutDir)help_formula_support_light.html
+copy ..\help_formula_support_dark.html $(OutDir)help_formula_support_dark.html
 copy ..\languages.ini $(OutDir)languages.ini</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -478,7 +485,8 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
 copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html
+copy ..\help_formula_support_light.html $(OutDir)help_formula_support_light.html
+copy ..\help_formula_support_dark.html $(OutDir)help_formula_support_dark.html
 copy ..\languages.ini $(OutDir)languages.ini</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -506,7 +514,8 @@ copy ..\languages.ini $(OutDir)languages.ini</Command>
     <PostBuildEvent>
       <Command>copy ..\license.txt $(OutDir)license.txt
 copy ..\README.md $(OutDir)README.md
-copy ..\help_use_variables.html $(OutDir)help_use_variables.html
+copy ..\help_formula_support_light.html $(OutDir)help_formula_support_light.html
+copy ..\help_formula_support_dark.html $(OutDir)help_formula_support_dark.html
 copy ..\languages.ini $(OutDir)languages.ini</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>

@@ -56,6 +56,7 @@ private:
     void applyFonts();
     int scaleX(int value) const;
     int scaleY(int value) const;
+    SIZE scaledWindowSize() const;
     int getFontHeight(HWND hwnd, HFONT hFont);
     void calculateControlHeights();
 
@@ -113,7 +114,6 @@ private:
     HWND _hReportPanel = nullptr;
 
     HWND _hTooltip = nullptr;
-    COLORREF _helpColor = RGB(0, 0, 255);  // Default light mode blue
 
     // Subclass procedure for checkbox to notify dialog on click
     static LRESULT CALLBACK CheckboxSubclassProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
@@ -128,6 +128,10 @@ private:
 
     // Store user scale locally (from INI) to combine with System DPI
     double _userScaleFactor = 1.0;
+
+    // Client size at scale 1.0
+    static constexpr int BASE_WIDTH = 810;
+    static constexpr int BASE_HEIGHT = 432;
 
     // Calculated control heights based on font metrics
     int _editHeight = 22;       // Default, recalculated in calculateControlHeights()

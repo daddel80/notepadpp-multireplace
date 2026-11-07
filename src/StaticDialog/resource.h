@@ -162,7 +162,7 @@
 #define IDC_DELIMITER_STATIC            5466
 #define IDC_QUOTECHAR_STATIC            5467
 
-// Replace-in-Files frame (5469-5479)
+// Replace-in-Files frame (5469-5482)
 #define IDC_FILE_OPS_GROUP              5469
 #define IDC_FILTER_EDIT                 5470
 #define IDC_FILTER_HELP                 5471
@@ -175,6 +175,8 @@
 #define IDC_ALL_DOCS_CHECKBOX           5478
 #define IDC_DIR_PROGRESS_STATIC         5479
 #define IDC_DIR_PROGRESS_BAR            5480
+#define IDC_TAB_COLOR_STATIC            5481
+#define IDC_TAB_COLOR_COMBO             5482
 
 
 
@@ -358,6 +360,8 @@
 #define IDC_CFG_EDITFIELD_LABEL           7934
 #define IDC_CFG_EDITFIELD_SIZE_COMBO      7935
 #define IDC_CFG_KEEP_LIST_VISIBLE         7936
+#define IDC_CFG_NEW_ENTRIES_AT_TOP        7937
+#define IDC_CFG_SCROLL_TO_NEW_ENTRIES     7938
 
 // -------------------------------------------------------------------
 //  CSV Panel (7940-7949)

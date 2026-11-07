@@ -23,7 +23,9 @@
 //   C. Cancel is enabled while frozen, disabled again afterwards; the focus waits on
 //      it and returns to the control that had it
 //   D. a frozen control takes no mouse input: WindowFromPoint passes it by, so drag
-//      and drop and context menus cannot reach it; owner-draw sees ODS_DISABLED
+//      and drop and context menus cannot reach it; owner-drawn statics repaint
+//      disabled and enabled again by themselves (the panel reads IsWindowEnabled:
+//      comctl32 6 flags them ODS_DISABLED even while enabled)
 //   E. a nested freeze changes nothing; focus moved to another window is not taken back
 //   F. no Cancel, a Cancel already enabled, a dialog destroyed while frozen
 //   G. a list view kept from WM_ENABLE (the panel's is, for its dark mode look) is
@@ -56,14 +58,15 @@ enum Id {
     ID_SELECTION, ID_WHOLE_WORD, ID_FIND_EDIT, ID_DIR_EDIT, ID_LIST, ID_TABS, ID_NEW_LIST, ID_LEGACY, ID_CANCEL
 };
 
-static std::map<UINT, UINT> g_drawState;   // CtlID -> itemState of the last WM_DRAWITEM
+enum class Drawn { None, Enabled, Disabled };
+static std::map<UINT, Drawn> g_drawn;   // CtlID -> state of the last WM_DRAWITEM, read as the panel reads it
 
 static INT_PTR CALLBACK dlgProc(HWND, UINT msg, WPARAM, LPARAM lParam)
 {
     if (msg == WM_INITDIALOG) return TRUE;
     if (msg == WM_DRAWITEM) {
         const auto* dis = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
-        g_drawState[dis->CtlID] = dis->itemState;
+        g_drawn[dis->CtlID] = IsWindowEnabled(dis->hwndItem) ? Drawn::Enabled : Drawn::Disabled;
         return TRUE;
     }
     return FALSE;
@@ -104,13 +107,18 @@ static POINT centerOf(HWND control)
     return { (r.left + r.right) / 2, (r.top + r.bottom) / 2 };
 }
 
-static UINT redrawnState(HWND dlg, int id)
+static Drawn lastDrawn(int id)
 {
-    g_drawState.erase(static_cast<UINT>(id));
+    const auto it = g_drawn.find(static_cast<UINT>(id));
+    return it == g_drawn.end() ? Drawn::None : it->second;
+}
+
+static Drawn redrawn(HWND dlg, int id)
+{
+    g_drawn.erase(static_cast<UINT>(id));
     RedrawWindow(GetDlgItem(dlg, id), nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
     pump();
-    const auto it = g_drawState.find(static_cast<UINT>(id));
-    return it == g_drawState.end() ? 0xFFFFFFFF : it->second;
+    return lastDrawn(id);
 }
 
 // The panel's control kinds; Selection and Match whole word start disabled as in
@@ -176,8 +184,9 @@ int main()
     CHECK("setup: focus on Find All", GetFocus() == findAll);
     const bool hitBefore = (WindowFromPoint(centerOf(list)) == list);
     CHECK("setup: the list takes the mouse before the freeze", hitBefore);
-    CHECK("setup: owner-drawn statics draw enabled", (redrawnState(dlg, ID_ENGINE) & ODS_DISABLED) == 0);
+    CHECK("setup: owner-drawn statics draw enabled", redrawn(dlg, ID_ENGINE) == Drawn::Enabled);
 
+    g_drawn.clear();
     {
         DialogFreeze freeze(dlg, cancel);
         pump();
@@ -195,8 +204,8 @@ int main()
         CHECK("C1 Cancel enabled while frozen", IsWindowEnabled(cancel) != FALSE);
         CHECK("C2 the focus waits on Cancel", GetFocus() == cancel);
         CHECK("D1 WindowFromPoint passes the frozen list by", hitBefore && WindowFromPoint(centerOf(list)) != list);
-        CHECK("D2 owner-drawn static sees ODS_DISABLED", (redrawnState(dlg, ID_ENGINE) & ODS_DISABLED) != 0);
-        CHECK("D3 the + glyph sees ODS_DISABLED", (redrawnState(dlg, ID_NEW_LIST) & ODS_DISABLED) != 0);
+        CHECK("D2 the freeze repaints the owner-drawn static disabled", lastDrawn(ID_ENGINE) == Drawn::Disabled);
+        CHECK("D3 and the + glyph", lastDrawn(ID_NEW_LIST) == Drawn::Disabled);
 
         {
             DialogFreeze nested(dlg, cancel);
@@ -207,6 +216,7 @@ int main()
         wrong = names(dlg, kOperable, std::size(kOperable), false);
         CHECK("E2 after the nested release everything is still frozen, enabled: " + wrong, wrong == "none");
         CHECK("E3 after the nested release Cancel is still enabled and focused", IsWindowEnabled(cancel) && GetFocus() == cancel);
+        g_drawn.clear();
     }
     pump();
 
@@ -218,7 +228,8 @@ int main()
     CHECK("C3 Cancel disabled again", IsWindowEnabled(cancel) == FALSE);
     CHECK("C4 the focus is back on Find All", GetFocus() == findAll);
     CHECK("D4 the list takes the mouse again", WindowFromPoint(centerOf(list)) == list);
-    CHECK("D5 owner-drawn static draws enabled again", (redrawnState(dlg, ID_ENGINE) & ODS_DISABLED) == 0);
+    CHECK("D5 the release repaints the owner-drawn static enabled", lastDrawn(ID_ENGINE) == Drawn::Enabled);
+    CHECK("D6 and the + glyph", lastDrawn(ID_NEW_LIST) == Drawn::Enabled);
 
     // A run started from the keyboard: the focus sits in the combo's edit field
     COMBOBOXINFO findInfo{};
