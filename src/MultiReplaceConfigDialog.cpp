@@ -747,32 +747,26 @@ LRESULT CALLBACK MultiReplaceConfigDialog::PanelSubclassProc(HWND hWnd, UINT uMs
 
 void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
     if (!_hSearchReplacePanel) return;
-    const int groupW = 460;
-    const int left = 90;
-    int y = 20;
+    const int innerLeft = GROUP_LEFT + GROUP_PAD_X;
+    const int innerWidth = GROUP_WIDTH - 2 * GROUP_PAD_X;
 
-    createGroupBox(_hSearchReplacePanel, left, y, groupW, 160, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
+    const int behaviourY = PAGE_TOP;
+    const int behaviourH = groupHeight(checkboxRowsHeight(4));
+    createGroupBox(_hSearchReplacePanel, GROUP_LEFT, behaviourY, GROUP_WIDTH, behaviourH, IDC_CFG_GRP_SEARCH_BEHAVIOUR, LM.getLPCW(L"config_grp_search_behaviour"));
 
-    int innerLeft = left + 22;
-    int innerTop = y + 35;
-    int innerWidth = groupW - 34;
-
-    LayoutBuilder lb(this, _hSearchReplacePanel, innerLeft, innerTop, innerWidth, 26);
+    LayoutBuilder lb(this, _hSearchReplacePanel, innerLeft, behaviourY + GROUP_PAD_TOP, innerWidth, ROW_STEP);
     lb.AddCheckbox(IDC_CFG_STAY_AFTER_REPLACE, LM.getLPCW(L"config_chk_stay_after_replace"));
     lb.AddCheckbox(IDC_CFG_ALL_FROM_CURSOR, LM.getLPCW(L"config_chk_all_from_cursor"));
     lb.AddCheckbox(IDC_CFG_MUTE_SOUNDS, LM.getLPCW(L"config_chk_mute_sounds"));
     lb.AddCheckbox(IDC_CFG_SHOW_FORMULA_ERRORS, LM.getLPCW(L"config_chk_show_formula_errors"));
 
     // Second group: Find input from selection
-    const int findInputY = y + 160 + 14;
-    const int findInputH = 94;
-    createGroupBox(_hSearchReplacePanel, left, findInputY, groupW, findInputH,
+    const int findInputY = behaviourY + behaviourH + GROUP_GAP;
+    const int findInputH = groupHeight(checkboxRowsHeight(2));
+    createGroupBox(_hSearchReplacePanel, GROUP_LEFT, findInputY, GROUP_WIDTH, findInputH,
         IDC_CFG_GRP_FIND_INPUT, LM.getLPCW(L"config_grp_find_input"));
     {
-        const int fiInnerLeft = left + 22;
-        const int fiInnerTop = findInputY + 30;
-        const int fiInnerWidth = groupW - 44;
-        LayoutBuilder fi(this, _hSearchReplacePanel, fiInnerLeft, fiInnerTop, fiInnerWidth, 26);
+        LayoutBuilder fi(this, _hSearchReplacePanel, innerLeft, findInputY + GROUP_PAD_TOP, innerWidth, ROW_STEP);
         fi.AddCheckbox(IDC_CFG_PICKUP_SELECTION, LM.getLPCW(L"config_chk_pickup_selection"));
         fi.AddCheckbox(IDC_CFG_AUTO_ESCAPE_FIND, LM.getLPCW(L"config_chk_auto_escape_find"));
     }
@@ -780,17 +774,12 @@ void MultiReplaceConfigDialog::createSearchReplacePanelControls() {
 
 void MultiReplaceConfigDialog::createFileSearchPanelControls() {
     if (!_hFileSearchPanel) return;
-    const int groupW = 460;
-    const int left = 90;
-    int y = 20;
+    const int innerLeft = GROUP_LEFT + GROUP_PAD_X;
+    const int innerWidth = GROUP_WIDTH - 2 * GROUP_PAD_X;
 
-    createGroupBox(_hFileSearchPanel, left, y, groupW, 120, IDC_CFG_GRP_FILE_SEARCH, LM.getLPCW(L"config_grp_file_handling"));
+    createGroupBox(_hFileSearchPanel, GROUP_LEFT, PAGE_TOP, GROUP_WIDTH, groupHeight(checkboxRowsHeight(3)), IDC_CFG_GRP_FILE_SEARCH, LM.getLPCW(L"config_grp_file_handling"));
 
-    int innerLeft = left + 22;
-    int innerTop = y + 35;
-    int innerWidth = groupW - 34;
-
-    LayoutBuilder lb(this, _hFileSearchPanel, innerLeft, innerTop, innerWidth, 26);
+    LayoutBuilder lb(this, _hFileSearchPanel, innerLeft, PAGE_TOP + GROUP_PAD_TOP, innerWidth, ROW_STEP);
 
     // File size limit: Checkbox + Edit + "MB" label
     HWND hChkLimit = createCheckBox(_hFileSearchPanel, innerLeft, lb.y, 260, IDC_CFG_LIMIT_FILESIZE, LM.getLPCW(L"config_chk_limit_filesize"));
@@ -850,22 +839,16 @@ HWND MultiReplaceConfigDialog::createSlider(HWND parent, int left, int top, int 
 
 void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
     if (!_hListViewLayoutPanel) return;
+    const int innerLeft = GROUP_LEFT + GROUP_PAD_X;
+    const int innerWidth = GROUP_WIDTH - 2 * GROUP_PAD_X;
 
-    const int left = 90;
-    const int groupW = 460;
-    const int topY = 20;
-    const int topGroupH = 238;
-    const int gapBetween = 14;
-    const int bottomGroupH = 94;
-
-    createGroupBox(_hListViewLayoutPanel, left, topY, groupW, topGroupH,
+    // Six checkbox rows, a small gap, then the edit height row whose field ends 20 below it
+    const int behaviorY = PAGE_TOP;
+    const int behaviorH = groupHeight(6 * ROW_STEP + 6 + 20);
+    createGroupBox(_hListViewLayoutPanel, GROUP_LEFT, behaviorY, GROUP_WIDTH, behaviorH,
         IDC_CFG_GRP_LIST_BEHAVIOR, LM.getLPCW(L"config_grp_list_behavior"));
     {
-        const int innerLeft = left + 22;
-        const int innerTop = topY + 35;
-        const int innerWidth = groupW - 44;
-
-        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 26);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, behaviorY + GROUP_PAD_TOP, innerWidth, ROW_STEP);
         lb.AddCheckbox(IDC_CFG_DOUBLECLICK_EDITS, LM.getLPCW(L"config_chk_doubleclick"));
         lb.AddCheckbox(IDC_CFG_HOVER_TEXT_ENABLED, LM.getLPCW(L"config_chk_hover_text"));
         lb.AddCheckbox(IDC_CFG_HIGHLIGHT_MATCH, LM.getLPCW(L"config_chk_highlight_match"));
@@ -877,16 +860,11 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
         lb.AddNumberEdit(IDC_CFG_EDITFIELD_SIZE_COMBO, 198, -2, 45, 22);
     }
 
-    const int bottomY = topY + topGroupH + gapBetween;
-
-    createGroupBox(_hListViewLayoutPanel, left, bottomY, groupW, bottomGroupH,
+    const int dockY = behaviorY + behaviorH + GROUP_GAP;
+    createGroupBox(_hListViewLayoutPanel, GROUP_LEFT, dockY, GROUP_WIDTH, groupHeight(checkboxRowsHeight(2)),
         IDC_CFG_GRP_RESULT_DOCK, LM.getLPCW(L"config_grp_result_dock"));
     {
-        const int innerLeft = left + 22;
-        const int innerTop = bottomY + 30;
-        const int innerWidth = groupW - 44;
-
-        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, innerTop, innerWidth, 26);
+        LayoutBuilder lb(this, _hListViewLayoutPanel, innerLeft, dockY + GROUP_PAD_TOP, innerWidth, ROW_STEP);
         lb.AddCheckbox(IDC_CFG_GROUPRESULTS_ENABLED, LM.getLPCW(L"config_chk_group_results"));
         lb.AddCheckbox(IDC_CFG_RESULT_DOCK_ENTRY_COLORS, LM.getLPCW(L"config_chk_result_dock_entry_colors"));
     }
@@ -895,46 +873,35 @@ void MultiReplaceConfigDialog::createListViewLayoutPanelControls() {
 void MultiReplaceConfigDialog::createAppearancePanelControls() {
     if (!_hAppearancePanel) return;
 
-    const int left = 90;
-    const int top = 20;
-    const int groupW = 460;
+    // Three slider rows, then the tooltip checkbox
+    const int sliderRow = 34;
+    const int interfaceH = groupHeight(3 * sliderRow + CHECKBOX_ROW_H);
+    const int markingY = PAGE_TOP + interfaceH + GROUP_GAP;
 
-    const int groupH_Interface = 175;
-    const int groupH_Marking = 75;
-    const int gap = 25;
+    LayoutBuilder root(this, _hAppearancePanel, GROUP_LEFT, PAGE_TOP, GROUP_WIDTH, ROW_STEP);
 
-    LayoutBuilder root(this, _hAppearancePanel, left, top, groupW, 28);
+    auto iface = root.BeginGroup(GROUP_LEFT, PAGE_TOP, GROUP_WIDTH, interfaceH, GROUP_PAD_X, GROUP_PAD_TOP, IDC_CFG_GRP_INTERFACE, LM.getLPCW(L"config_grp_interface"));
 
-    auto iface = root.BeginGroup(left, top, groupW, groupH_Interface, 22, 35, IDC_CFG_GRP_INTERFACE, LM.getLPCW(L"config_grp_interface"));
-
-    iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, 34, 170, 18, -4);
-    iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, 34, 170, 18, -4);
-    iface.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, 34, 170, 18, -4, 100);
+    iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, sliderRow, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, sliderRow, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, sliderRow, 170, 18, -4, 100);
     iface.AddCheckbox(IDC_CFG_TOOLTIPS_ENABLED, LM.getLPCW(L"config_chk_enable_tooltips"));
 
-    int nextTop = top + groupH_Interface + gap;
-
-    auto marking = root.BeginGroup(left, nextTop, groupW, groupH_Marking, 22, 30, IDC_CFG_GRP_EDITOR_MARKING, LM.getLPCW(L"config_grp_editor_marking"));
+    auto marking = root.BeginGroup(GROUP_LEFT, markingY, GROUP_WIDTH, groupHeight(checkboxRowsHeight(1)), GROUP_PAD_X, GROUP_PAD_TOP, IDC_CFG_GRP_EDITOR_MARKING, LM.getLPCW(L"config_grp_editor_marking"));
 
     marking.AddCheckbox(IDC_CFG_USE_LIST_COLORS_MARKING, LM.getLPCW(L"config_chk_use_list_colors_marking"));
 }
 
 void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
     if (!_hCsvFlowTabsPanel) return;
+    const int innerLeft = GROUP_LEFT + GROUP_PAD_X;
+    const int innerWidth = GROUP_WIDTH - 2 * GROUP_PAD_X;
 
-    const int left = 90;
-    const int top = 20;
-    const int groupW = 460;
-    const int groupH = 158;
-
-    createGroupBox(_hCsvFlowTabsPanel, left, top, groupW, groupH,
+    // Three checkbox rows, then the header lines row whose field ends 20 below it
+    createGroupBox(_hCsvFlowTabsPanel, GROUP_LEFT, PAGE_TOP, GROUP_WIDTH, groupHeight(3 * ROW_STEP + 20),
         IDC_CFG_GRP_CSV_SETTINGS, LM.getLPCW(L"config_grp_csv_settings"));
     {
-        const int innerLeft = left + 22;
-        const int innerTop = top + 30;
-        const int innerWidth = groupW - 44;
-
-        LayoutBuilder lb(this, _hCsvFlowTabsPanel, innerLeft, innerTop, innerWidth, 28);
+        LayoutBuilder lb(this, _hCsvFlowTabsPanel, innerLeft, PAGE_TOP + GROUP_PAD_TOP, innerWidth, ROW_STEP);
         lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
         lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));
         lb.AddCheckbox(IDC_CFG_DUPLICATE_BOOKMARKS, LM.getLPCW(L"config_chk_duplicate_bookmarks"));
@@ -947,19 +914,15 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
 
 void MultiReplaceConfigDialog::createExportPanelControls() {
     if (!_hReportPanel) return;
+    const int innerLeft = GROUP_LEFT + GROUP_PAD_X;
+    const int innerTop = PAGE_TOP + GROUP_PAD_TOP;
+    const int innerWidth = GROUP_WIDTH - 2 * GROUP_PAD_X;
+    const int row2Y = innerTop + 22;
+    const int row3Y = row2Y + 42;
 
-    const int left = 90;
-    const int top = 20;
-    const int groupW = 460;
-    const int groupH = 145;
-
-    createGroupBox(_hReportPanel, left, top, groupW, groupH,
+    createGroupBox(_hReportPanel, GROUP_LEFT, PAGE_TOP, GROUP_WIDTH, groupHeight(row3Y - innerTop + CHECKBOX_ROW_H),
         IDC_CFG_GRP_REPORT, LM.getLPCW(L"config_grp_report"));
     {
-        const int innerLeft = left + 22;
-        const int innerTop = top + 32;
-        const int innerWidth = groupW - 44;
-
         createStaticText(_hReportPanel, innerLeft, innerTop, 70, 18,
             IDC_CFG_REPORT_TEMPLATE_LABEL, LM.getLPCW(L"config_lbl_report_template"));
 
@@ -991,13 +954,11 @@ void MultiReplaceConfigDialog::createExportPanelControls() {
             }
         }
 
-        const int row2Y = innerTop + 22;
         HWND hEdit = createNumberEdit(_hReportPanel, innerLeft, row2Y, innerWidth, 22,
             IDC_CFG_REPORT_TEMPLATE_EDIT);
         LONG style = GetWindowLong(hEdit, GWL_STYLE);
         SetWindowLong(hEdit, GWL_STYLE, style & ~ES_NUMBER);
 
-        const int row3Y = row2Y + 42;
         createCheckBox(_hReportPanel, innerLeft, row3Y, 200,
             IDC_CFG_REPORT_HEADER_CHECK, LM.getLPCW(L"config_chk_report_header"));
     }

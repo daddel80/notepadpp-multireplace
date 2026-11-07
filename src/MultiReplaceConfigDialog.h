@@ -133,6 +133,21 @@ private:
     static constexpr int BASE_WIDTH = 810;
     static constexpr int BASE_HEIGHT = 432;
 
+    // Group box layout shared by all pages, unscaled
+    static constexpr int PAGE_TOP = 20;
+    static constexpr int GROUP_LEFT = 90;
+    static constexpr int GROUP_WIDTH = 460;
+    static constexpr int GROUP_PAD_X = 22;
+    static constexpr int GROUP_PAD_TOP = 30;
+    static constexpr int GROUP_PAD_BOTTOM = 22;
+    static constexpr int GROUP_GAP = 14;
+    static constexpr int ROW_STEP = 26;
+    static constexpr int CHECKBOX_ROW_H = 16;
+
+    // Group height for content that ends contentH below the first row
+    static constexpr int groupHeight(int contentH) { return GROUP_PAD_TOP + contentH + GROUP_PAD_BOTTOM; }
+    static constexpr int checkboxRowsHeight(int rows) { return (rows - 1) * ROW_STEP + CHECKBOX_ROW_H; }
+
     // Calculated control heights based on font metrics
     int _editHeight = 22;       // Default, recalculated in calculateControlHeights()
     int _checkboxHeight = 18;   // Default, recalculated in calculateControlHeights()
