@@ -184,69 +184,68 @@ void MultiReplaceConfigDialog::refreshUILanguage()
     }
 
     // ============================================================
-    // Config Dialog: Control Text Mappings with FIXED widths
-    // Width/Height are UNSCALED pixels (will be scaled with scaleX/scaleY)
-    // These must match the values used in create*PanelControls()
+    // Config Dialog: Control Text Mappings
+    // Only the texts change, the geometry stays as created in create*PanelControls()
     // ============================================================
     static const struct {
         int controlId;
         const wchar_t* langKey;
-        int width;   // Unscaled width (0 = GroupBox, keep current)
-        int height;  // Unscaled height (18 for checkboxes/labels)
     } kConfigMappings[] = {
-        // Search & Replace Panel: groupW=420, innerWidth=420-34=386
-        { IDC_CFG_GRP_SEARCH_BEHAVIOUR,    L"config_grp_search_behaviour",    0, 0 },
-        { IDC_CFG_STAY_AFTER_REPLACE,      L"config_chk_stay_after_replace",  386, 18 },
-        { IDC_CFG_ALL_FROM_CURSOR,         L"config_chk_all_from_cursor",     386, 18 },
-        { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds",         386, 18 },
-        { IDC_CFG_SHOW_FORMULA_ERRORS,     L"config_chk_show_formula_errors", 386, 18 },
+        // Search & Replace Panel
+        { IDC_CFG_GRP_SEARCH_BEHAVIOUR,    L"config_grp_search_behaviour" },
+        { IDC_CFG_STAY_AFTER_REPLACE,      L"config_chk_stay_after_replace" },
+        { IDC_CFG_ALL_FROM_CURSOR,         L"config_chk_all_from_cursor" },
+        { IDC_CFG_MUTE_SOUNDS,             L"config_chk_mute_sounds" },
+        { IDC_CFG_SHOW_FORMULA_ERRORS,     L"config_chk_show_formula_errors" },
 
         // Find Input from Selection group
-        { IDC_CFG_GRP_FIND_INPUT,          L"config_grp_find_input",            0,  0 },
-        { IDC_CFG_PICKUP_SELECTION,        L"config_chk_pickup_selection",    416, 18 },
-        { IDC_CFG_AUTO_ESCAPE_FIND,        L"config_chk_auto_escape_find",    416, 18 },
+        { IDC_CFG_GRP_FIND_INPUT,          L"config_grp_find_input" },
+        { IDC_CFG_PICKUP_SELECTION,        L"config_chk_pickup_selection" },
+        { IDC_CFG_AUTO_ESCAPE_FIND,        L"config_chk_auto_escape_find" },
 
-        // File Search Panel: groupW=460, innerWidth=460-34=426
-        { IDC_CFG_GRP_FILE_SEARCH,         L"config_grp_file_handling",       0, 0 },
-        { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize",      260, 18 },
-        { IDC_CFG_SKIP_BINARY,             L"config_chk_skip_binary",         386, 18 },
-        { IDC_CFG_SEARCH_OPEN_DOCS,        L"config_chk_search_open_docs",    386, 18 },
+        // File Search Panel
+        { IDC_CFG_GRP_FILE_SEARCH,         L"config_grp_file_handling" },
+        { IDC_CFG_LIMIT_FILESIZE,          L"config_chk_limit_filesize" },
+        { IDC_CFG_SKIP_BINARY,             L"config_chk_skip_binary" },
+        { IDC_CFG_SEARCH_OPEN_DOCS,        L"config_chk_search_open_docs" },
 
-        // List View Panel - List Behavior: groupW=460, innerWidth=460-44=416
-        { IDC_CFG_GRP_LIST_BEHAVIOR,       L"config_grp_list_behavior",       0, 0 },
-        { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick",         416, 18 },
-        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text",          416, 18 },
-        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match",     416, 18 },
-        { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible",   416, 18 },
-        { IDC_CFG_NEW_ENTRIES_AT_TOP,      L"config_chk_new_entries_at_top",  416, 18 },
-        { IDC_CFG_SCROLL_TO_NEW_ENTRIES,   L"config_chk_scroll_new_entries",  416, 18 },
-        { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height",         190, 18 },
+        // List View Panel - List Behavior
+        { IDC_CFG_GRP_LIST_BEHAVIOR,       L"config_grp_list_behavior" },
+        { IDC_CFG_DOUBLECLICK_EDITS,       L"config_chk_doubleclick" },
+        { IDC_CFG_HOVER_TEXT_ENABLED,      L"config_chk_hover_text" },
+        { IDC_CFG_HIGHLIGHT_MATCH,         L"config_chk_highlight_match" },
+        { IDC_CFG_KEEP_LIST_VISIBLE,       L"config_chk_keep_list_visible" },
+        { IDC_CFG_NEW_ENTRIES_AT_TOP,      L"config_chk_new_entries_at_top" },
+        { IDC_CFG_SCROLL_TO_NEW_ENTRIES,   L"config_chk_scroll_new_entries" },
+        { IDC_CFG_EDITFIELD_LABEL,         L"config_lbl_edit_height" },
 
-        // List View Panel - Result Dock: groupW=460, innerWidth=460-44=416
-        { IDC_CFG_GRP_RESULT_DOCK,         L"config_grp_result_dock",         0, 0 },
-        { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results",       416, 18 },
-        { IDC_CFG_RESULT_DOCK_ENTRY_COLORS, L"config_chk_result_dock_entry_colors", 416, 18 },
+        // List View Panel - Result Dock
+        { IDC_CFG_GRP_RESULT_DOCK,         L"config_grp_result_dock" },
+        { IDC_CFG_GROUPRESULTS_ENABLED,    L"config_chk_group_results" },
+        { IDC_CFG_RESULT_DOCK_ENTRY_COLORS, L"config_chk_result_dock_entry_colors" },
 
-        // CSV Panel: groupW=570, innerWidth=570-24=546
-        { IDC_CFG_GRP_CSV_SETTINGS,        L"config_grp_csv_settings",        0, 0 },
-        { IDC_CFG_FLOWTABS_NUMERIC_ALIGN,  L"config_chk_numeric_align",       546, 18 },
-        { IDC_CFG_FLOWTABS_INTRO_DONTSHOW, L"config_chk_flowtabs_intro_dontshow", 546, 18 },
-        { IDC_CFG_DUPLICATE_BOOKMARKS,     L"config_chk_duplicate_bookmarks", 546, 18 },
-        { IDC_CFG_CSV_SORT_LABEL,          L"config_lbl_csv_sort",            240, 18 },
-        { IDC_CFG_GRP_REPORT,       L"config_grp_report",           0, 0 },
-        { IDC_CFG_REPORT_TEMPLATE_LABEL, L"config_lbl_report_template",       70, 18 },
-        { IDC_CFG_REPORT_HEADER_CHECK,   L"config_chk_report_header",         200, 18 },
+        // CSV Panel
+        { IDC_CFG_GRP_CSV_SETTINGS,        L"config_grp_csv_settings" },
+        { IDC_CFG_FLOWTABS_NUMERIC_ALIGN,  L"config_chk_numeric_align" },
+        { IDC_CFG_FLOWTABS_INTRO_DONTSHOW, L"config_chk_flowtabs_intro_dontshow" },
+        { IDC_CFG_DUPLICATE_BOOKMARKS,     L"config_chk_duplicate_bookmarks" },
+        { IDC_CFG_CSV_SORT_LABEL,          L"config_lbl_csv_sort" },
 
-        // Appearance Panel - Interface: Labels use labelW=170
-        { IDC_CFG_GRP_INTERFACE,           L"config_grp_interface",           0, 0 },
-        { IDC_CFG_FOREGROUND_LABEL,        L"config_lbl_foreground",          170, 18 },
-        { IDC_CFG_BACKGROUND_LABEL,        L"config_lbl_background",          170, 18 },
-        { IDC_CFG_SCALE_LABEL,             L"config_lbl_scale_factor",        170, 18 },
-        { IDC_CFG_TOOLTIPS_ENABLED,        L"config_chk_enable_tooltips",     416, 18 },
+        // Report Panel
+        { IDC_CFG_GRP_REPORT,              L"config_grp_report" },
+        { IDC_CFG_REPORT_TEMPLATE_LABEL,   L"config_lbl_report_template" },
+        { IDC_CFG_REPORT_HEADER_CHECK,     L"config_chk_report_header" },
 
-        // Appearance Panel - Editor Marking: groupW=460, padX=22, innerWidth=460-44=416
-        { IDC_CFG_GRP_EDITOR_MARKING,      L"config_grp_editor_marking",      0, 0 },
-        { IDC_CFG_USE_LIST_COLORS_MARKING, L"config_chk_use_list_colors_marking", 416, 18 },
+        // Appearance Panel - Interface
+        { IDC_CFG_GRP_INTERFACE,           L"config_grp_interface" },
+        { IDC_CFG_FOREGROUND_LABEL,        L"config_lbl_foreground" },
+        { IDC_CFG_BACKGROUND_LABEL,        L"config_lbl_background" },
+        { IDC_CFG_SCALE_LABEL,             L"config_lbl_scale_factor" },
+        { IDC_CFG_TOOLTIPS_ENABLED,        L"config_chk_enable_tooltips" },
+
+        // Appearance Panel - Editor Marking
+        { IDC_CFG_GRP_EDITOR_MARKING,      L"config_grp_editor_marking" },
+        { IDC_CFG_USE_LIST_COLORS_MARKING, L"config_chk_use_list_colors_marking" },
     };
 
     // Update all panel controls
@@ -257,24 +256,7 @@ void MultiReplaceConfigDialog::refreshUILanguage()
             if (!panel) continue;
             HWND hCtrl = GetDlgItem(panel, mapping.controlId);
             if (hCtrl) {
-                // Set new text
                 SetWindowTextW(hCtrl, LM.getLPCW(mapping.langKey));
-
-                // Get current position (we need x, y)
-                RECT rc;
-                GetWindowRect(hCtrl, &rc);
-                MapWindowPoints(HWND_DESKTOP, panel, reinterpret_cast<LPPOINT>(&rc), 2);
-
-                // Use FIXED width/height if specified, otherwise keep current
-                int newWidth = (mapping.width > 0) ? scaleX(mapping.width) : (rc.right - rc.left);
-                int newHeight = (mapping.height > 0) ? scaleY(mapping.height) : (rc.bottom - rc.top);
-
-                // SetWindowPos forces Windows to recalculate text extent
-                SetWindowPos(hCtrl, nullptr,
-                    rc.left, rc.top,
-                    newWidth, newHeight,
-                    SWP_NOZORDER | SWP_NOACTIVATE);
-
                 break;
             }
         }

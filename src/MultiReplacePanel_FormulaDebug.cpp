@@ -445,6 +445,14 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             xStop, btnY, btnWidth, btnHeight,
             hwnd, reinterpret_cast<HMENU>(3), nullptr, nullptr);
 
+        // Without a font of their own the buttons fall back to the bold system font
+        if (instance) {
+            const HFONT hFont = instance->font(FontRole::Standard);
+            for (HWND hButton : { hNextButton, hCopyButton, hRunToEndButton, hStopButton }) {
+                SendMessage(hButton, WM_SETFONT, reinterpret_cast<WPARAM>(hFont), FALSE);
+            }
+        }
+
         // Extract the debug message from lParam
         LPCWSTR debugMessage = reinterpret_cast<LPCWSTR>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams);
 

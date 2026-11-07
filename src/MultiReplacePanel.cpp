@@ -507,10 +507,10 @@ void MultiReplace::createFonts() {
             return size.cx;
             };
 
-        checkMarkWidth_scaled = measure(L"\u2714") + 15;
-        crossWidth_scaled = measure(L"\u2716") + 15;
-        boxWidth_scaled = measure(L"\u2610") + 15;
-        timestampWidth_scaled = measureString(L"2026-03-29 13:07:42") + 20; // Padding for header + sorting arrow
+        checkMarkWidth_scaled = measure(L"\u2714") + sx(15);
+        crossWidth_scaled = measure(L"\u2716") + sx(15);
+        boxWidth_scaled = measure(L"\u2610") + sx(15);
+        timestampWidth_scaled = measureString(L"2026-03-29 13:07:42") + sx(20); // Padding for header + sorting arrow
 
         ReleaseDC(nullptr, hdc);
     }
@@ -636,11 +636,11 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
    // --- STATIC CONTROLS ---
 
     // Default Font (Standard)
-    ctrlMap[IDC_STATIC_FIND] = { sx(11), sy(18), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_STATIC_REPLACE] = { sx(11), sy(47), sx(80), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_STATIC_FIND] = { sx(7), sy(18), sx(84), sy(19), WC_STATIC, LM.getLPCW(L"panel_find_what"), SS_RIGHT, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_STATIC_REPLACE] = { sx(7), sy(47), sx(84), sy(19), WC_STATIC, LM.getLPCW(L"panel_replace_with"), SS_RIGHT, nullptr, true, FontRole::Standard };
 
-    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_WHOLE_WORD_CHECKBOX] = { sx(16), sy(76), sx(162), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_whole_word_only"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_MATCH_CASE_CHECKBOX] = { sx(16), sy(101), sx(162), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_match_case"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_FORMULA_SUPPORT_CHECKBOX] = { sx(16), sy(126), sx(108), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_formula_support"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     // Formula-engine selector: small clickable static, owner-drawn so it can
     // render link-blue. The "(L)"/"(E)" label and the tooltip (registered
@@ -648,7 +648,7 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     // whenever the tab's engine changes.
     ctrlMap[IDC_FORMULA_SUPPORT_ENGINE] = { sx(130), sy(126), sx(18), sy(20), WC_STATIC, L"(L)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, L"...", true, FontRole::Standard };
     ctrlMap[IDC_FORMULA_SUPPORT_HELP] = { sx(152), sy(126), sx(20), sy(20), WC_BUTTON, LM.getLPCW(L"panel_help"), BS_PUSHBUTTON | WS_TABSTOP, nullptr, true, FontRole::Standard };
-    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(155), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
+    ctrlMap[IDC_WRAP_AROUND_CHECKBOX] = { sx(16), sy(151), sx(162), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_wrap_around"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
     ctrlMap[IDC_REPLACE_AT_MATCHES_CHECKBOX] = { sx(16), sy(176), sx(110), checkboxHeight, WC_BUTTON, LM.getLPCW(L"panel_replace_at_matches"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, true, FontRole::Standard };
 
     // Note: Replace Hit Edit uses Standard Font implicitly
@@ -791,20 +791,21 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_FILE_OPS_GROUP] = { sx(14), sy(210), windowWidth - sx(199), sy(80), WC_BUTTON,LM.getLPCW(L"panel_replace_in_files"), BS_GROUPBOX, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_FILTER_STATIC] = { sx(15),  sy(230), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_filter"), SS_RIGHT, nullptr, false, FontRole::Standard };
 
-    // Filter/Dir Edits -> Normal1
-    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), comboWidth - sx(170),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
-    ctrlMap[IDC_FILTER_HELP] = { sx(96) + comboWidth - sx(170) + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help"), false, FontRole::Standard };
+    // Filter/Dir Edits -> Normal1; the help/browse button and the checkbox column follow them
+    const int fileFieldWidth = comboWidth - sx(183);
+    ctrlMap[IDC_FILTER_EDIT] = { sx(96),  sy(230), fileFieldWidth,  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
+    ctrlMap[IDC_FILTER_HELP] = { sx(96) + fileFieldWidth + sx(5), sy(228), sx(20), sy(20), WC_STATIC, L"(?)", SS_CENTER | SS_OWNERDRAW | SS_NOTIFY, LM.getLPCW(L"tooltip_filter_help"), false, FontRole::Standard };
     ctrlMap[IDC_DIR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_directory"), SS_RIGHT, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), comboWidth - sx(170),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
+    ctrlMap[IDC_DIR_EDIT] = { sx(96),  sy(257), fileFieldWidth,  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP, nullptr, false, FontRole::Normal1 };
 
-    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { comboWidth - sx(70), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { comboWidth - sx(42), sy(257), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { comboWidth - sx(42), sy(230), sx(110), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_BROWSE_DIR_BUTTON] = { sx(96) + fileFieldWidth + sx(4), sy(257), sx(20),  sy(20), WC_BUTTON, L"...", BS_PUSHBUTTON | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_SUBFOLDERS_CHECKBOX] = { sx(96) + fileFieldWidth + sx(32), sy(230), sx(136), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_subfolders"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { sx(96) + fileFieldWidth + sx(32), sy(257), sx(136), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
+    ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { sx(96) + fileFieldWidth + sx(32), sy(230), sx(136), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
     // Docs mode uses the Directory row for the tab color; a pure choice list, so only as wide as its entries
     ctrlMap[IDC_TAB_COLOR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_tab_color"), SS_RIGHT, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_TAB_COLOR_COMBO] = { sx(96),  sy(257), std::min(comboWidth - sx(170), tabColorComboWidth()),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP, LM.getLPCW(L"tooltip_tab_color"), false, FontRole::Normal1 };
+    ctrlMap[IDC_TAB_COLOR_COMBO] = { sx(96),  sy(257), std::min(fileFieldWidth, tabColorComboWidth()),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP, LM.getLPCW(L"tooltip_tab_color"), false, FontRole::Normal1 };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
