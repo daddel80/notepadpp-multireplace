@@ -795,6 +795,15 @@ public:
     static constexpr COLORREF DMODE_ERROR = RGB(255, 110, 110);
     static constexpr COLORREF DMODE_INFO = RGB(180, 180, 255);
 
+    static constexpr int MARKER_COLOR_LIGHT = 0x00A5FF; // Color for non-list Marker (Orange)
+    static constexpr int MARKER_COLOR_DARK = 0x0050D2;  // Color for non-list Marker (Orange)
+
+    // Alpha values for Marking values
+    static constexpr int EDITOR_MARK_ALPHA_LIGHT = 150;
+    static constexpr int EDITOR_OUTLINE_ALPHA_LIGHT = 0;
+    static constexpr int EDITOR_MARK_ALPHA_DARK = 130;
+    static constexpr int EDITOR_OUTLINE_ALPHA_DARK = 0;
+
     inline static bool isWindowOpen = false;
     inline static bool textModified = true;
     inline static bool documentSwitched = false;
@@ -871,8 +880,6 @@ protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
 private:
-    static constexpr int MARKER_COLOR_LIGHT = 0x00A5FF; // Color for non-list Marker (Orange)
-    static constexpr int MARKER_COLOR_DARK = 0x0050D2;  // Color for non-list Marker (Orange)
     static constexpr int DUPLICATE_MARKER_COLOR_LIGHT = 0xE6E0B0; // Color for Duplicate Marker (Light Ice Blue)
     static constexpr int DUPLICATE_MARKER_COLOR_DARK = 0x909060;  // Color for Duplicate Marker (Muted Teal)
     static constexpr int REPLACE_FILES_PANEL_HEIGHT = 88;
@@ -966,12 +973,6 @@ private:
 
     const std::vector<int> lightModeColumnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
     const std::vector<int> darkModeColumnColors = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
-
-    // Alpha values for Marking values
-    static constexpr int EDITOR_MARK_ALPHA_LIGHT = 150;
-    static constexpr int EDITOR_OUTLINE_ALPHA_LIGHT = 0;
-    static constexpr int EDITOR_MARK_ALPHA_DARK = 130;
-    static constexpr int EDITOR_OUTLINE_ALPHA_DARK = 0;
 
     // Preferences (input)
     int preferredColumnTabsStyleId = 30; // preferred ColumnTabs id; -1 = auto

@@ -18,9 +18,10 @@
 
 #include "StaticDialog/StaticDialog.h"
 #include "PluginInterface.h"
+#include "TextReplaceAnimation.h"
+#include <string>
 
 extern NppData nppData;
-extern HINSTANCE hInst;
 
 class AboutDialog : public StaticDialog
 {
@@ -40,6 +41,17 @@ private:
     void createFonts();
     void applyFonts();
 
+    void swapName();
+    void advanceNameSwap();
+    void endNameSwap();
+    void showSwapStatus(bool show);
+    void drawName(const DRAWITEMSTRUCT& dis) const;
+    void drawStatus(const DRAWITEMSTRUCT& dis) const;
+
     HFONT _hFont = nullptr;
     HFONT _hUnderlineFont = nullptr;
+
+    TextReplaceAnimation _nameSwap;
+    std::wstring _name;
+    bool _nameSwapped = false;
 };

@@ -286,8 +286,10 @@
     <ClInclude Include="..\src\NumericToken.h" />
     <ClInclude Include="..\src\NppStyleKit.h" />
     <ClInclude Include="..\src\MultiReplaceConfigDialog.h" />
-    <ClInclude Include="SciUndoGuard.h" />
+    <ClInclude Include="..\src\SciUndoGuard.h" />
     <ClInclude Include="..\src\TandemDock.h" />
+    <ClInclude Include="..\src\Version.h" />
+    <ClInclude Include="..\src\TextReplaceAnimation.h" />
     <ClInclude Include="..\src\engine\IFormulaEngine.h">
       <Filter>engine</Filter>
     </ClInclude>

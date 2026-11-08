@@ -196,7 +196,7 @@
 #define IDC_WEBSITE_LINK                5602
 #define IDC_VERSION_STATIC              5603
 #define IDC_LICENSE_STATIC              5604
-#define IDC_AUTHOR_STATIC               5605
+#define IDC_STATUS_STATIC               5605
 #define IDC_VERSION_LABEL               5606
 #define IDC_AUTHOR_LABEL                5607
 #define IDC_LICENSE_LABEL               5608
