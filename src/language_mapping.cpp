@@ -147,8 +147,8 @@ const LangKV kEnglishPairs[] = {
 { L"split_button_find_all_in_files", L"Find in Files" },
 
 // Static Status message entries
-{ L"status_duplicate_entry", L"Duplicate entry: " },
-{ L"status_value_added", L"Value added to the list." },
+{ L"status_duplicate_entry", L"Duplicate entry added (entries: $REPLACE_STRING): " },
+{ L"status_value_added", L"Value added to the list (entries: $REPLACE_STRING)." },
 { L"status_one_row_deleted", L"1 row deleted." },
 { L"status_column_marks_cleared", L"Column marks cleared." },
 { L"status_all_marks_cleared", L"All marks cleared." },
@@ -245,7 +245,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_no_data_for_duplicates", L"No data rows to check for duplicates." },
 { L"status_no_duplicates_found", L"No duplicates found." },
 { L"status_duplicates_deleted", L"Deleted $REPLACE_STRING duplicate rows." },
-{ L"status_document_modified_delete_cancelled", L"Document was modified. Deletion cancelled." },
+{ L"status_document_modified_delete_cancelled", L"Document was modified. Deletion canceled." },
 
 // MessageBox Titles
 { L"msgbox_title_error", L"Error" },
@@ -386,7 +386,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_cat_appearance", L"Appearance" },
 
 // Search & Replace Settings
-{ L"config_grp_search_behaviour", L"Search behaviour" },
+{ L"config_grp_search_behaviour", L"Search behavior" },
 { L"config_chk_stay_after_replace", L"Replace: Don't move to the following occurrence" },
 { L"config_chk_all_from_cursor", L"Find: Search from cursor position" },
 { L"config_chk_mute_sounds", L"Mute all sounds" },

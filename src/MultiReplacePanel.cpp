@@ -2939,13 +2939,14 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
 
     addItemsToReplaceList(itemsToAdd, newItemIndex);
 
-    // Show a status message indicating the value added to the list
+    // The entry count changes with every add, so the message is feedback even when the list does not scroll
+    const std::wstring entryCount = std::to_wstring(replaceListData.size());
     std::wstring message;
     if (isDuplicate) {
-        message = LM.get(L"status_duplicate_entry") + itemData.findText;
+        message = LM.get(L"status_duplicate_entry", { entryCount }) + itemData.findText;
     }
     else {
-        message = LM.get(L"status_value_added");
+        message = LM.get(L"status_value_added", { entryCount });
     }
     showStatusMessage(message, MessageStatus::Success);
 
