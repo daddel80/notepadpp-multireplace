@@ -7757,9 +7757,9 @@ void MultiReplace::replaceAllInOpenedDocs()
     discardDelimiterSnapshot();
     cycle.restore();
 
-    // Write back only the enabled entries
+    // Write back only the enabled entries that search; an empty Find is an init entry
     for (size_t j = 0; j < replaceListData.size(); ++j) {
-        if (!replaceListData[j].isEnabled) continue;
+        if (!replaceListData[j].isEnabled || replaceListData[j].findText.empty()) continue;
         updateCountColumns(j, listFindTotals[j], listReplaceTotals[j]);
     }
     refreshUIListView();
@@ -8460,7 +8460,8 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
 bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex, bool fileScope)
 {
-    if (itemData.findText.empty() && !itemData.formulaSupport) {
+    // An empty Find never matches; an init entry already ran in preProcessListForReplace
+    if (itemData.findText.empty()) {
         findCount = replaceCount = 0;
         return true;
     }
@@ -9962,7 +9963,7 @@ void MultiReplace::handleReplaceInFiles() {
 
     if (useListEnabled) {
         for (size_t i = 0; i < replaceListData.size(); ++i) {
-            if (!replaceListData[i].isEnabled) continue;
+            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty()) continue;
             updateCountColumns(i, listFindTotals[i], listReplaceTotals[i]);
         }
         refreshUIListView();
@@ -10415,8 +10416,7 @@ void MultiReplace::handleFindAllInDocsButton()
 
     if (useListEnabled) {
         for (size_t i = 0; i < listHitTotals.size(); ++i) {
-            if (!replaceListData[i].isEnabled) continue;
-            replaceListData[i].findCount = listHitTotals[i];
+            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty()) continue;
             updateCountColumns(i, listHitTotals[i]);
         }
         refreshUIListView();
@@ -10743,8 +10743,7 @@ void MultiReplace::handleFindInFiles() {
 
     if (useListEnabled) {
         for (size_t i = 0; i < listHitTotals.size(); ++i) {
-            if (!replaceListData[i].isEnabled) continue;
-            replaceListData[i].findCount = listHitTotals[i];
+            if (!replaceListData[i].isEnabled || replaceListData[i].findText.empty()) continue;
             updateCountColumns(i, listHitTotals[i]);
         }
         refreshUIListView();
