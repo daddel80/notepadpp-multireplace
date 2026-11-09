@@ -42,19 +42,16 @@ struct ReplaceItemData
     bool isDirty = false;           // Session-only: marks row as modified since last save/load
     std::wstring lastModified;      // Persistent timestamp: set on content change, saved in CSV
 
-    bool operator==(const ReplaceItemData& rhs) const {
+    // Same rule: enabled state, comment and bookkeeping do not make an entry different
+    bool isDuplicateOf(const ReplaceItemData& rhs) const {
         return
-            isEnabled == rhs.isEnabled &&
             findText == rhs.findText &&
             replaceText == rhs.replaceText &&
             wholeWord == rhs.wholeWord &&
             matchCase == rhs.matchCase &&
+            formulaSupport == rhs.formulaSupport &&
             extended == rhs.extended &&
             regex == rhs.regex;
-    }
-
-    bool operator!=(const ReplaceItemData& rhs) const {
-        return !(*this == rhs);
     }
 };
 

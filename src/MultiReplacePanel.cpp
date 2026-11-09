@@ -2913,7 +2913,7 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     // Check if itemData is already in the vector
     bool isDuplicate = false;
     for (const auto& existingItem : replaceListData) {
-        if (existingItem == itemData) {
+        if (existingItem.isDuplicateOf(itemData)) {
             isDuplicate = true;
             break;
         }
@@ -2940,15 +2940,8 @@ void MultiReplace::insertReplaceListItem(const ReplaceItemData& itemData) {
     addItemsToReplaceList(itemsToAdd, newItemIndex);
 
     // The entry count changes with every add, so the message is feedback even when the list does not scroll
-    const std::wstring entryCount = std::to_wstring(replaceListData.size());
-    std::wstring message;
-    if (isDuplicate) {
-        message = LM.get(L"status_duplicate_entry", { entryCount }) + itemData.findText;
-    }
-    else {
-        message = LM.get(L"status_value_added", { entryCount });
-    }
-    showStatusMessage(message, MessageStatus::Success);
+    const std::wstring messageId = isDuplicate ? L"status_duplicate_entry" : L"status_value_added";
+    showStatusMessage(LM.get(messageId, { std::to_wstring(replaceListData.size()) }), MessageStatus::Success);
 
     // Update the item count in the ListView
     ListView_SetItemCountEx(_replaceListView, replaceListData.size(), LVSICF_NOINVALIDATEALL);

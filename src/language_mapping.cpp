@@ -147,7 +147,7 @@ const LangKV kEnglishPairs[] = {
 { L"split_button_find_all_in_files", L"Find in Files" },
 
 // Static Status message entries
-{ L"status_duplicate_entry", L"Duplicate entry added (entries: $REPLACE_STRING): " },
+{ L"status_duplicate_entry", L"Duplicate entry added (entries: $REPLACE_STRING)." },
 { L"status_value_added", L"Value added to the list (entries: $REPLACE_STRING)." },
 { L"status_one_row_deleted", L"1 row deleted." },
 { L"status_column_marks_cleared", L"Column marks cleared." },
