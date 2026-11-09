@@ -5334,8 +5334,8 @@ void MultiReplace::findInList(bool forward) {
 }
 
 void MultiReplace::jumpToNextMatchInEditor(size_t listIndex) {
-    // 1. Basic validation
-    if (listIndex >= replaceListData.size()) return;
+    // 1. Basic validation; an init entry (empty Find) never has hits
+    if (listIndex >= replaceListData.size() || replaceListData[listIndex].findText.empty()) return;
 
     // Ensure we read cursor position from the correct editor view
     pointerToScintilla();
