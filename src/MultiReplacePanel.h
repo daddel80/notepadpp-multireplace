@@ -111,6 +111,7 @@ struct SearchContext {
     bool retrieveFoundText = false; // If true, retrieve the found text from Scintilla
     bool highlightMatch = false;    // If true, highlight the found match
     bool useStoredSelections = false; // If true, use m_selectionScope instead of current selection
+    LRESULT skipEmptyAt = -1;       // Find Previous: an empty hit here is the current position and is not returned
 };
 
 struct SearchResult {
@@ -1404,12 +1405,13 @@ private:
     bool handleReplaceAllButton(RunScope scope = RunScope::Editor, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1, Sci_Position verifyFrom = -1); // verifyFrom: start of the confirming search, default the match itself
-    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX, RunScope scope = RunScope::Editor);
+    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, Sci_Position startPos, const size_t itemIndex = SIZE_MAX, RunScope scope = RunScope::Editor);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     void updateLineDelimiterAfterReplace(Sci_Position pos);
     bool preProcessListForReplace(bool highlight);
     SelectionInfo getSelectionInfo(bool isBackward);
+    SelectionInfo getCurrentSelectionInfo();
     bool hasAnyNonEmptySelection();
     bool hasAnySelectedEntry() const;
     Sci_Position computeAllStartPos(const SearchContext& context, bool wrapEnabled, bool fromCursorEnabled);
@@ -1491,8 +1493,8 @@ private:
 #pragma region Find
     void handleFindNextButton();
     void handleFindPrevButton();
-    SearchResult performRegexBackwardFallback(const SearchContext& context, SelectionRange range);
-    SearchResult performSingleSearch(const SearchContext& context, SelectionRange range);
+    SearchResult performRegexBackwardFallback(const SearchContext& context, SelectionRange range, LRESULT regionEnd);
+    SearchResult performSingleSearch(const SearchContext& context, SelectionRange range, LRESULT regionEnd = -1, bool isBackward = false);
     SearchResult performSearchForward(const SearchContext& context, LRESULT start);
     SearchResult performSearchBackward(const SearchContext& context, LRESULT start);
     SearchResult performSearchColumn(const SearchContext& context, LRESULT start, bool isBackward);

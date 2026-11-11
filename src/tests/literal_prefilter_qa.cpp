@@ -110,12 +110,11 @@ public:
 
     // SCI_SETTARGETRANGE + SCI_SEARCHINTARGET as MR's performSingleSearch takes it: with match case
     // Scintilla can report a match running past the end of the range, at the end of the document
-    // into bytes that are not there (a pattern ending in NUL); MR drops a match past the document
-    // end, a match past the range end is real text and counts
+    // even into bytes that are not there (a pattern ending in NUL); MR drops such a match
     Sci::Position find(Sci::Position from, Sci::Position to, const std::string& pattern, int flags, Sci::Position& len) const {
         len = static_cast<Sci::Position>(pattern.size());
         const Sci::Position p = _d->FindText(from, to, pattern.c_str(), static_cast<FindOption>(flags), &len);
-        return (p >= 0 && p + len > length()) ? -1 : p;
+        return (p >= 0 && (p + len > to || p + len > length())) ? -1 : p;
     }
 
     // MR's collect loop: every hit from the start, empty patterns never searched

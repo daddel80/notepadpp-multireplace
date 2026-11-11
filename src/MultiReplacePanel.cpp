@@ -7980,6 +7980,21 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
     bool replaceSuccess = true;
     bool usedOnePass = false;
 
+    // The start is fixed once per run, so every list entry begins at the same place
+    const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
+    // Only the editor starts at the cursor; runs over several documents cover them whole, as in Notepad++
+    const bool allFromCursor = (scope == RunScope::Editor) && allFromCursorEnabled;
+
+    SearchContext startCtx{};
+    startCtx.docLength = send(SCI_GETLENGTH, 0, 0);
+    startCtx.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
+    startCtx.isSelectionMode = (scope != RunScope::Files) && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    startCtx.useStoredSelections = startCtx.isSelectionMode;
+    startCtx.retrieveFoundText = false;
+    startCtx.highlightMatch = false;
+
+    const Sci_Position fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
+
     if (useListEnabled)
     {
         // Check if the replaceListData is empty and warn the user if so
@@ -7996,21 +8011,6 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
         if (!preProcessListForReplace(/*highlightEntry=*/false)) {
             return false;
         }
-
-        // snapshot a stable start and current selection (only computed once)
-        const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-        // Only the editor starts at the cursor; runs over several documents cover them whole, as in Notepad++
-        const bool allFromCursor = (scope == RunScope::Editor) && allFromCursorEnabled;
-
-        SearchContext startCtx{};
-        startCtx.docLength = send(SCI_GETLENGTH, 0, 0);
-        startCtx.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
-        startCtx.isSelectionMode = (scope != RunScope::Files) && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
-        startCtx.useStoredSelections = startCtx.isSelectionMode;
-        startCtx.retrieveFoundText = false;
-        startCtx.highlightMatch = false;
-
-        const Sci_Position fixedStart = computeAllStartPos(startCtx, wrapAroundEnabled, allFromCursor);
 
         {
             // Suppress modification notifications during bulk replace to avoid
@@ -8034,30 +8034,11 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
                 {
                     if (replaceListData[i].isEnabled)
                     {
-                        if (!wrapAroundEnabled && allFromCursor)
-                        {
-                            const Sci_Position docLenNow = send(SCI_GETLENGTH, 0, 0);
-                            auto clamp = [&](Sci_Position p) {
-                                return (p < 0) ? 0 : (p > docLenNow ? docLenNow : p);
-                                };
-
-                            if (startCtx.isSelectionMode && !m_selectionScope.empty()) {
-                                Sci_Position s = clamp(static_cast<Sci_Position>(m_selectionScope.front().start));
-                                Sci_Position e = clamp(static_cast<Sci_Position>(m_selectionScope.back().end));
-                                if (e < s) std::swap(s, e);
-                                send(SCI_SETSEL, s, e);
-                            }
-                            else if (!startCtx.isSelectionMode) {
-                                const Sci_Position s = clamp(fixedStart);
-                                send(SCI_GOTOPOS, s, 0);
-                            }
-                        }
-
                         int findCount = 0;
                         int replaceCount = 0;
 
                         // Call replaceAll and break out if there is an error or a Debug Stop
-                        replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i, scope);
+                        replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, fixedStart, i, scope);
 
                         // Refresh ListView to show updated statistics
                         refreshUIListView();
@@ -8065,7 +8046,6 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
                         // Accumulate total replacements
                         totalReplaceCount += replaceCount;
 
-                        // cosmetic caret restore only for single-document run
                         if (!replaceSuccess) {
                             break;
                         }
@@ -8100,7 +8080,7 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
 
             ScopedUndoAction undo(*this);
             int findCount = 0;
-            replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount, SIZE_MAX, scope);
+            replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount, fixedStart, SIZE_MAX, scope);
 
             send(SCI_SETMODEVENTMASK, savedEventMask, 0);
             _delimiterPositionsStale = true;
@@ -8204,7 +8184,9 @@ void MultiReplace::handleReplaceButton() {
     searchResult.length = 0;
     searchResult.foundText = "";
 
-    SelectionInfo selection = getSelectionInfo(false);
+    // The Selection scope starts at its first range, otherwise the current selection counts
+    const SelectionInfo selection = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)
+        ? getSelectionInfo(false) : getCurrentSelectionInfo();
     Sci_Position newPos = (selection.length > 0) ? selection.startPos : send(SCI_GETCURRENTPOS, 0, 0);
 
     size_t matchIndex = std::numeric_limits<size_t>::max();
@@ -8453,7 +8435,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     return false; // No replacement was made.
 }
 
-bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex, RunScope scope)
+bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, Sci_Position startPos, size_t itemIndex, RunScope scope)
 {
     // An empty Find never matches; an init entry already ran in preProcessListForReplace
     if (itemData.findText.empty()) {
@@ -8478,10 +8460,6 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.highlightMatch = false;
 
     send(SCI_SETSEARCHFLAGS, context.searchFlags);
-
-    const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-
-    Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, (scope == RunScope::Editor) && allFromCursorEnabled);
 
     SearchResult searchResult = performSearchForward(context, startPos);
 
@@ -8722,15 +8700,15 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
     Sci_Position correspondingEnd = 0;
     std::vector<SelectionRange> selections; // Store all selections for sorting
 
-    if (selectionCount > 0) {
-        selections.resize(selectionCount);
+    // Only selected text counts: a block is empty on its short lines, an added caret is empty too
+    for (LRESULT i = 0; i < selectionCount; ++i) {
+        SelectionRange range;
+        range.start = send(SCI_GETSELECTIONNSTART, i, 0);
+        range.end = send(SCI_GETSELECTIONNEND, i, 0);
+        if (range.end > range.start) selections.push_back(range);
+    }
 
-        // Retrieve all selections
-        for (LRESULT i = 0; i < selectionCount; ++i) {
-            selections[i].start = send(SCI_GETSELECTIONNSTART, i, 0);
-            selections[i].end = send(SCI_GETSELECTIONNEND, i, 0);
-        }
-
+    if (!selections.empty()) {
         // Sort selections based on direction
         if (isBackward) {
             std::sort(selections.begin(), selections.end(), [](const SelectionRange& a, const SelectionRange& b) {
@@ -8756,6 +8734,13 @@ SelectionInfo MultiReplace::getSelectionInfo(bool isBackward) {
     // Calculate the selection length
     Sci_Position selectionLength = correspondingEnd - selectedStart;
     return SelectionInfo{ selectedStart, correspondingEnd, selectionLength };
+}
+
+SelectionInfo MultiReplace::getCurrentSelectionInfo() {
+    // The selection Notepad++ works from: the main one of several, a block as a whole
+    const Sci_Position start = static_cast<Sci_Position>(send(SCI_GETSELECTIONSTART, 0, 0));
+    const Sci_Position end = static_cast<Sci_Position>(send(SCI_GETSELECTIONEND, 0, 0));
+    return SelectionInfo{ start, end, end - start };
 }
 
 bool MultiReplace::hasAnyNonEmptySelection() {
@@ -8791,8 +8776,8 @@ Sci_Position MultiReplace::computeAllStartPos(const SearchContext& context, bool
         SelectionInfo selInfo = getSelectionInfo(false);
         return selInfo.startPos;
     }
-    const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
-    return wrapEnabled ? 0 : (fromCursorEnabled ? caretPos : 0);
+    // A run from the cursor includes selected text: it begins at the selection start
+    return wrapEnabled ? 0 : (fromCursorEnabled ? getCurrentSelectionInfo().startPos : 0);
 }
 
 #pragma endregion
@@ -10792,7 +10777,8 @@ void MultiReplace::handleFindNextButton() {
         searchPos = isFollowUpSearch ? selection.endPos : selection.startPos;
     }
     else {
-        searchPos = send(SCI_GETCURRENTPOS, 0, 0);
+        // The search continues behind selected text
+        searchPos = getCurrentSelectionInfo().endPos;
     }
 
     // Initialize SearchContext
@@ -10900,18 +10886,19 @@ void MultiReplace::handleFindPrevButton() {
 
     SelectionInfo selection = getSelectionInfo(true);
     Sci_Position searchPos;
+    bool isNewSelection = false;
 
-    // Determine starting position for backward search:
-    // Selection + selection-radio: start from the end of the selection.
-    // Otherwise, use the current cursor position.
+    // Mirror of Find Next: a follow-up search in the Selection scope starts BEFORE the last find, a new
+    // selection at its END; otherwise before the current selection, so the marked hit is never found again
     if (selection.length > 0 && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED)) {
-        searchPos = selection.endPos;
+        bool isFollowUpSearch = (static_cast<LRESULT>(selection.startPos) == m_lastFindResult.start &&
+            static_cast<LRESULT>(selection.endPos) == m_lastFindResult.end);
+        searchPos = isFollowUpSearch ? selection.startPos : selection.endPos;
+        isNewSelection = !isFollowUpSearch;
     }
     else {
-        searchPos = send(SCI_GETCURRENTPOS, 0, 0);
+        searchPos = getCurrentSelectionInfo().startPos;
     }
-    // Move one position backward if possible
-    searchPos = (searchPos > 0) ? send(SCI_POSITIONBEFORE, searchPos, 0) : searchPos;
 
     // Create a fully initialized `SearchContext`
     SearchContext context;
@@ -10921,6 +10908,8 @@ void MultiReplace::handleFindPrevButton() {
     context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = true;
     context.highlightMatch = true;
+    // An empty hit at the start is the current position itself, except at the end of a new selection
+    context.skipEmptyAt = isNewSelection ? -1 : searchPos;
 
     if (useListEnabled) {
         size_t matchIndex = std::numeric_limits<size_t>::max();
@@ -10935,6 +10924,7 @@ void MultiReplace::handleFindPrevButton() {
         SearchResult result = performListSearchBackward(replaceListData, searchPos, matchIndex, context);
         if (result.pos < 0 && wrapAroundEnabled) {
             searchPos = send(SCI_GETLENGTH, 0, 0);
+            context.skipEmptyAt = -1;
             result = performListSearchBackward(replaceListData, searchPos, matchIndex, context);
             if (result.pos >= 0) {
                 updateCountColumns(matchIndex, 1);
@@ -10972,6 +10962,7 @@ void MultiReplace::handleFindPrevButton() {
         SearchResult result = performSearchBackward(context, searchPos);
         if (result.pos < 0 && wrapAroundEnabled) {
             searchPos = send(SCI_GETLENGTH, 0, 0);
+            context.skipEmptyAt = -1;
             result = performSearchBackward(context, searchPos);
             if (result.pos >= 0) {
                 showStatusMessage(LM.get(L"status_wrapped_to_last") + getSelectionScopeSuffix(), MessageStatus::Success);
@@ -10990,10 +10981,12 @@ void MultiReplace::handleFindPrevButton() {
 
 // Forward-scan fallback: SCI_SEARCHINTARGET forces forward direction under
 // SCFIND_REGEXP, so we scan forward and keep the rightmost match, validating
-// each one against an unbounded re-search to reject range-clipped greedy hits.
-SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& context, SelectionRange range)
+// each one against a re-search to the end of its region (selection range, column,
+// else the document) to reject greedy hits clipped at the start position.
+SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& context, SelectionRange range, LRESULT regionEnd)
 {
     const LRESULT scanEnd = range.start;
+    const LRESULT checkEnd = (regionEnd >= 0) ? regionEnd : context.docLength;
     LRESULT pos = range.end;
     SearchResult lastMatch;
 
@@ -11001,12 +10994,16 @@ SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& con
     probeCtx.retrieveFoundText = false;
     probeCtx.highlightMatch = false;
 
-    while (pos < scanEnd) {
+    // The walk steps on its own, so the bridge must not hold back an empty hit as a continuation;
+    // it also looks at scanEnd itself, where only an empty hit can lie
+    send(SCI_SETSEARCHFLAGS, context.searchFlags | SCFIND_REGEXP_EMPTYMATCH_ALLOWATSTART);
+
+    while (pos <= scanEnd) {
         SearchResult r = performSingleSearch(probeCtx, { pos, scanEnd });
         if (r.pos < 0) break;
 
-        // Reject clipped greedy matches by comparing against an unbounded re-search.
-        SearchResult unclipped = performSingleSearch(probeCtx, { r.pos, context.docLength });
+        // Reject clipped greedy matches by comparing against the re-search to the region end.
+        SearchResult unclipped = performSingleSearch(probeCtx, { r.pos, checkEnd });
         if (unclipped.pos != r.pos || unclipped.length != r.length) break;
         if (unclipped.pos + unclipped.length > scanEnd) break;
 
@@ -11016,6 +11013,7 @@ SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& con
         if (next <= pos) next = pos + 1;
         pos = next;
     }
+    send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
     if (lastMatch.pos < 0) return lastMatch;
 
@@ -11041,16 +11039,16 @@ SearchResult MultiReplace::performRegexBackwardFallback(const SearchContext& con
     return lastMatch;
 }
 
-SearchResult MultiReplace::performSingleSearch(const SearchContext& context, SelectionRange range)
+SearchResult MultiReplace::performSingleSearch(const SearchContext& context, SelectionRange range, LRESULT regionEnd, bool isBackward)
 {
     if (context.findText.empty()) {
         return {};
     }
 
     // Route backward+regex through forward-scan fallback (SCI_SEARCHINTARGET
-    // can't search regex backwards).
-    if (range.start > range.end && (context.searchFlags & SCFIND_REGEXP)) {
-        return performRegexBackwardFallback(context, range);
+    // can't search regex backwards), an empty range searched backward too.
+    if ((range.start > range.end || (isBackward && range.start == range.end)) && (context.searchFlags & SCFIND_REGEXP)) {
+        return performRegexBackwardFallback(context, range, regionEnd);
     }
 
     // Set the target range and search flags via Scintilla
@@ -11067,6 +11065,12 @@ SearchResult MultiReplace::performSingleSearch(const SearchContext& context, Sel
         // this is not the same as "there is nothing here". The one-pass walk needs the difference.
         if (pos < -1 || (pos >= 0 && matchEnd < pos)) _searchRefused = true;
         return {};  // Return empty result if no match is found
+    }
+    if (range.start <= range.end && matchEnd > range.end) {
+        return {};  // A plain search can run past the range end (Scintilla's fast path): such a match lies outside
+    }
+    if (pos == matchEnd && pos == context.skipEmptyAt) {
+        return {};  // Find Previous: an empty hit at the current position is that position itself
     }
 
     // Construct the search result
@@ -11139,7 +11143,7 @@ SearchResult MultiReplace::performSearchBackward(const SearchContext& context, L
     else {
         targetRange.start = start;
         targetRange.end = 0; // Beginning of the document for backward search
-        result = performSingleSearch(context, targetRange);
+        result = performSingleSearch(context, targetRange, context.docLength, isBackward);
     }
     return result;
 }
@@ -11185,12 +11189,12 @@ SearchResult MultiReplace::performSearchSelection(const SearchContext& context, 
         // Skip if the range is invalid
         if (targetRange.start == targetRange.end) continue;
 
-        // Perform the search within the target range
-        result = performSingleSearch(context, targetRange);
+        // Perform the search within the target range; a backward regex hit ends inside the range
+        result = performSingleSearch(context, targetRange, selection.end, isBackward);
         if (result.pos >= 0) return result;
 
-        // Update the starting position for the next iteration
-        start = isBackward ? selection.start - 1 : selection.end + 1;
+        // Go on at this range's edge, the next range may touch it
+        start = isBackward ? selection.start : selection.end;
     }
 
     return result; // No match found
@@ -11257,6 +11261,14 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
                 endColumn = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
             }
 
+            // A backward regex hit ends inside its column
+            const LRESULT columnEnd = endColumn;
+
+            // Backward from inside a multi-character delimiter: the column behind it starts after the cursor
+            if (isBackward && start < startColumn) {
+                continue;
+            }
+
             // Adjust the target range based on start position and search direction
             if (isBackward && start >= startColumn && start <= endColumn) {
                 endColumn = start;
@@ -11270,7 +11282,7 @@ SearchResult MultiReplace::performSearchColumn(const SearchContext& context, LRE
             targetRange.end = isBackward ? startColumn : endColumn;
 
             // Perform search within the target range
-            result = performSingleSearch(context, targetRange);
+            result = performSingleSearch(context, targetRange, columnEnd, isBackward);
 
             // Return immediately if a match is found
             if (result.pos >= 0) {
@@ -11481,7 +11493,9 @@ void MultiReplace::updateSelectionScope() {
 
     bool isStaleSelection = (static_cast<LRESULT>(selStart) == m_lastFindResult.start &&
         static_cast<LRESULT>(selEnd) == m_lastFindResult.end);
-    bool hasUserSelection = (selEnd > selStart) && !isStaleSelection;
+    // Any selected range counts, also when the main selection is only an added caret
+    const bool hasSelectedText = hasAnyNonEmptySelection();
+    bool hasUserSelection = hasSelectedText && !isStaleSelection;
 
     // Case 1: Scope already exists (follow-up search)
     if (!m_selectionScope.empty()) {
@@ -11503,10 +11517,10 @@ void MultiReplace::updateSelectionScope() {
     }
 
     // Case 2: No scope yet - need new user selection
-    if (selEnd > selStart) {
+    if (hasSelectedText) {
         captureCurrentSelectionAsScope();
     }
-    // Case 3: stale selection or plain click - no valid scope (stays empty)
+    // Case 3: no selected text - no valid scope (stays empty)
 }
 
 void MultiReplace::captureCurrentSelectionAsScope() {
@@ -11639,20 +11653,7 @@ void MultiReplace::handleMarkMatchesButton() {
             context.retrieveFoundText = false;
             context.highlightMatch = false;
 
-            Sci_Position startPos = 0;
-            if (context.isSelectionMode) {
-                startPos = !m_selectionScope.empty()
-                    ? static_cast<Sci_Position>(m_selectionScope.front().start)
-                    : getSelectionInfo(false).startPos;
-            }
-            else if (wrapAroundEnabled) {
-                startPos = 0;
-            }
-            else {
-                const Sci_Position caretPos = static_cast<Sci_Position>(send(SCI_GETCURRENTPOS, 0, 0));
-                startPos = allFromCursorEnabled ? caretPos : 0;
-            }
-
+            const Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, allFromCursorEnabled);
             const int matchCount = markString(context, startPos, item.findText, bookmarkMarkerId);
             if (matchCount > 0) {
                 totalMatchCount += matchCount;
@@ -11676,14 +11677,7 @@ void MultiReplace::handleMarkMatchesButton() {
         context.isSelectionMode = (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
         context.useStoredSelections = context.isSelectionMode;
 
-        Sci_Position startPos = 0;
-        if (context.isSelectionMode) {
-            startPos = !m_selectionScope.empty()
-                ? static_cast<Sci_Position>(m_selectionScope.front().start)
-                : getSelectionInfo(false).startPos;
-        }
-        else if (!wrapAroundEnabled) startPos = allFromCursorEnabled ? (Sci_Position)send(SCI_GETCURRENTPOS) : 0;
-
+        const Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, allFromCursorEnabled);
         totalMatchCount = markString(context, startPos, findText, bookmarkMarkerId);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
