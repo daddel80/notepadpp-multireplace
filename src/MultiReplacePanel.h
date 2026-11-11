@@ -1397,12 +1397,14 @@ private:
 #pragma endregion
 
 #pragma region Replace
+    // Docs/Files: one document of a run over several, which records history and reports itself. Such a run
+    // covers whole documents as in Notepad++ (no start at the cursor); Files also ignore the selection scope.
+    enum class RunScope { Editor, Docs, Files };
     void replaceAllInOpenedDocs();
-    // standalone false: one document of a run over several, which records history and reports itself
-    bool handleReplaceAllButton(bool standalone = true, const std::filesystem::path* explicitPath = nullptr);
+    bool handleReplaceAllButton(RunScope scope = RunScope::Editor, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
     bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1, Sci_Position verifyFrom = -1); // verifyFrom: start of the confirming search, default the match itself
-    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX, bool fileScope = false);
+    bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, const size_t itemIndex = SIZE_MAX, RunScope scope = RunScope::Editor);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     void updateLineDelimiterAfterReplace(Sci_Position pos);

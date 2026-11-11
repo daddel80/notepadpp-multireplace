@@ -7109,10 +7109,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
-            bool savedDocsFlag = isReplaceAllInDocs;
-            isReplaceAllInDocs = false;
             handleReplaceAllButton();
-            isReplaceAllInDocs = savedDocsFlag;
             if (isColumnHighlighted) {
                 findAllDelimitersInDocument();
                 reapplyColumnHighlighting();
@@ -7683,7 +7680,7 @@ void MultiReplace::replaceAllInOpenedDocs()
         }
     }
     else {
-        // History once for the run, as in Replace in Files; the documents are not replaced standalone
+        // History once for the run, as in Replace in Files; the documents themselves run in Docs scope
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), getTextFromDialogItem(_hSelf, IDC_FIND_EDIT));
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), getTextFromDialogItem(_hSelf, IDC_REPLACE_EDIT));
     }
@@ -7736,7 +7733,7 @@ void MultiReplace::replaceAllInOpenedDocs()
         if (columnMode && !loadDelimitersForScan()) return false;
         m_selectionScope.clear();
 
-        if (!handleReplaceAllButton(false)) return false; // aborted via Stop/Error
+        if (!handleReplaceAllButton(RunScope::Docs)) return false; // aborted via Stop/Error
         grandTotalReplace += m_lastTotalReplaceCount;
 
         // Accumulate the per-list-entry counters from the UI
@@ -7926,7 +7923,7 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
     return replaceSuccess;
 }
 
-bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem::path* explicitPath) {
+bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem::path* explicitPath) {
 
     m_lastTotalReplaceCount = 0;
 
@@ -7947,7 +7944,7 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED &&
         !hasAnyNonEmptySelection() && m_selectionScope.empty())
     {
-        if (isReplaceAllInDocs) {
+        if (scope == RunScope::Docs) {
             return true;  // Multi-doc mode: skip to next document silently
         }
         else {
@@ -7967,7 +7964,7 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
     // First check if the document is read-only
     LRESULT isReadOnly = send(SCI_GETREADONLY, 0, 0);
     if (isReadOnly) {
-        if (isReplaceAllInDocs) {
+        if (scope == RunScope::Docs) {
             return true;  // Multi-doc mode: skip read-only document silently
         }
         showStatusMessage(LM.get(L"status_cannot_replace_read_only"), MessageStatus::Error);
@@ -7978,9 +7975,6 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
 
     // Read Filename and Path for the formula engine
     updateFilePathCache(explicitPath);
-
-    // File scope (Replace in Files): editor cursor and selection must not leak in
-    const bool fileScope = (explicitPath != nullptr);
 
     int totalReplaceCount = 0;
     bool replaceSuccess = true;
@@ -8005,12 +7999,13 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
 
         // snapshot a stable start and current selection (only computed once)
         const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
-        const bool allFromCursor = !fileScope && allFromCursorEnabled;
+        // Only the editor starts at the cursor; runs over several documents cover them whole, as in Notepad++
+        const bool allFromCursor = (scope == RunScope::Editor) && allFromCursorEnabled;
 
         SearchContext startCtx{};
         startCtx.docLength = send(SCI_GETLENGTH, 0, 0);
         startCtx.isColumnMode = (IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED);
-        startCtx.isSelectionMode = !fileScope && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+        startCtx.isSelectionMode = (scope != RunScope::Files) && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
         startCtx.useStoredSelections = startCtx.isSelectionMode;
         startCtx.retrieveFoundText = false;
         startCtx.highlightMatch = false;
@@ -8062,7 +8057,7 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
                         int replaceCount = 0;
 
                         // Call replaceAll and break out if there is an error or a Debug Stop
-                        replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i, fileScope);
+                        replaceSuccess = replaceAll(replaceListData[i], findCount, replaceCount, i, scope);
 
                         // Refresh ListView to show updated statistics
                         refreshUIListView();
@@ -8094,7 +8089,7 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
         itemData.extended = (IsDlgButtonChecked(_hSelf, IDC_EXTENDED_RADIO) == BST_CHECKED);
 
         // A run over several documents records the history once, not per document
-        if (standalone) {
+        if (scope == RunScope::Editor) {
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), itemData.findText);
             addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_REPLACE_EDIT), itemData.replaceText);
         }
@@ -8105,7 +8100,7 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
 
             ScopedUndoAction undo(*this);
             int findCount = 0;
-            replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount, SIZE_MAX, fileScope);
+            replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount, SIZE_MAX, scope);
 
             send(SCI_SETMODEVENTMASK, savedEventMask, 0);
             _delimiterPositionsStale = true;
@@ -8134,7 +8129,7 @@ bool MultiReplace::handleReplaceAllButton(bool standalone, const std::filesystem
 
     // Status message: replacement count plus optional engine summary.
     // ExprTk also emits a notice dialog when the user picked "Skip all NaN".
-    if (replaceSuccess && standalone) {
+    if (replaceSuccess && scope == RunScope::Editor) {
         std::wstring msg = LM.get(usedOnePass
             ? L"status_occurrences_replaced_one_pass"
             : L"status_occurrences_replaced",
@@ -8458,7 +8453,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
     return false; // No replacement was made.
 }
 
-bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex, bool fileScope)
+bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, size_t itemIndex, RunScope scope)
 {
     // An empty Find never matches; an init entry already ran in preProcessListForReplace
     if (itemData.findText.empty()) {
@@ -8477,7 +8472,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
     context.docLength = send(SCI_GETLENGTH, 0, 0);
     context.cachedCodepage = documentCodepage;
     context.isColumnMode = IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
-    context.isSelectionMode = !fileScope && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
+    context.isSelectionMode = (scope != RunScope::Files) && (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED);
     context.useStoredSelections = context.isSelectionMode;
     context.retrieveFoundText = itemData.formulaSupport;
     context.highlightMatch = false;
@@ -8486,7 +8481,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
-    Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, !fileScope && allFromCursorEnabled);
+    Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, (scope == RunScope::Editor) && allFromCursorEnabled);
 
     SearchResult searchResult = performSearchForward(context, startPos);
 
@@ -9841,7 +9836,7 @@ void MultiReplace::handleReplaceInFiles() {
         m_selectionScope.clear();
 
         clearListCounts();
-        if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
+        if (!handleReplaceAllButton(RunScope::Files, &fp)) { _isCancelRequested = true; aborted = true; }
 
         if (m_lastTotalReplaceCount > 0 && strict.lossy()) {
             send(SCI_UNDO, 0, 0);   // the run is one undo group (ScopedUndoAction)
@@ -9869,7 +9864,7 @@ void MultiReplace::handleReplaceInFiles() {
         if (columnMode && !loadDelimitersForScan()) { aborted = true; return true; }
 
         clearListCounts();
-        if (!handleReplaceAllButton(false, &fp)) { _isCancelRequested = true; aborted = true; }
+        if (!handleReplaceAllButton(RunScope::Files, &fp)) { _isCancelRequested = true; aborted = true; }
 
         // A buffer Scintilla failed on is never written back
         if (!guard.bufferIntact()) {
