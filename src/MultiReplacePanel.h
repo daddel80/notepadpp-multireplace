@@ -30,6 +30,7 @@
 #include "PluginInterface.h"
 #include "ResultDock.h"
 #include "SciUndoGuard.h"
+#include "SelectionFrame.h"
 #include "StaticDialog/resource.h"
 #include "TabStripLayout.h"
 
@@ -1182,6 +1183,7 @@ private:
 
     // Selection Scope Management for interactive search
     std::vector<SelectionRange> m_selectionScope;
+    SelectionFrame::Frame m_scopeFrame;  // the remembered area as its document keeps it, framed
     SelectionRange m_lastFindResult = { -1, -1 };
     int m_lastTotalReplaceCount = 0;
     // Replace in Files on an open document: verify replacement conversions
@@ -1506,6 +1508,15 @@ private:
     void focusListRow(size_t rowIndex);
     void updateSelectionScope();
     void captureCurrentSelectionAsScope();
+    bool hasSelectionScope();
+    bool scopeFrameApplies() const;
+    void loadScopeFromFrame();
+    void frameSelectionScope();
+    void releaseSelectionScope();
+    void releaseAllSelectionScopes();
+    void applyScopeFrameStyle();
+    SelectionFrame::Send docSend() const;
+    static SelectionFrame::Send viewSend(HWND hSci);
     std::wstring getSelectionScopeSuffix();
 
 #pragma endregion

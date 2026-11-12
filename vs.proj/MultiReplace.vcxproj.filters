@@ -165,6 +165,7 @@
     <ClCompile Include="..\src\ListCodec.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_FlowTabs.cpp" />
     <ClCompile Include="..\src\TabStripLayout.cpp" />
+    <ClCompile Include="..\src\SelectionFrame.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_FormulaDebug.cpp" />
     <ClCompile Include="..\src\FileDialogUtil.cpp" />
     <ClCompile Include="..\src\FileLoad.cpp" />
@@ -270,6 +271,7 @@
     <ClInclude Include="..\src\LiteralPrefilter.h" />
     <ClInclude Include="..\src\DocScope.h" />
     <ClInclude Include="..\src\TabStripLayout.h" />
+    <ClInclude Include="..\src\SelectionFrame.h" />
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\ResultDock.h" />
     <ClInclude Include="..\src\Encoding.h" />

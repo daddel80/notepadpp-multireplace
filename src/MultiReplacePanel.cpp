@@ -1035,6 +1035,12 @@ void MultiReplace::ensureIndicatorContext()
     }
     ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
 
+    // Selection scope frame: first free id
+    if (!NppStyleKit::gIndicatorCoord.isIndicatorReserved(m_scopeFrame.indicator())) {
+        m_scopeFrame.setIndicator(NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("SelectionFrame", -1));
+        applyScopeFrameStyle();
+    }
+
     // Registry gets the full remaining pool (no dedicated standard id)
     auto remaining = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
     NppStyleKit::gIndicatorReg.init(hSci0, hSci1, remaining, /*capacityHint*/100);
@@ -6468,6 +6474,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         else {
             handleClearTextMarksButton();
             handleClearDelimiterState();
+            releaseAllSelectionScopes();
 
             // Park tandem while MR is hidden and give the host its
             // strip back. Skipped on shutdown: N++ is persisting its
@@ -6778,6 +6785,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 _tandemDocked = false;
             }
 
+            // The remembered areas end with the panel, as on the hide path
+            releaseAllSelectionScopes();
+
             EndDialog(_hSelf, 0);
             _MultiReplace.display(false);
             return TRUE;
@@ -6826,7 +6836,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_ALL_TEXT_RADIO:
         {
-            m_selectionScope.clear();
+            releaseAllSelectionScopes();
             setUIElementVisibility();
             handleClearDelimiterState();
             return TRUE;
@@ -6834,7 +6844,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_SELECTION_RADIO:
         {
-            m_selectionScope.clear();
+            releaseAllSelectionScopes();
             setUIElementVisibility();
             handleClearDelimiterState();
             return TRUE;
@@ -6851,7 +6861,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             if (_suppressScopeAutoSelect && LOWORD(wParam) != IDC_COLUMN_MODE_RADIO) {
                 return TRUE;
             }
-            m_selectionScope.clear();
+            releaseAllSelectionScopes();
             CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_COLUMN_MODE_RADIO);
             setUIElementVisibility();
             return TRUE;
@@ -7942,7 +7952,7 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
     // Use hasAnyNonEmptySelection() so rectangular selections (where some
     // sub-selections can legitimately be zero-length) are handled correctly.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED &&
-        !hasAnyNonEmptySelection() && m_selectionScope.empty())
+        !hasAnyNonEmptySelection() && !hasSelectionScope())
     {
         if (scope == RunScope::Docs) {
             return true;  // Multi-doc mode: skip to next document silently
@@ -8102,7 +8112,7 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
             }
         }
     }
-    m_selectionScope.clear();
+    releaseSelectionScope();
 
     // Store count for callers that need accumulated totals (e.g. replaceAllInOpenedDocs)
     m_lastTotalReplaceCount = totalReplaceCount;
@@ -8157,7 +8167,7 @@ void MultiReplace::handleReplaceButton() {
     // hasAnyNonEmptySelection() covers rectangular selections whose first
     // sub-selection may be zero-length (Scintilla quirk for column mode).
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && !hasSelectionScope()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -8413,6 +8423,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 Sci_Position newLen = newPos - searchResult.pos;
                 if (context.isSelectionMode) {
                     adjustSelectionScope(searchResult.pos, searchResult.length, newLen);
+                    frameSelectionScope();  // the replacement stays inside the frame
                 }
 
                 // Only skip advancing when we deleted a non-empty match:
@@ -10036,7 +10047,7 @@ void MultiReplace::handleFindAllButton()
     // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && !hasSelectionScope()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -10750,7 +10761,7 @@ void MultiReplace::handleFindNextButton() {
     // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && !hasSelectionScope()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -10868,7 +10879,7 @@ void MultiReplace::handleFindPrevButton() {
     // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && !hasSelectionScope()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -11487,6 +11498,8 @@ void MultiReplace::updateSelectionScope() {
         return;
     }
 
+    loadScopeFromFrame();
+
     Sci_Position selStart = static_cast<Sci_Position>(send(SCI_GETSELECTIONSTART, 0, 0));
     Sci_Position selEnd = static_cast<Sci_Position>(send(SCI_GETSELECTIONEND, 0, 0));
     if (selStart > selEnd) std::swap(selStart, selEnd);
@@ -11511,7 +11524,7 @@ void MultiReplace::updateSelectionScope() {
         Sci_Position scopeStart = static_cast<Sci_Position>(m_selectionScope.front().start);
         Sci_Position scopeEnd = static_cast<Sci_Position>(m_selectionScope.back().end);
         if (currentPos < scopeStart || currentPos > scopeEnd) {
-            m_selectionScope.clear();  // Click outside - discard scope
+            releaseSelectionScope();  // Click outside - discard scope
         }
         return;
     }
@@ -11537,6 +11550,7 @@ void MultiReplace::captureCurrentSelectionAsScope() {
     }
     std::sort(m_selectionScope.begin(), m_selectionScope.end(),
         [](const SelectionRange& a, const SelectionRange& b) { return a.start < b.start; });
+    frameSelectionScope();
 }
 
 void MultiReplace::adjustSelectionScope(Sci_Position replacePos, Sci_Position oldLen, Sci_Position newLen) {
@@ -11556,6 +11570,71 @@ void MultiReplace::adjustSelectionScope(Sci_Position replacePos, Sci_Position ol
             range.end += delta;
         }
     }
+}
+
+bool MultiReplace::hasSelectionScope() {
+    loadScopeFromFrame();
+    return !m_selectionScope.empty();
+}
+
+// The frame lives in the documents of the two editor views; runs over several documents leave it alone
+bool MultiReplace::scopeFrameApplies() const {
+    return m_scopeFrame.indicator() >= 0 && !DocCycleGuard::active()
+        && (_hScintilla == nppData._scintillaMainHandle || _hScintilla == nppData._scintillaSecondHandle);
+}
+
+// The remembered area as the document keeps it, moved by the edits since the last search
+void MultiReplace::loadScopeFromFrame() {
+    if (!scopeFrameApplies()) return;
+    m_selectionScope.clear();
+    for (const SelectionFrame::Span& span : m_scopeFrame.read(docSend())) {
+        m_selectionScope.push_back({ span.start, span.end });
+    }
+}
+
+void MultiReplace::frameSelectionScope() {
+    if (!scopeFrameApplies()) return;
+    std::vector<SelectionFrame::Span> spans;
+    spans.reserve(m_selectionScope.size());
+    for (const SelectionRange& range : m_selectionScope) {
+        spans.push_back({ range.start, range.end });
+    }
+    m_scopeFrame.draw(docSend(), spans);
+}
+
+// Gives up the remembered area of the current document
+void MultiReplace::releaseSelectionScope() {
+    m_selectionScope.clear();
+    if (scopeFrameApplies()) m_scopeFrame.erase(docSend());
+}
+
+// Gives up the areas of all documents: frames in view are erased, the others drop out on activation
+void MultiReplace::releaseAllSelectionScopes() {
+    m_selectionScope.clear();
+    if (m_scopeFrame.indicator() < 0) return;
+    m_scopeFrame.retire();
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (hSci) m_scopeFrame.dropStale(viewSend(hSci));
+    }
+}
+
+void MultiReplace::applyScopeFrameStyle() {
+    const bool dark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (hSci) m_scopeFrame.applyStyle(viewSend(hSci), dark);
+    }
+}
+
+SelectionFrame::Send MultiReplace::docSend() const {
+    return [this](unsigned int msg, std::uintptr_t wParam, std::intptr_t lParam) {
+        return static_cast<std::intptr_t>(send(msg, wParam, lParam));
+    };
+}
+
+SelectionFrame::Send MultiReplace::viewSend(HWND hSci) {
+    return [hSci](unsigned int msg, std::uintptr_t wParam, std::intptr_t lParam) {
+        return static_cast<std::intptr_t>(::SendMessage(hSci, msg, wParam, lParam));
+    };
 }
 
 std::wstring MultiReplace::getSelectionScopeSuffix() {
@@ -11585,7 +11664,7 @@ void MultiReplace::handleMarkMatchesButton() {
     // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() is rectangular-safe.
     if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED) {
-        if (!hasAnyNonEmptySelection() && m_selectionScope.empty()) {
+        if (!hasAnyNonEmptySelection() && !hasSelectionScope()) {
             showStatusMessage(LM.get(L"status_no_selection"), MessageStatus::Error, true);
             return;
         }
@@ -17110,6 +17189,10 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
         if (wasColumnScope && !willBeColumnScope) {
             handleClearDelimiterState();
         }
+        // Leaving the Selection scope gives up the remembered areas, as a manual switch does
+        if (IsDlgButtonChecked(_hSelf, IDC_SELECTION_RADIO) == BST_CHECKED && tab.scope != 1) {
+            releaseAllSelectionScopes();
+        }
 
         const int scopeRadio = (tab.scope == 2) ? IDC_COLUMN_MODE_RADIO
             : (tab.scope == 1) ? IDC_SELECTION_RADIO
@@ -20472,6 +20555,9 @@ void MultiReplace::onDocumentSwitched()
     // MR is cycling documents itself: no user switch, only the mask above applies
     if (DocCycleGuard::active()) return;
 
+    // Frames of areas given up while this document was in the background
+    self->m_scopeFrame.dropStale(viewSend(hSci));
+
     const BufferId currBufId =
         (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
 
@@ -20704,6 +20790,7 @@ void MultiReplace::onThemeChanged()
         instance->refreshColumnStylesIfNeeded();
         ResultDock::instance().onThemeChanged();
         instance->updateTextMarkerStyles();
+        instance->applyScopeFrameStyle();
     }
 }
 
