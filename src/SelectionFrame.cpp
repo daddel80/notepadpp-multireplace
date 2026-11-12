@@ -26,8 +26,8 @@ namespace SelectionFrame {
         constexpr std::intptr_t LIGHT_COLOR = 0xBD814F;
         constexpr std::intptr_t DARK_COLOR = 0xD19B6A;
 
-        // Light fill under the text: #4F81BD on white gives #DCE6F2
-        constexpr std::intptr_t FILL_ALPHA = 51;
+        // Light fill under the text: #4F81BD on white gives #E6EDF6
+        constexpr std::intptr_t FILL_ALPHA = 36;
 
         // Indicator values stay below SC_INDICVALUEBIT
         constexpr int GENERATION_LIMIT = 0xFFFFFF;
