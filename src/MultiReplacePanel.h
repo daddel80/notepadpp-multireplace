@@ -806,6 +806,12 @@ public:
     static constexpr int EDITOR_MARK_ALPHA_DARK = 130;
     static constexpr int EDITOR_OUTLINE_ALPHA_DARK = 0;
 
+    static constexpr BYTE MIN_TRANSPARENCY = 50;  // Minimum visible transparency
+    static constexpr BYTE MAX_TRANSPARENCY = 255; // Fully opaque
+    static constexpr BYTE DEFAULT_FOREGROUND_TRANSPARENCY = 255; // Default foreground transparency
+    static constexpr BYTE DEFAULT_BACKGROUND_TRANSPARENCY = 190; // Default background transparency
+    static BYTE readTransparency(const wchar_t* key, BYTE fallback);
+
     inline static bool isWindowOpen = false;
     inline static bool textModified = true;
     inline static bool documentSwitched = false;
@@ -909,11 +915,6 @@ private:
     static constexpr int DEFAULT_COLUMN_WIDTH_COMMENTS = 120; // Default size for Comments Column
     static constexpr int DEFAULT_COLUMN_WIDTH_FIND_COUNT = 50; // Default size for Find Count Column
     static constexpr int DEFAULT_COLUMN_WIDTH_REPLACE_COUNT = 50; // Default size for Replace Count Column
-
-    static constexpr BYTE MIN_TRANSPARENCY = 50;  // Minimum visible transparency
-    static constexpr BYTE MAX_TRANSPARENCY = 255; // Fully opaque
-    static constexpr BYTE DEFAULT_FOREGROUND_TRANSPARENCY = 255; // Default foreground transparency
-    static constexpr BYTE DEFAULT_BACKGROUND_TRANSPARENCY = 190; // Default background transparency
 
     static constexpr int MIN_EDIT_FIELD_SIZE = 2; // Minimum size for Multiline Editor
     static constexpr int MAX_EDIT_FIELD_SIZE = 20; // Maximum size for Multiline Editor

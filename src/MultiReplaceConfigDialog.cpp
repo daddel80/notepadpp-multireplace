@@ -882,8 +882,8 @@ void MultiReplaceConfigDialog::createAppearancePanelControls() {
 
     auto iface = root.BeginGroup(GROUP_LEFT, PAGE_TOP, GROUP_WIDTH, interfaceH, GROUP_PAD_X, GROUP_PAD_TOP, IDC_CFG_GRP_INTERFACE, LM.getLPCW(L"config_grp_interface"));
 
-    iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, 0, 255, sliderRow, 170, 18, -4);
-    iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, 0, 255, sliderRow, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_FOREGROUND_LABEL, LM.getLPCW(L"config_lbl_foreground"), IDC_CFG_FOREGROUND_SLIDER, 190, 160, MultiReplace::MIN_TRANSPARENCY, MultiReplace::MAX_TRANSPARENCY, sliderRow, 170, 18, -4);
+    iface.AddLabeledSlider(IDC_CFG_BACKGROUND_LABEL, LM.getLPCW(L"config_lbl_background"), IDC_CFG_BACKGROUND_SLIDER, 190, 160, MultiReplace::MIN_TRANSPARENCY, MultiReplace::MAX_TRANSPARENCY, sliderRow, 170, 18, -4);
     iface.AddLabeledSlider(IDC_CFG_SCALE_LABEL, LM.getLPCW(L"config_lbl_scale_factor"), IDC_CFG_SCALE_SLIDER, 190, 160, 50, 200, sliderRow, 170, 18, -4, 100);
     iface.AddCheckbox(IDC_CFG_TOOLTIPS_ENABLED, LM.getLPCW(L"config_chk_enable_tooltips"));
 
@@ -1006,18 +1006,15 @@ void MultiReplaceConfigDialog::loadSettingsToConfigUI(bool reloadFile)
     applyBindingsToUI_Generic((void*)&s);
 
     if (_hAppearancePanel) {
-        int fg = CFG.readInt(L"Window", L"ForegroundTransparency", 255);
-        int bg = CFG.readInt(L"Window", L"BackgroundTransparency", 190);
-
-        if (fg < 0) fg = 0; if (fg > 255) fg = 255;
-        if (bg < 0) bg = 0; if (bg > 255) bg = 255;
+        const int fg = MultiReplace::readTransparency(L"ForegroundTransparency", MultiReplace::DEFAULT_FOREGROUND_TRANSPARENCY);
+        const int bg = MultiReplace::readTransparency(L"BackgroundTransparency", MultiReplace::DEFAULT_BACKGROUND_TRANSPARENCY);
 
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_FOREGROUND_SLIDER)) {
-            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(0, 255));
+            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(MultiReplace::MIN_TRANSPARENCY, MultiReplace::MAX_TRANSPARENCY));
             ::SendMessage(h, TBM_SETPOS, TRUE, fg);
         }
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_BACKGROUND_SLIDER)) {
-            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(0, 255));
+            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(MultiReplace::MIN_TRANSPARENCY, MultiReplace::MAX_TRANSPARENCY));
             ::SendMessage(h, TBM_SETPOS, TRUE, bg);
         }
 
@@ -1204,8 +1201,8 @@ void MultiReplaceConfigDialog::resetToDefaults()
     MultiReplace::writeStructToConfig(def);
 
     auto& cm = ConfigManager::instance();
-    cm.writeInt(L"Window", L"ForegroundTransparency", 255);
-    cm.writeInt(L"Window", L"BackgroundTransparency", 190);
+    cm.writeInt(L"Window", L"ForegroundTransparency", MultiReplace::DEFAULT_FOREGROUND_TRANSPARENCY);
+    cm.writeInt(L"Window", L"BackgroundTransparency", MultiReplace::DEFAULT_BACKGROUND_TRANSPARENCY);
     cm.writeString(L"Window", L"ScaleFactor", L"1.0");
 
     cm.writeString(MultiReplace::optSec(L"ReportTemplate"), L"ReportTemplate", kDefaultReportTemplate);
@@ -1269,7 +1266,7 @@ void MultiReplaceConfigDialog::onThemeChanged() {
     MultiReplace::Settings savedSettings{};
     readBindingsFromUI_Generic((void*)&savedSettings);
 
-    int savedFg = 255, savedBg = 190, savedScale = 100;
+    int savedFg = MultiReplace::DEFAULT_FOREGROUND_TRANSPARENCY, savedBg = MultiReplace::DEFAULT_BACKGROUND_TRANSPARENCY, savedScale = 100;
     if (_hAppearancePanel) {
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_FOREGROUND_SLIDER))
             savedFg = (int)::SendMessage(h, TBM_GETPOS, 0, 0);
@@ -1310,11 +1307,11 @@ void MultiReplaceConfigDialog::onThemeChanged() {
 
     if (_hAppearancePanel) {
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_FOREGROUND_SLIDER)) {
-            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(0, 255));
+            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(MultiReplace::MIN_TRANSPARENCY, MultiReplace::MAX_TRANSPARENCY));
             ::SendMessage(h, TBM_SETPOS, TRUE, savedFg);
         }
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_BACKGROUND_SLIDER)) {
-            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(0, 255));
+            ::SendMessage(h, TBM_SETRANGE, TRUE, MAKELPARAM(MultiReplace::MIN_TRANSPARENCY, MultiReplace::MAX_TRANSPARENCY));
             ::SendMessage(h, TBM_SETPOS, TRUE, savedBg);
         }
         if (HWND h = ::GetDlgItem(_hAppearancePanel, IDC_CFG_SCALE_SLIDER)) {

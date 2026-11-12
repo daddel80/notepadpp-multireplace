@@ -19846,6 +19846,13 @@ LRESULT CALLBACK MultiReplace::tabRenameMouseHookProc(int code, WPARAM wp, LPARA
     return CallNextHookEx(nullptr, code, wp, lp);
 }
 
+// Panel alpha from the INI, never so low that the panel looks closed
+BYTE MultiReplace::readTransparency(const wchar_t* key, BYTE fallback)
+{
+    return static_cast<BYTE>(std::clamp(CFG.readInt(L"Window", key, fallback),
+        static_cast<int>(MIN_TRANSPARENCY), static_cast<int>(MAX_TRANSPARENCY)));
+}
+
 void MultiReplace::loadUIConfigFromIni()
 {
     if (!dpiMgr) return;
@@ -19960,12 +19967,8 @@ void MultiReplace::loadUIConfigFromIni()
     // restoreStateFromTab when a tab is activated. Reading these here
     // would clobber the active tab's state on every Settings Apply.
 
-    int fg = static_cast<int>(CFG.readByte(L"Window", L"ForegroundTransparency", 255));
-    int bg = static_cast<int>(CFG.readByte(L"Window", L"BackgroundTransparency", 190));
-    if (fg < 0) fg = 0; if (fg > 255) fg = 255;
-    if (bg < 0) bg = 0; if (bg > 255) bg = 255;
-    foregroundTransparency = static_cast<BYTE>(fg);
-    backgroundTransparency = static_cast<BYTE>(bg);
+    foregroundTransparency = readTransparency(L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY);
+    backgroundTransparency = readTransparency(L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY);
 
     tooltipsEnabled = CFG.readBool(optSec(L"Tooltips"), L"Tooltips", true);
     isHoverTextEnabled = CFG.readBool(optSec(L"HoverText"), L"HoverText", true);
@@ -20389,12 +20392,8 @@ void MultiReplace::applyConfigSettingsOnly()
     // dialog, so the block is intentionally gone.
 
     // Transparency
-    int fg = CFG.readInt(L"Window", L"ForegroundTransparency", 255);
-    int bg = CFG.readInt(L"Window", L"BackgroundTransparency", 190);
-    fg = std::clamp(fg, 0, 255);
-    bg = std::clamp(bg, 0, 255);
-    foregroundTransparency = static_cast<BYTE>(fg);
-    backgroundTransparency = static_cast<BYTE>(bg);
+    foregroundTransparency = readTransparency(L"ForegroundTransparency", DEFAULT_FOREGROUND_TRANSPARENCY);
+    backgroundTransparency = readTransparency(L"BackgroundTransparency", DEFAULT_BACKGROUND_TRANSPARENCY);
     if (_hSelf) SetWindowTransparency(_hSelf, foregroundTransparency);
 
     updateUseListState(false);
