@@ -162,7 +162,15 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
     break;
     case SCN_MODIFIED:
     {
-        if (notifyCode->modificationType & (SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT)) {
+        if (notifyCode->modificationType & (SC_MOD_BEFOREDELETE | SC_MOD_INSERTTEXT)) {
+            MultiReplace::processScopeFrameEdit(notifyCode);
+        }
+        if (notifyCode->modificationType & (SC_MOD_BEFOREDELETE | SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT)) {
+            MultiReplace::processFlowTabsEdit(notifyCode);
+        }
+        // A document in both views reports each change twice: the change log takes it once
+        if ((notifyCode->modificationType & (SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT))
+            && !MultiReplace::isRepeatedChange(notifyCode)) {
             MultiReplace::onTextChanged();
             MultiReplace::processTextChange(notifyCode);
             MultiReplace::processLog();
@@ -172,6 +180,30 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
         }
     }
     break;
+
+    case SCN_ZOOM:
+        MultiReplace::onZoom(notifyCode);
+        break;
+
+    case NPPN_FILEBEFORESAVE:
+        MultiReplace::onFileBeforeSave(notifyCode->nmhdr.idFrom);
+        break;
+
+    case NPPN_FILESAVED:
+        MultiReplace::onFileSaved(notifyCode->nmhdr.idFrom);
+        break;
+
+    case NPPN_FILEBEFORECLOSE:
+        MultiReplace::onFileBeforeClose(notifyCode->nmhdr.idFrom);
+        break;
+
+    case NPPN_BEFORESHUTDOWN:
+        MultiReplace::onBeforeShutdown();
+        break;
+
+    case NPPN_CANCELSHUTDOWN:
+        MultiReplace::onCancelShutdown();
+        break;
 
     case NPPN_BUFFERACTIVATED:
     {

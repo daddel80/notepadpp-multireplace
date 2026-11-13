@@ -15,128 +15,92 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #pragma once
-#include <windows.h>
-#include <vector>
-#include <string>
+
+#include <cstdint>
 #include <functional>
-#include "Scintilla.h"
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-namespace ColumnTabs
-{
-    // ------------------------------------------------------------------------
-    // Data model
-    // ------------------------------------------------------------------------
+// Flow Tabs: CSV columns aligned on tab stops. Delimiters other than TAB, and numbers, need padding in the text: a TAB
+// before each delimiter, spaces before numbers. The padding carries an indicator and stays out of the undo history;
+// each switch leaves one marker there, and undo or redo of a marker puts the padding back exactly or takes it out.
+namespace ColumnTabs {
 
-    // One physical line in the column model.
-    struct CT_ColumnLineInfo {
-        int lineLength = 0;                 // length in bytes (without CR/LF)
-        std::vector<int> delimiterOffsets;  // byte offsets of each delimiter
-        size_t FieldCount() const noexcept { return delimiterOffsets.size() + 1; }
+    // A message to one Scintilla view
+    using Send = std::function<std::intptr_t(unsigned int, std::uintptr_t, std::intptr_t)>;
+
+    struct Settings {
+        std::string delimiter;      // as it stands in the text
+        char quote = '\0';          // '\0': fields are not quoted
+        bool alignNumbers = true;
     };
 
-    // Read-only view of a document range.
-    struct CT_ColumnModelView {
-        std::vector<CT_ColumnLineInfo> Lines;    // optional if getLineInfo is set
-        size_t docStartLine = 0;                 // 0-based absolute document line
-
-        bool delimiterIsTab = false;             // true if delimiter is '\t'
-        int  delimiterLength = 1;                // bytes per delimiter (>= 1)
-        bool collapseTabRuns = true;             // preserved for callers
-
-        // If set, used instead of Lines; index = (line - docStartLine).
-        std::function<CT_ColumnLineInfo(size_t)> getLineInfo;
+    // [start, end) in the document
+    struct Range {
+        std::intptr_t start;
+        std::intptr_t end;
     };
 
-    // Options for destructive alignment (text-changing padding).
-    struct CT_AlignOptions {
-        int  firstLine = 0;    // inclusive, model-relative
-        int  lastLine = -1;   // -1 => last model line
-        int  gapCells = 2;    // visual gap in *spaces* between columns
-        bool oneFlowTabOnly = true; // collapse runs to one '\t' and add tabstops
+    enum class SwitchedOn { Padded, StopsOnly, NothingToAlign, ReadOnly };
+    enum class Replayed { NotOurs, Padded, Unpadded, Reset };
+
+    // How far a long run is: padding in (true) or out, percent done; 100 once it has finished. Short runs report nothing
+    using Progress = std::function<void(bool padding, int percent)>;
+
+    class Aligner {
+    public:
+        Aligner();
+        ~Aligner();
+        Aligner(const Aligner&) = delete;
+        Aligner& operator=(const Aligner&) = delete;
+
+        void setIndicator(int id) noexcept { indicator_ = id; }
+        int indicator() const noexcept { return indicator_; }
+        // Reported after delayMs at the earliest, then every intervalMs at most
+        void setProgress(Progress progress, int delayMs = 300, int intervalMs = 150);
+
+        // The document the view shows. inserted, removed: the padding in document order (removed: positions before)
+        SwitchedOn switchOn(const Send& view, const Settings& settings, std::vector<Range>* inserted);
+        bool switchOff(const Send& view, std::vector<Range>* removed);
+        // After switchOff: the same padding again while the text is unchanged, else aligned anew
+        SwitchedOn realign(const Send& view, const Settings& settings, std::vector<Range>* inserted);
+
+        bool aligned(const Send& view) const;   // padding or tab stops
+        bool padded(const Send& view) const;
+        bool padded(std::intptr_t document) const;
+        // The view switched to another document and dropped the tab stops: aligned by stops only means aligned no more
+        void leave(std::intptr_t document) noexcept;
+
+        // Undo or redo reached a marker: replay it once Scintilla has finished that step, a saved document stays saved.
+        // Reset: the undo history no longer matched the text and was cleared, the document keeps its unsaved state
+        static bool isMarker(std::intptr_t token) noexcept;
+        Replayed replay(const Send& view, std::intptr_t token, bool undo, std::vector<Range>* changed);
+
+        // Every SCN_MODIFIED of a view: inserted text never becomes padding, padding that comes back is marked again
+        void onModified(const Send& view, int modificationType, std::intptr_t position, std::intptr_t length,
+            const char* text, std::intptr_t linesAdded);
+
+        void refreshStops(const Send& view);   // measured again, after zoom
+        // The document's tab stops in this view: as aligned, none once no longer aligned
+        void restoreStops(const Send& view);
+        // A view that shows an aligned document without its stops (the other view aligned it) gets them
+        void ensureStops(const Send& view);
+        std::string withoutPadding(const Send& view, std::intptr_t start, std::intptr_t end) const;
+        void forget(std::intptr_t document) noexcept;
+
+        struct Doc;     // per document, in ColumnTabs.cpp
+
+    private:
+        Doc* find(const Send& view) const;
+        Doc& at(const Send& view);
+
+        int indicator_ = -1;
+        bool busy_ = false;
+        Progress progress_;
+        int progressDelayMs_ = 300;
+        int progressIntervalMs_ = 150;
+        std::unordered_map<std::intptr_t, std::unique_ptr<Doc>> docs_;
     };
-
-    // ------------------------------------------------------------------------
-    // Indicator (tracks inserted padding)
-    // ------------------------------------------------------------------------
-    void CT_SetIndicatorId(int id) noexcept;
-    int  CT_GetIndicatorId() noexcept;
-
-    // ------------------------------------------------------------------------
-    // Destructive API (edits text)
-    // ------------------------------------------------------------------------
-
-    // Insert aligned padding (tabs/spaces) according to the model/options.
-    bool CT_InsertAlignedPadding(HWND hSci,
-        const CT_ColumnModelView& model,
-        const CT_AlignOptions& opt,
-        bool* outNothingToAlign = nullptr,
-        bool suppressUndoBufferClear = false);
-
-    // Remove previously inserted aligned padding (by indicator).
-    bool CT_RemoveAlignedPadding(HWND hSci, bool suppressUndoBufferClear = false);
-
-    // Query whether the buffer currently contains aligned padding owned by us.
-    bool CT_HasAlignedPadding(HWND hSci) noexcept;
-
-    // Align numbers by integer/decimal part within [firstLine..lastLine] (doc-absolute).
-    bool CT_ApplyNumericPadding(HWND hSci,
-        const CT_ColumnModelView& model,
-        int firstLine,
-        int lastLine,
-        bool suppressUndoBufferClear = false);
-
-    // ------------------------------------------------------------------------
-    // Visual API (does not edit text; manages Scintilla tab stops)
-    // ------------------------------------------------------------------------
-
-    // Apply Flow tab stops for [firstLine..lastLine] with a fixed pixel gap.
-    // Units: paddingPx in *pixels* (e.g., 12).
-    bool CT_ApplyFlowTabStops(HWND hSci,
-        const CT_ColumnModelView& model,
-        int firstLine,
-        int lastLine,   // -1 => all model lines
-        int paddingPx /*pixels*/);
-
-    // Convenience: apply Flow tab stops for the whole model (what MultiReplacePanel expects).
-    inline bool CT_ApplyFlowTabStopsAll(HWND hSci,
-        const CT_ColumnModelView& model,
-        int paddingPx /*pixels*/)
-    {
-        // firstLine is doc-absolute; -1 means: clamp to the model’s last line internally
-        return CT_ApplyFlowTabStops(hSci, model, static_cast<int>(model.docStartLine), -1, paddingPx);
-    }
-
-    // Disable Flow tab stops; optionally restore manual per-line stops.
-    bool CT_DisableFlowTabStops(HWND hSci, bool restoreManual);
-
-    // Convenience: clear only Flow (ETS-owned) tab stops and restore manual ones
-    // (exact name/signature used by MultiReplacePanel).
-    inline bool CT_ClearFlowTabStops(HWND hSci)
-    {
-        return CT_DisableFlowTabStops(hSci, /*restoreManual=*/true);
-    }
-
-    // Remove *all* tab stops in the buffer (manual and Flow).
-    bool CT_ClearAllTabStops(HWND hSci);
-
-    // Forget any cached visual state (call on buffer/document switch).
-    void CT_ResetFlowVisualState() noexcept;
-
-    // Fast check whether any line currently has Flow tab stops.
-    bool CT_HasFlowTabStops() noexcept;
-
-    // ------------------------------------------------------------------------
-    // Utilities (kept for callers)
-    // ------------------------------------------------------------------------
-    size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth);
-
-    // Per-document padding state (O(1) gate to avoid scans on switches)
-    void CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept;
-    bool CT_GetDocHasPads(sptr_t docPtr) noexcept;
-    void CT_SetCurDocHasPads(HWND hSci, bool has) noexcept;
-    bool CT_GetCurDocHasPads(HWND hSci) noexcept;
-
-    // Optional convenience cleanups (used by panel on buffer switches)
-    bool CT_CleanupVisuals(HWND hSci) noexcept;
-    bool CT_CleanupAllForDoc(HWND hSci) noexcept;
-} // namespace ColumnTabs
+}

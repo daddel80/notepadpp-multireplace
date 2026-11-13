@@ -21,7 +21,7 @@
 
 // Project headers
 #include "BatchUIGuard.h"
-#include "ColumnTabs.h"
+#include "CsvLine.h"
 #include "ConfigManager.h"
 #include "CsvListFormat.h"
 #include "ListCodec.h"
@@ -215,20 +215,25 @@ static BufferId g_returnBufId = 0;    // where we must end up
 static BufferId g_pendingCleanId = 0;    // buffer we still need to clean
 static bool     g_cleanInProgress = false;
 
-// O(1) gate: which buffers currently have flow-pads
-static std::unordered_set<BufferId> g_padBufs;
+namespace {
+    // The wait cursor while Flow Tabs work through a large document
+    class WaitCursor {
+        HCURSOR _previous;
+    public:
+        WaitCursor() : _previous(::SetCursor(::LoadCursor(nullptr, IDC_WAIT))) {}
+        ~WaitCursor() { ::SetCursor(_previous); }
+        WaitCursor(const WaitCursor&) = delete;
+        WaitCursor& operator=(const WaitCursor&) = delete;
+    };
+}
 
 // Static member: thread-local message filter hook for Alt+Up/Down
 HHOOK MultiReplace::_hMsgFilterHook = nullptr;
 HHOOK MultiReplace::_hTandemSnapKeyHook = nullptr;
 
-// FlowTab container-undo statics. Token tags our own SCI_ADDUNDOACTION marker
-// in SC_MOD_CONTAINER so undo/redo can drive the toggle.
-static constexpr int FLOWTAB_UNDO_TOKEN = 0x4D52464C; // 'MRFL'
-static constexpr UINT WM_FLOWTAB_UNDO = WM_APP + 4;   // notify -> deferred toggle
+// A Flow Tabs undo marker reached by undo or redo: replayed once Scintilla has finished the step
+static constexpr UINT WM_FLOWTAB_UNDO = WM_APP + 4;
 static constexpr UINT WM_TANDEM_SNAP = WM_APP + 5;    // LL hook -> snap the pair
-bool MultiReplace::_containerUndoAvailable = false;
-bool MultiReplace::_flowTabUndoPending = false;
 HHOOK MultiReplace::_hGetMsgHook = nullptr;
 
 LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -383,9 +388,9 @@ LRESULT CALLBACK MultiReplace::GetMsgHookProc(int nCode, WPARAM wParam, LPARAM l
             const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
             const bool isUndo = ctrl && pMsg->wParam == 'Z' && !shift;
             const bool isRedo = (ctrl && pMsg->wParam == 'Y') || (ctrl && shift && pMsg->wParam == 'Z');
-            if ((isUndo || isRedo) && _flowTabUndoPending) {
-                // Flush the deferred toggle synchronously before this key
-                // reaches Scintilla, serializing rapid undo/redo presses.
+            if ((isUndo || isRedo) && !instance->m_flowTabsReplays.empty()) {
+                // Replay pending Flow Tabs markers before this key reaches
+                // Scintilla, so rapid undo/redo presses stay in order.
                 ::SendMessage(instance->_hSelf, WM_FLOWTAB_UNDO, 0, 0);
             }
         }
@@ -394,13 +399,43 @@ LRESULT CALLBACK MultiReplace::GetMsgHookProc(int nCode, WPARAM wParam, LPARAM l
 }
 
 void MultiReplace::processContainerUndo(SCNotification* notifyCode) {
-    if (!notifyCode || notifyCode->token != FLOWTAB_UNDO_TOKEN)
+    if (!notifyCode || !ColumnTabs::Aligner::isMarker(notifyCode->token))
         return;
     if (!instance || !instance->_hSelf)
         return;
 
-    _flowTabUndoPending = true;
+    // Scintilla is inside the undo step: the padding can only change once it returned
+    const HWND view = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    const auto document = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETDOCPOINTER, 0, 0));
+    const bool undo = (notifyCode->modificationType & SC_PERFORMED_UNDO) != 0;
+    // A document in both views reports the marker twice: it is replayed once
+    std::vector<FlowTabsReplay>& replays = instance->m_flowTabsReplays;
+    if (!replays.empty() && replays.back().document == document && replays.back().token == notifyCode->token
+        && replays.back().undo == undo)
+        return;
+    replays.push_back({ view, document, notifyCode->token, undo });
     ::PostMessage(instance->_hSelf, WM_FLOWTAB_UNDO, 0, 0);
+}
+
+// The same change reported by the second view of a document in both views
+bool MultiReplace::isRepeatedChange(const SCNotification* notifyCode)
+{
+    struct Change {
+        std::intptr_t document = 0;
+        int type = 0;
+        Sci_Position position = -1;
+        Sci_Position length = 0;
+        Sci_Position documentLength = -1;
+    };
+    static Change last;
+    const HWND view = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    const Change change{ static_cast<std::intptr_t>(::SendMessage(view, SCI_GETDOCPOINTER, 0, 0)),
+        notifyCode->modificationType & (SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT), notifyCode->position, notifyCode->length,
+        static_cast<Sci_Position>(::SendMessage(view, SCI_GETLENGTH, 0, 0)) };
+    const bool repeated = change.document == last.document && change.type == last.type && change.position == last.position
+        && change.length == last.length && change.documentLength == last.documentLength;
+    last = change;
+    return repeated;
 }
 
 #pragma region Initialization
@@ -1033,7 +1068,29 @@ void MultiReplace::ensureIndicatorContext()
         NppStyleKit::gColumnTabsIndicatorId =
             NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ColumnTabs", wantCol);
     }
-    ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
+    m_flowTabs.setIndicator(NppStyleKit::gColumnTabsIndicatorId);
+    // Long runs report how far they are, the status line repaints at once; once done it shows what it showed before
+    m_flowTabs.setProgress([this](bool padding, int percent) {
+        if (percent >= 100) {
+            if (m_flowTabsProgress) showStatusMessage(m_flowTabsStatusText, m_flowTabsStatusType, false, true);
+            m_flowTabsProgress = false;
+            return;
+        }
+        if (!m_flowTabsProgress) {
+            const HWND status = ::GetDlgItem(_hSelf, IDC_STATUS_MESSAGE);
+            std::vector<wchar_t> text(static_cast<size_t>(::GetWindowTextLength(status)) + 1, L'\0');
+            ::GetWindowText(status, text.data(), static_cast<int>(text.size()));
+            m_flowTabsStatusText = text.data();
+            m_flowTabsStatusType = _lastMessageStatus;
+            m_flowTabsProgress = true;
+        }
+        showStatusMessage(LM.get(padding ? L"status_tabs_aligning" : L"status_tabs_removing") + L" " + std::to_wstring(percent) + L"%",
+            MessageStatus::Info, false, true);
+    });
+    for (HWND hSci : { hSci0, hSci1 }) {   // the padding marks stay invisible
+        if (hSci && NppStyleKit::gColumnTabsIndicatorId >= 0)
+            ::SendMessage(hSci, SCI_INDICSETSTYLE, NppStyleKit::gColumnTabsIndicatorId, INDIC_HIDDEN);
+    }
 
     // Selection scope frame: first free id
     if (!NppStyleKit::gIndicatorCoord.isIndicatorReserved(m_scopeFrame.indicator())) {
@@ -5608,7 +5665,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             _hGetMsgHook = SetWindowsHookEx(WH_GETMESSAGE, GetMsgHookProc, nullptr, GetCurrentThreadId());
         }
 
-        ensureContainerUndoNotify();
+        ensureModEventMask();
 
         return TRUE;
     }
@@ -5643,25 +5700,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
     case WM_FLOWTAB_UNDO:
     {
-        // Deferred FlowTab toggle, driven by a container-undo/redo marker.
-        // Runs after Scintilla's undo/redo step completed. handleColumnGridTabsButton
-        // is state-based, so it toggles correctly for both undo and redo (and the
-        // visual-only desync case). The replay flag suppresses the intro dialog and
-        // a fresh marker. Idempotent: the hook may flush this synchronously before
-        // the posted copy arrives; consume the pending flag first so the second
-        // call no-ops (prevents a double toggle).
-        if (!_flowTabUndoPending)
-            return TRUE;
-        _flowTabUndoPending = false;
-
-        // Only replay while the panel is alive; otherwise just drop it.
-        if (!isWindowOpen)
-            return TRUE;
-
-        // RAII guard: replay flag is always restored, even on early return or
-        // exception inside the toggle - the normal toggle path can never stick.
-        ScopedFlag replay(_inFlowTabUndoReplay, true);
-        handleColumnGridTabsButton();
+        // The hook may have replayed already before a further Ctrl+Z/Y; then nothing is pending
+        flushFlowTabsReplays();
         return TRUE;
     }
 
@@ -6785,8 +6825,9 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                 _tandemDocked = false;
             }
 
-            // The remembered areas end with the panel, as on the hide path
+            // The remembered areas end with the panel, as on the hide path; so do Flow Tabs and column highlighting
             releaseAllSelectionScopes();
+            if (!_isShuttingDown) handleClearDelimiterState();
 
             EndDialog(_hSelf, 0);
             _MultiReplace.display(false);
@@ -7108,7 +7149,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
-            handleReplaceButton();
+            withFlowTabsLifted([this] { handleReplaceButton(); return true; });
             return TRUE;
         }
 
@@ -7119,7 +7160,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             CloseDebugWindow();
             resetCountColumns();
             handleDelimiterPositions(DelimiterOperation::LoadAll);
-            handleReplaceAllButton();
+            withFlowTabsLifted([this] { return handleReplaceAllButton(); });
             if (isColumnHighlighted) {
                 findAllDelimitersInDocument();
                 reapplyColumnHighlighting();
@@ -7139,16 +7180,16 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
             if (isReplaceAllInDocs)
             {
-                replaceAllInOpenedDocs();
+                withFlowTabsLifted([this] { replaceAllInOpenedDocs(); return true; });
             }
             else if (isReplaceInFiles) {
-                handleReplaceInFiles();
+                withFlowTabsLifted([this] { handleReplaceInFiles(); return true; });
             }
             else
             {
                 resetCountColumns();
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
-                handleReplaceAllButton();
+                withFlowTabsLifted([this] { return handleReplaceAllButton(); });
                 if (isColumnHighlighted) {
                     findAllDelimitersInDocument();
                     reapplyColumnHighlighting();
@@ -8610,22 +8651,28 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
 {
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
-    return pos + send(
+    m_ownReplace = true;  // the panel keeps the scope frame itself, see processScopeFrameEdit
+    sptr_t replacedLen = send(
         SCI_REPLACETARGET,
         replaceTextUtf8.size(),
         reinterpret_cast<sptr_t>(replaceTextUtf8.c_str())
     );
+    m_ownReplace = false;
+
+    return pos + static_cast<Sci_Position>(replacedLen);
 }
 
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
     send(SCI_SETTARGETRANGE, pos, pos + length);
 
+    m_ownReplace = true;
     sptr_t replacedLen = send(
         SCI_REPLACETARGETRE,
         static_cast<WPARAM>(-1),
         reinterpret_cast<sptr_t>(replaceTextUtf8.c_str())
     );
+    m_ownReplace = false;
 
     return pos + static_cast<Sci_Position>(replacedLen);
 }
@@ -11600,6 +11647,10 @@ void MultiReplace::frameSelectionScope() {
         spans.push_back({ range.start, range.end });
     }
     m_scopeFrame.draw(docSend(), spans);
+    if (!m_scopeFrameAnnounced) {
+        m_scopeFrameAnnounced = true;  // from the first frame on, the views report deletions beforehand
+        ensureModEventMask();
+    }
 }
 
 // Gives up the remembered area of the current document
@@ -12295,28 +12346,17 @@ void MultiReplace::handleCopyColumnsToClipboard()
         return;
     }
 
-    // Check once whether Flow-Tab padding is active.
-    const bool hasAlignedPadding = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
+    // Flow Tabs padding is not part of the fields
+    const ColumnTabs::Send view = directSend(_hScintilla);
+    const bool hasAlignedPadding = m_flowTabs.padded(view);
 
-    // Helper to read [startPos, endPos) from Scintilla for one field.
-    // If Flow Tabs padding is active, we skip characters that are marked as padding
-    // (indicator range). Otherwise we just read the raw slice.
-    auto readFieldText = [this, hasAlignedPadding](LRESULT startPos, LRESULT endPos) -> std::string {
+    // Helper to read [startPos, endPos) from Scintilla for one field, without padding
+    auto readFieldText = [this, &view, hasAlignedPadding](LRESULT startPos, LRESULT endPos) -> std::string {
         std::string out;
         out.reserve((size_t)(endPos - startPos));
 
         if (hasAlignedPadding) {
-            const int indicId = ColumnTabs::CT_GetIndicatorId();
-            send(SCI_SETINDICATORCURRENT, indicId, 0);
-
-            for (LRESULT p = startPos; p < endPos; ++p) {
-                if (static_cast<int>(send(SCI_INDICATORVALUEAT, indicId, p)) != 0)
-                    continue; // skip artificial alignment padding
-                const int ch = static_cast<int>(send(SCI_GETCHARAT, p, 0));
-                if (ch == 0)
-                    break;
-                out.push_back((char)ch);
-            }
+            out = m_flowTabs.withoutPadding(view, startPos, endPos);
         }
         else {
             std::vector<char> buffer(static_cast<size_t>(endPos - startPos) + 1, '\0');
@@ -12429,214 +12469,46 @@ void MultiReplace::handleCopyColumnsToClipboard()
     copyTextToClipboard(wstr, copiedFieldsCount);
 }
 
-bool MultiReplace::buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const
+ColumnTabs::Settings MultiReplace::flowTabsSettings() const
 {
-    if (lineDelimiterPositions.empty() || !columnDelimiterData.isValid())
-        return false;
-
-    outModel = {};
-    outModel.docStartLine = 0;
-    outModel.delimiterIsTab = (columnDelimiterData.extendedDelimiter.size() == 1
-        && columnDelimiterData.extendedDelimiter[0] == '\t');
-    outModel.delimiterLength = static_cast<int>(columnDelimiterData.delimiterLength);
-    outModel.collapseTabRuns = outModel.delimiterIsTab;
-    outModel.Lines.reserve(lineDelimiterPositions.size());
-
-    size_t validLines = 0;
-
-    // Copy only what we need (offsets + line length)
-    for (size_t i = 0; i < lineDelimiterPositions.size(); ++i) {
-        const LineInfo& src = lineDelimiterPositions[i];
-
-        ColumnTabs::CT_ColumnLineInfo li{};
-        li.lineLength = static_cast<int>(src.lineLength);
-
-        li.delimiterOffsets.reserve(src.positions.size());
-        for (const auto& dp : src.positions) {
-            // guard against invalid offsets (must be within line)
-            if (dp.offsetInLine >= 0 && dp.offsetInLine < static_cast<LRESULT>(src.lineLength))
-                li.delimiterOffsets.push_back(static_cast<int>(dp.offsetInLine));
-        }
-
-        // only accept consistent lines
-        if (li.lineLength >= 0) {
-            outModel.Lines.emplace_back(std::move(li));
-            ++validLines;
-        }
-    }
-
-    // fail if nothing valid was collected
-    return validLines > 0;
+    ColumnTabs::Settings settings;
+    settings.delimiter = columnDelimiterData.extendedDelimiter;
+    settings.quote = columnDelimiterData.quoteChar.empty() ? '\0' : columnDelimiterData.quoteChar[0];
+    settings.alignNumbers = flowTabsNumericAlignEnabled;
+    return settings;
 }
 
-bool MultiReplace::applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel)
+// Direct calls into one view: on large documents Flow Tabs send millions of messages
+ColumnTabs::Send MultiReplace::directSend(HWND hSci)
 {
-    if (existingModel) {
-        return ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, *existingModel, _flowPaddingPx);
-    }
-    ColumnTabs::CT_ColumnModelView model;
-    if (!buildCTModelFromMatrix(model))
-        return false;
-    return ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, model, _flowPaddingPx);
+    const auto fn = reinterpret_cast<SciFnDirect>(::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0));
+    const auto ptr = static_cast<sptr_t>(::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0));
+    return [hSci, fn, ptr](unsigned int msg, std::uintptr_t wParam, std::intptr_t lParam) -> std::intptr_t {
+        if (fn) return static_cast<std::intptr_t>(fn(ptr, msg, wParam, lParam));
+        return static_cast<std::intptr_t>(::SendMessage(hSci, msg, wParam, lParam));
+    };
 }
 
 void MultiReplace::handleColumnGridTabsButton()
 {
     pointerToScintilla();
     if (!_hScintilla) return;
+    const ColumnTabs::Send view = directSend(_hScintilla);
+    std::vector<ColumnTabs::Range> ranges;
 
-    // Current buffer id
-    const BufferId bufId = (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-
-    ColumnTabs::CT_SetIndicatorId(NppStyleKit::gColumnTabsIndicatorId);
-
-    // Seed prev id so the very first switch can clean the source document
-    if (g_prevBufId == 0) g_prevBufId = bufId;
-
-    // Ground truth (Padding TEXT state only)
-    const bool hasPadNow = ColumnTabs::CT_GetCurDocHasPads(_hScintilla);
-
-    // 1) Desync handling:
-    //    If UI state (_flowTabsActive) and document TEXT state (hasPadNow) disagree,
-    //    just resync UI/housekeeping without touching document text.
-    if (hasPadNow != _flowTabsActive)
-    {
-        if (hasPadNow)
+    if (m_flowTabs.aligned(view)) {
         {
-            // Document still has padding but UI thought it was off.
-            // -> Mark as active, restore visuals, update button to "⇤".
-            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, true);
-            g_padBufs.insert(bufId);
-
-            _flowTabsActive = true;
-            if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-                ::SetWindowText(h, L"⇤");
-
-            findAllDelimitersInDocument();
-            applyFlowTabStops();
-
-            showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
-        }
-        else
-        {
-            // Document has no padding but UI thought it was on (visuals-only mode).
-            // -> Mark as inactive, drop visuals, update button to "⇥".
-            ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
-            ColumnTabs::CT_ResetFlowVisualState();
-
-            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
-            g_padBufs.erase(bufId);
-
-            findAllDelimitersInDocument();
-
-            _flowTabsActive = false;
-            if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-                ::SetWindowText(h, L"⇥");
-
-            fixHighlightAtDocumentEnd();
-
-            // Force Scintilla to recalculate word wrapping after visual changes
-            forceWrapRecalculation();
-
-            showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
-        }
-
-        g_prevBufId = bufId;
-        return;
-    }
-
-    // From here on: states are in sync.
-    // 2) Normal TOGGLE LOGIC
-
-    // ============================================================
-    // CASE A: Padding present (and _flowTabsActive == true) -> TURN OFF fully
-    // ============================================================
-    if (hasPadNow)
-    {
-        // Disable logging during bulk text modification
-        bool wasLoggingEnabled = isLoggingEnabled;
-        isLoggingEnabled = false;
-        logChanges.clear();
-
-        // Collect padding ranges BEFORE removal (for ResultDock position adjustment)
-        std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
-        std::string curFileUtf8;
-        {
-            wchar_t pathBuf[MAX_PATH] = {};
-            ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
-            curFileUtf8 = Encoding::wstringToUtf8(pathBuf);
-        }
-
-        ResultDock& dock = ResultDock::instance();
-        const bool hasResultHits = dock.hasHitsForFile(curFileUtf8);
-
-        if (hasResultHits)
-        {
-            // Scan ColumnTabs indicator ranges (as CT_RemoveAlignedPadding Phase 1)
-            const int ctInd = ColumnTabs::CT_GetIndicatorId();
-            const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-            Sci_Position scanPos = 0;
-            while (scanPos < docLen) {
-                const Sci_Position end = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATOREND, ctInd, scanPos));
-                if (end <= scanPos) break;
-                if (static_cast<int>(::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
-                    const Sci_Position start = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATORSTART, ctInd, scanPos));
-                    if (end > start)
-                        paddingRanges.emplace_back(start, end);
-                }
-                scanPos = end;
-            }
-        }
-
-        {
+            WaitCursor wait;
             ScopedRedrawLock redrawLock(_hScintilla);
-
-            ColumnTabs::CT_RemoveAlignedPadding(_hScintilla, /*suppressUndoBufferClear=*/true);
-            ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
-            ColumnTabs::CT_ResetFlowVisualState();
-
-            // Padding removed undo-invisibly; place the container-undo marker so
-            // turning off can be undone too (degrades gracefully on replay /
-            // when unavailable).
-            flowTabsFinalizeUndo();
-
-            ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
-            g_padBufs.erase(bufId);
-
-            findAllDelimitersInDocument();
+            ScopedFlag noLog(isLoggingEnabled, false);
+            m_flowTabs.switchOff(view, &ranges);
         }
-
-        // Adjust ResultDock hit positions: padding was removed, positions shift backward
-        if (hasResultHits && !paddingRanges.empty()) {
-            dock.adjustHitPositionsForFlowTab(curFileUtf8, paddingRanges, /*added=*/false);
-        }
-
-        _flowTabsActive = false;
-        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"⇥");
-
-        isLoggingEnabled = wasLoggingEnabled;
-
-        if (isColumnHighlighted) {
-            handleHighlightColumnsInDocument();
-        }
-        else {
-            fixHighlightAtDocumentEnd();
-        }
-
-        forceWrapRecalculation();
-
-        if (!_inFlowTabUndoReplay)
-            showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
-        g_prevBufId = bufId;
+        afterFlowTabsChange(ranges, false, true);
+        showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
         return;
     }
 
-    // ============================================================
-    // CASE B: Padding not present (and _flowTabsActive == false) -> TURN ON
-    // ============================================================
-
-    if (!flowTabsIntroDontShowEnabled && !_inFlowTabUndoReplay) {
+    if (!flowTabsIntroDontShowEnabled) {
         bool dontShow = false;
         if (!showFlowTabsIntroDialog(dontShow))
             return; // user cancelled
@@ -12645,181 +12517,159 @@ void MultiReplace::handleColumnGridTabsButton()
         }
     }
 
-    // Need delimiter data
-    if (lineDelimiterPositions.empty()) {
-        showStatusMessage(LM.get(L"status_no_delimiters"), MessageStatus::Error);
-        return;
-    }
-
-    ColumnTabs::CT_ColumnModelView model{};
-    if (!buildCTModelFromMatrix(model)) {
-        showStatusMessage(LM.get(L"status_model_build_failed"), MessageStatus::Error);
-        return;
-    }
-
-    // Disable screen updates and logging during bulk operation
-    bool wasLoggingEnabled = isLoggingEnabled;
-    bool wasHighlighted = isColumnHighlighted;
-    bool operationSuccess = false;
-    bool earlySuccessPath = false;
-
-    isLoggingEnabled = false;
-    logChanges.clear();
-
+    showStatusMessage(LM.get(L"status_tabs_aligning"), MessageStatus::Info);
+    ColumnTabs::SwitchedOn result;
     {
-        // Lock screen updates during bulk text modification
+        WaitCursor wait;
         ScopedRedrawLock redrawLock(_hScintilla);
-
-        {
-            // Undo suppression is handled inside CT_ApplyNumericPadding and
-            // CT_InsertAlignedPadding - no ScopedUndoAction needed here.
-
-            // Step 1: numeric alignment (optional; inserts numeric left padding)
-            if (flowTabsNumericAlignEnabled) {
-                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1, /*suppressUndoBufferClear=*/true);
-                findAllDelimitersInDocument();
-                if (!buildCTModelFromMatrix(model)) {
-                    isLoggingEnabled = wasLoggingEnabled;
-                    showStatusMessage(L"Numeric align: model rebuild failed", MessageStatus::Error);
-                    return;
-                }
-            }
-
-            // Step 2: insert Flow-Tab padding
-            ColumnTabs::CT_AlignOptions opt{};
-            opt.firstLine = 0;
-            opt.lastLine = static_cast<int>(model.Lines.size()) - 1;
-
-            const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
-            opt.gapCells = 2;
-            _flowPaddingPx = spacePx * opt.gapCells;
-            opt.oneFlowTabOnly = true;
-
-            bool nothingToAlign = false;
-            if (!ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, opt, &nothingToAlign, /*suppressUndoBufferClear=*/true)) {
-                if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
-                    // Numeric padding ok, InsertAlignedPadding failed but pads exist
-                    _flowTabsActive = true;
-                    if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-                        ::SetWindowText(h, L"⇤");
-
-                    findAllDelimitersInDocument();
-                    if (buildCTModelFromMatrix(model)) {
-                        applyFlowTabStops(&model);
-                    }
-
-                    g_padBufs.insert(bufId);
-                    g_prevBufId = bufId;
-                    earlySuccessPath = true;
-                    operationSuccess = true;
-                }
-                else {
-                    isLoggingEnabled = wasLoggingEnabled;
-                    showStatusMessage(LM.get(nothingToAlign ? L"status_nothing_to_align"
-                        : L"status_padding_insert_failed"),
-                        nothingToAlign ? MessageStatus::Info : MessageStatus::Error);
-                    return;
-                }
-            }
-            else {
-                operationSuccess = true;
-            }
-        }
-
-        // Rescan after edit (only if not early success path which already did it)
-        if (operationSuccess && !earlySuccessPath) {
-            findAllDelimitersInDocument();
-        }
+        ScopedFlag noLog(isLoggingEnabled, false);
+        result = m_flowTabs.switchOn(view, flowTabsSettings(), &ranges);
     }
-    // ScopedRedrawLock released here - screen redraws once
 
-    // Adjust ResultDock hit positions if padding was successfully inserted
-    if (operationSuccess)
-    {
+    switch (result) {
+    case ColumnTabs::SwitchedOn::Padded:
+    case ColumnTabs::SwitchedOn::StopsOnly:
+        if (!m_flowTabsAnnounced) {
+            m_flowTabsAnnounced = true;   // from the first alignment on, the views report deletions beforehand
+            ensureModEventMask();
+        }
+        afterFlowTabsChange(ranges, true, true);
+        showStatusMessage(LM.get(result == ColumnTabs::SwitchedOn::Padded ? L"status_tabs_inserted" : L"status_tabs_aligned"),
+            MessageStatus::Success);
+        break;
+    case ColumnTabs::SwitchedOn::ReadOnly:
+        syncFlowTabsState();
+        showStatusMessage(LM.get(L"status_tabs_read_only"), MessageStatus::Error);
+        break;
+    case ColumnTabs::SwitchedOn::NothingToAlign:
+        syncFlowTabsState();
+        showStatusMessage(LM.get(L"status_nothing_to_align"), MessageStatus::Info);
+        break;
+    }
+}
+
+// After Flow Tabs changed the padding: result positions, delimiter scan and column highlighting, the button
+void MultiReplace::afterFlowTabsChange(const std::vector<ColumnTabs::Range>& ranges, bool added, bool rescan)
+{
+    if (!ranges.empty()) {
         wchar_t pathBuf[MAX_PATH] = {};
         ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
-        std::string curFileUtf8 = Encoding::wstringToUtf8(pathBuf);
-
+        const std::string path = Encoding::wstringToUtf8(pathBuf);
         ResultDock& dock = ResultDock::instance();
-        if (dock.hasHitsForFile(curFileUtf8))
-        {
-            // Scan for newly inserted padding ranges (ColumnTabs indicator)
-            std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
-            const int ctInd = ColumnTabs::CT_GetIndicatorId();
-            const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-            Sci_Position scanPos = 0;
-            while (scanPos < docLen) {
-                const Sci_Position end = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATOREND, ctInd, scanPos));
-                if (end <= scanPos) break;
-                if (static_cast<int>(::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
-                    const Sci_Position start = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATORSTART, ctInd, scanPos));
-                    if (end > start)
-                        paddingRanges.emplace_back(start, end);
-                }
-                scanPos = end;
-            }
-
-            if (!paddingRanges.empty()) {
-                dock.adjustHitPositionsForFlowTab(curFileUtf8, paddingRanges, /*added=*/true);
-            }
+        if (dock.hasHitsForFile(path)) {
+            std::vector<std::pair<Sci_Position, Sci_Position>> pairs;
+            pairs.reserve(ranges.size());
+            for (const ColumnTabs::Range& range : ranges)
+                pairs.emplace_back(range.start, range.end);
+            dock.adjustHitPositionsForFlowTab(path, pairs, added);
         }
     }
-
-    // Restore logging
-    isLoggingEnabled = wasLoggingEnabled;
-
-    // Place the container-undo marker once on success (covers early + normal
-    // path). On replay or when the mechanism is unavailable this degrades
-    // gracefully inside flowTabsFinalizeUndo.
-    if (operationSuccess)
-        flowTabsFinalizeUndo();
-
-    // Handle early success path
-    if (earlySuccessPath) {
-        if (wasHighlighted) {
+    if (rescan && columnDelimiterData.isValid()) {
+        findAllDelimitersInDocument();
+        if (isColumnHighlighted)
             handleHighlightColumnsInDocument();
-        }
-        if (!_inFlowTabUndoReplay)
-            showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
-        return;
     }
+    forceWrapRecalculation();
 
-    // Normal success path continues here
-    const bool nowHasPads = ColumnTabs::CT_GetCurDocHasPads(_hScintilla);
-    if (!nowHasPads && !ColumnTabs::CT_HasFlowTabStops()) {
-        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"⇥");
-        _flowTabsActive = false;
-        showStatusMessage(LM.get(L"status_nothing_to_align"), MessageStatus::Info);
-        g_prevBufId = bufId;
-        return;
+    // The same document in the other view gets the same tab stops
+    const HWND other = (_hScintilla == nppData._scintillaMainHandle) ? nppData._scintillaSecondHandle : nppData._scintillaMainHandle;
+    if (_hScintilla && other && ::IsWindowVisible(other)
+        && ::SendMessage(other, SCI_GETDOCPOINTER, 0, 0) == ::SendMessage(_hScintilla, SCI_GETDOCPOINTER, 0, 0)) {
+        ScopedRedrawLock redrawLock(other);
+        m_flowTabs.restoreStops(directSend(other));
     }
+    syncFlowTabsState();
+}
 
-    if (!buildCTModelFromMatrix(model)) {
-        showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
-        return;
+// The button shows whether the current document is aligned; documents once aligned are forgotten on close
+void MultiReplace::syncFlowTabsState()
+{
+    if (!_hScintilla) return;
+    const ColumnTabs::Send view = directSend(_hScintilla);
+    const bool aligned = m_flowTabs.aligned(view);
+    if (aligned) {
+        const auto bufferId = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+        m_flowTabsDocs[bufferId] = view(SCI_GETDOCPOINTER, 0, 0);
     }
-
-    if (!applyFlowTabStops(&model)) {
-        showStatusMessage(LM.get(L"status_visual_fail"), MessageStatus::Error);
-    }
-
-    _flowTabsActive = true;
     if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-        ::SetWindowText(h, L"⇤");
+        ::SetWindowText(h, aligned ? L"⇤" : L"⇥");
+}
 
-    // Re-highlight AFTER screen updates are enabled
-    if (wasHighlighted) {
-        handleHighlightColumnsInDocument();
+// Markers undo or redo reached, in order: the padding follows each step
+void MultiReplace::flushFlowTabsReplays()
+{
+    std::vector<FlowTabsReplay> replays;
+    replays.swap(m_flowTabsReplays);
+    for (const FlowTabsReplay& replay : replays) {
+        // In the active view if it shows the document: the other view takes its stops from there
+        pointerToScintilla();
+        HWND view = replay.view;
+        if (_hScintilla && ::SendMessage(_hScintilla, SCI_GETDOCPOINTER, 0, 0) == replay.document)
+            view = _hScintilla;
+        if (!::IsWindow(view) || ::SendMessage(view, SCI_GETDOCPOINTER, 0, 0) != replay.document) continue;
+        std::vector<ColumnTabs::Range> ranges;
+        ColumnTabs::Replayed result;
+        {
+            WaitCursor wait;
+            ScopedRedrawLock redrawLock(view);
+            ScopedFlag noLog(isLoggingEnabled, false);
+            result = m_flowTabs.replay(directSend(view), replay.token, replay.undo, &ranges);
+        }
+        if (result == ColumnTabs::Replayed::NotOurs) continue;
+        if (view == _hScintilla)
+            afterFlowTabsChange(ranges, result == ColumnTabs::Replayed::Padded, true);
+        if (result == ColumnTabs::Replayed::Reset)
+            showStatusMessage(LM.get(L"status_tabs_undo_reset"), MessageStatus::Info);
+        else if (view == _hScintilla && result == ColumnTabs::Replayed::Padded)
+            showStatusMessage(LM.get(L"status_tabs_inserted"), MessageStatus::Success);
+        else if (view == _hScintilla)
+            showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
+    }
+}
+
+// Runs body on the text without Flow Tabs padding and aligns again; undo walks back through all of it
+bool MultiReplace::withFlowTabsLifted(const std::function<bool()>& body)
+{
+    pointerToScintilla();
+    if (!_hScintilla || !m_flowTabs.aligned(directSend(_hScintilla)))
+        return body ? body() : true;
+
+    const HWND hSci = _hScintilla;
+    const ColumnTabs::Send view = directSend(hSci);
+    const std::intptr_t document = view(SCI_GETDOCPOINTER, 0, 0);
+    // A run over several documents may end in another one: that one is not aligned
+    const auto sameDocument = [&] {
+        pointerToScintilla();
+        return _hScintilla == hSci && view(SCI_GETDOCPOINTER, 0, 0) == document;
+    };
+
+    if (!m_flowTabs.padded(view)) {
+        const bool ok = body ? body() : true;
+        if (sameDocument()) m_flowTabs.refreshStops(view);
+        return ok;
     }
 
-    if (!_inFlowTabUndoReplay)
-        showStatusMessage(LM.get(nowHasPads ? L"status_tabs_inserted"
-            : L"status_tabs_aligned"),
-            MessageStatus::Success);
+    std::vector<ColumnTabs::Range> ranges;
+    {
+        WaitCursor wait;
+        ScopedRedrawLock redrawLock(hSci);
+        ScopedFlag noLog(isLoggingEnabled, false);
+        m_flowTabs.switchOff(view, &ranges);
+    }
+    afterFlowTabsChange(ranges, false, true);
 
-    if (nowHasPads) g_padBufs.insert(bufId); else g_padBufs.erase(bufId);
-    g_prevBufId = bufId;
+    const bool ok = body ? body() : true;
+    if (!sameDocument()) return ok;
+
+    ranges.clear();
+    {
+        WaitCursor wait;
+        ScopedRedrawLock redrawLock(hSci);
+        ScopedFlag noLog(isLoggingEnabled, false);
+        m_flowTabs.realign(view, flowTabsSettings(), &ranges);
+    }
+    afterFlowTabsChange(ranges, true, true);
+    return ok;
 }
 
 void MultiReplace::handleDuplicatesButton()
@@ -13212,65 +13062,18 @@ void MultiReplace::clearFlowTabsIfAny()
 {
     pointerToScintilla();
     if (!_hScintilla) return;
+    const ColumnTabs::Send view = directSend(_hScintilla);
+    if (!m_flowTabs.aligned(view)) return;
 
-    ColumnTabs::CT_SetIndicatorId(30);
-
-    const bool hadPad = ColumnTabs::CT_HasAlignedPadding(_hScintilla);
-    const bool hadVis = ColumnTabs::CT_HasFlowTabStops();
-
-    // Collect padding ranges BEFORE removal for ResultDock position adjustment
-    std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
-    std::string curFileUtf8;
-    bool hasResultHits = false;
-
-    if (hadPad)
+    std::vector<ColumnTabs::Range> ranges;
     {
-        wchar_t pathBuf[MAX_PATH] = {};
-        ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
-        curFileUtf8 = Encoding::wstringToUtf8(pathBuf);
-        hasResultHits = ResultDock::instance().hasHitsForFile(curFileUtf8);
-
-        if (hasResultHits) {
-            const int ctInd = ColumnTabs::CT_GetIndicatorId();
-            const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_GETLENGTH, 0, 0));
-            Sci_Position scanPos = 0;
-            while (scanPos < docLen) {
-                const Sci_Position end = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATOREND, ctInd, scanPos));
-                if (end <= scanPos) break;
-                if (static_cast<int>(::SendMessage(_hScintilla, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
-                    const Sci_Position start = static_cast<Sci_Position>(::SendMessage(_hScintilla, SCI_INDICATORSTART, ctInd, scanPos));
-                    if (end > start)
-                        paddingRanges.emplace_back(start, end);
-                }
-                scanPos = end;
-            }
-        }
+        WaitCursor wait;
+        ScopedRedrawLock redrawLock(_hScintilla);
+        ScopedFlag noLog(isLoggingEnabled, false);
+        m_flowTabs.switchOff(view, &ranges);
     }
-
-    if (hadPad) ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-    if (hadVis) ColumnTabs::CT_DisableFlowTabStops(_hScintilla, /*restoreManual=*/false);
-    if (hadVis) ColumnTabs::CT_ResetFlowVisualState();
-
-    if (hadPad) {
-        // Keep both gates in sync: column-lib doc flag + fast buffer gate
-        ColumnTabs::CT_SetCurDocHasPads(_hScintilla, false);
-
-        const BufferId bufId = (BufferId)::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0);
-        g_padBufs.erase(bufId);
-        findAllDelimitersInDocument(); // offsets changed
-
-        // Adjust ResultDock hit positions: padding was removed, positions shift backward
-        if (hasResultHits && !paddingRanges.empty()) {
-            ResultDock::instance().adjustHitPositionsForFlowTab(curFileUtf8, paddingRanges, /*added=*/false);
-        }
-    }
-
-    if (hadPad || hadVis) {
-        _flowTabsActive = false;
-        if (HWND h = ::GetDlgItem(_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-            ::SetWindowText(h, L"⇥");
-        forceWrapRecalculation();
-    }
+    afterFlowTabsChange(ranges, false, false);
+    showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
 }
 
 bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& body)
@@ -13278,92 +13081,12 @@ bool MultiReplace::runCsvWithFlowTabs(CsvOp op, const std::function<bool()>& bod
     if (lineDelimiterPositions.empty())
         findAllDelimitersInDocument();
 
-    enum class EtabsMode { Off, Visual, Padding };
-
-    const EtabsMode mode =
-        (!_flowTabsActive) ? EtabsMode::Off
-        : (ColumnTabs::CT_GetCurDocHasPads(_hScintilla) ? EtabsMode::Padding
-            : EtabsMode::Visual);
-
+    // Text-changing operations work on the text without padding
     const bool modifiesText =
         (op == CsvOp::Sort) || (op == CsvOp::DeleteColumns);
-
-    // ============================================================
-    // Batch rendering: suspend redraw during multiple text modifications
-    // ============================================================
-    const bool needsRedrawLock = (mode == EtabsMode::Padding && modifiesText);
-
-    if (needsRedrawLock) {
-        ::SendMessage(_hScintilla, WM_SETREDRAW, FALSE, 0);
-    }
-
-    // If Padding + modifying op -> unpad to get canonical text
-    if (mode == EtabsMode::Padding && modifiesText && ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
-        ColumnTabs::CT_RemoveAlignedPadding(_hScintilla);
-        findAllDelimitersInDocument();
-    }
-
-    // Run the actual operation
-    const bool ok = body ? body() : true;
+    const bool ok = modifiesText ? withFlowTabsLifted(body) : (body ? body() : true);
 
     findAllDelimitersInDocument();
-
-    // Reflow presentation
-    switch (mode) {
-    case EtabsMode::Visual: {
-        if (!_flowTabsActive) break;
-
-        ColumnTabs::CT_ColumnModelView model{};
-        if (buildCTModelFromMatrix(model)) {
-            if (!model.Lines.empty()) {
-                const int gapPx = _flowPaddingPx;
-                ColumnTabs::CT_ApplyFlowTabStopsAll(_hScintilla, model, gapPx);
-            }
-        }
-        break;
-    }
-    case EtabsMode::Padding: {
-        if (!_flowTabsActive) break;
-
-        ColumnTabs::CT_ColumnModelView model{};
-        if (buildCTModelFromMatrix(model) && !model.Lines.empty()) {
-
-            if (flowTabsNumericAlignEnabled) {
-                ColumnTabs::CT_ApplyNumericPadding(_hScintilla, model, 0, static_cast<int>(model.Lines.size()) - 1);
-                findAllDelimitersInDocument();
-                if (!buildCTModelFromMatrix(model)) {
-                    break;
-                }
-            }
-
-            ColumnTabs::CT_AlignOptions a{};
-            a.firstLine = 0;
-            a.lastLine = static_cast<int>(model.Lines.size()) - 1;
-            const int spacePx = static_cast<int>(SendMessage(_hScintilla, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" "));
-            a.gapCells = (spacePx > 0) ? (_flowPaddingPx / spacePx) : 2;
-            a.oneFlowTabOnly = true;
-
-            bool nothingToAlign = false;
-            (void)ColumnTabs::CT_InsertAlignedPadding(_hScintilla, model, a, &nothingToAlign);
-
-            if (ColumnTabs::CT_GetCurDocHasPads(_hScintilla)) {
-                findAllDelimitersInDocument();
-            }
-        }
-        break;
-    }
-    case EtabsMode::Off:
-    default:
-        break;
-    }
-
-    // ============================================================
-    // Resume rendering and repaint once
-    // ============================================================
-    if (needsRedrawLock) {
-        ::SendMessage(_hScintilla, WM_SETREDRAW, TRUE, 0);
-        ::InvalidateRect(_hScintilla, nullptr, TRUE);
-    }
 
     // Re-apply column highlighting after bulk CSV operation (sort, delete, etc.)
     // Indicators are destroyed by text modifications; delimiter positions were
@@ -13389,7 +13112,7 @@ bool MultiReplace::showFlowTabsIntroDialog(bool& dontShowFlag) const
 
     // --- Build an in-memory DLGTEMPLATE (no .rc, USER32 only) ---
     // Layout (DLUs)
-    const short W = 320, H = 112, Mx = 7, My = 7;
+    const short W = 320, H = 140, Mx = 7, My = 7;
     const short Tw = W - 2 * Mx;
     const short Ch = 12, Bw = 60, Bh = 14, Bp = 6;
     const short Gt = 4, Gb = 4;
@@ -13658,8 +13381,12 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
         }
         detectNumericColumns(combinedData);  // Single call with wstring caching
 
+        // A line break at the end leaves an empty last line: it stays last
+        const size_t sortEnd = (lineCount > CSVheaderLinesCount + 1 && lineDelimiterPositions.back().lineLength == 0)
+            ? lineCount - 1 : lineCount;
+
         // Stable sort preserves original document order for rows with equal keys
-        std::stable_sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.end(),
+        std::stable_sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.begin() + sortEnd,
             [&](size_t a, size_t b) {
                 const size_t ia = a - CSVheaderLinesCount;
                 const size_t ib = b - CSVheaderLinesCount;
@@ -14159,56 +13886,11 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     send(SCI_GETLINE, line, reinterpret_cast<sptr_t>(lineBuffer.data()));
     std::string_view lineContent(lineBuffer.data(), static_cast<size_t>(lineLength));
 
-    // Cache delimiter and quote character
-    size_t delimLen = columnDelimiterData.delimiterLength;
-    std::string_view delimiter(columnDelimiterData.extendedDelimiter);
-    bool hasQuoteChar = !columnDelimiterData.quoteChar.empty();
-    char currentQuoteChar = hasQuoteChar ? columnDelimiterData.quoteChar[0] : '\0';
-    char delimChar = delimiter[0];  // Cache first char for single-char delimiter path
-
-    size_t pos = 0;
-    bool inQuotes = false;
-
-    while (pos < lineContent.size()) {
-        // Toggle quote status if a quote character is found
-        if (hasQuoteChar && lineContent[pos] == currentQuoteChar) {
-            inQuotes = !inQuotes;
-            ++pos;
-            continue;
-        }
-
-        // Process delimiter if outside quotes
-        if (!inQuotes) {
-            if (delimLen == 1) {
-                // Single-character delimiter check
-                if (lineContent[pos] == delimChar) {
-                    lineInfo.positions.push_back({ static_cast<LRESULT>(pos) });
-                    ++pos;
-                    continue;
-                }
-            }
-            else {
-                // Multi-character delimiter search
-                size_t foundPos = lineContent.find(delimiter, pos);
-                if (foundPos != std::string_view::npos) {
-                    if (hasQuoteChar) {
-                        size_t nextQuote = lineContent.find(currentQuoteChar, pos);
-                        if (nextQuote != std::string_view::npos && nextQuote < foundPos) {
-                            pos = nextQuote;
-                            continue;
-                        }
-                    }
-                    lineInfo.positions.push_back({ static_cast<LRESULT>(foundPos) });
-                    pos = foundPos + delimLen;
-                    continue;
-                }
-                else {
-                    break; // No more delimiters found
-                }
-            }
-        }
-        ++pos;
-    }
+    // Delimiters outside quotes, the rule Flow Tabs follow as well
+    const char quote = columnDelimiterData.quoteChar.empty() ? '\0' : columnDelimiterData.quoteChar[0];
+    CsvLine::forEachDelimiter(lineContent, columnDelimiterData.extendedDelimiter, quote, [&](size_t pos) {
+        lineInfo.positions.push_back({ static_cast<LRESULT>(pos) });
+    });
 
     // Store line info in vector
     if (line < static_cast<LRESULT>(lineDelimiterPositions.size()))
@@ -14424,13 +14106,14 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 // (ScintillaEditView::activateBuffer -> defineDocType). Rebuild both for the
 // document the cycle returned to; the aligned padding itself is text and stays.
 void MultiReplace::restoreColumnVisuals() {
-    if (!_flowTabsActive && !isColumnHighlighted) return;
+    const bool aligned = _hScintilla && m_flowTabs.aligned(directSend(_hScintilla));
+    if (!aligned && !isColumnHighlighted) return;
+
+    if (aligned)
+        m_flowTabs.restoreStops(directSend(_hScintilla));
 
     // The run converted the delimiter last for its last document, maybe into another codepage
     if (!loadDelimitersForScan()) return;
-
-    if (_flowTabsActive)
-        applyFlowTabStops();
 
     if (isColumnHighlighted) {
         initializeColumnStyles();
@@ -14799,9 +14482,10 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         return;
     }
 
-    // Active N++ window changed: reset all delimiter settings
+    // Active N++ window changed: the column data of the document left goes. Flow Tabs stay: the document
+    // left was cleaned on the switch, and this call can come from inside an edit, where text cannot change
     if (documentSwitched) {
-        handleClearDelimiterState();
+        resetDelimiterState();
         documentSwitched = false;
     }
 
@@ -14848,6 +14532,12 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
 }
 
 void MultiReplace::handleClearDelimiterState() {
+    resetDelimiterState();
+    clearFlowTabsIfAny();
+}
+
+// Column positions, highlighting and the change log start over; the text stays as it is
+void MultiReplace::resetDelimiterState() {
     pointerToScintilla();
     if (!_hScintilla) return;
     lineDelimiterPositions.clear();
@@ -14859,7 +14549,6 @@ void MultiReplace::handleClearDelimiterState() {
     if (isColumnHighlighted) {
         handleClearColumnMarks();
     }
-    clearFlowTabsIfAny();
     isCaretPositionEnabled = false;
 }
 
@@ -20482,37 +20171,123 @@ void MultiReplace::processLog() {
     instance->handleDelimiterPositions(DelimiterOperation::Update);
 }
 
-void MultiReplace::ensureContainerUndoNotify() {
-    if (!_hScintilla) return;
-    // NPP's default mod-event mask omits SC_MOD_CONTAINER, so add it. Then
-    // read back: if the bit did not stick, the container-undo mechanism is not
-    // available on this build - record that so flowTabsFinalizeUndo falls back
-    // to clearing the undo buffer instead of placing an unreachable marker.
-    const LRESULT mask = ::SendMessage(_hScintilla, SCI_GETMODEVENTMASK, 0, 0);
-    if ((mask & SC_MOD_CONTAINER) == 0)
-        ::SendMessage(_hScintilla, SCI_SETMODEVENTMASK, (WPARAM)(mask | SC_MOD_CONTAINER), 0);
-    const LRESULT after = ::SendMessage(_hScintilla, SCI_GETMODEVENTMASK, 0, 0);
-    _containerUndoAvailable = (after & SC_MOD_CONTAINER) != 0;
+// Text that replaces framed text stays in the remembered area: undo, redo, typing over a selection
+void MultiReplace::processScopeFrameEdit(SCNotification* notifyCode) {
+    MultiReplace* self = instance;
+    if (!self || !isWindowOpen || !self->m_scopeFrameAnnounced || self->m_ownReplace || DocCycleGuard::active()) return;
+    HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    if (hSci != nppData._scintillaMainHandle && hSci != nppData._scintillaSecondHandle) return;
+    if (notifyCode->modificationType & SC_MOD_BEFOREDELETE)
+        self->m_scopeFrame.noteDelete(viewSend(hSci), notifyCode->position, notifyCode->length);
+    else
+        self->m_scopeFrame.keepInsert(viewSend(hSci), notifyCode->position, notifyCode->length);
 }
 
-void MultiReplace::flowTabsFinalizeUndo() {
-    if (_inFlowTabUndoReplay)
-        return;
-    if (!_hScintilla)
-        return;
-    // Arm the container-notify mask right now and refresh availability, so the
-    // decision below never depends on init / doc-switch timing or on another
-    // path having reset the mask in the meantime.
-    ensureContainerUndoNotify();
-    if (_containerUndoAvailable) {
-        // Place a marker on the visible undo stack; its undo/redo drives the
-        // toggle. Padding itself stays undo-invisible, history is preserved.
-        ::SendMessage(_hScintilla, SCI_ADDUNDOACTION, FLOWTAB_UNDO_TOKEN, 0);
+// The view showing a document, if any
+static HWND viewShowing(std::intptr_t document)
+{
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (hSci && static_cast<std::intptr_t>(::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0)) == document)
+            return hSci;
     }
-    else {
-        // Fallback: mechanism unavailable, clear the undo buffer (no toggle undo).
-        ::SendMessage(_hScintilla, SCI_EMPTYUNDOBUFFER, 0, 0);
+    return nullptr;
+}
+
+// Edits in an aligned document: inserted text never becomes padding, padding that undo brings back is marked again
+void MultiReplace::processFlowTabsEdit(SCNotification* notifyCode) {
+    MultiReplace* self = instance;
+    if (!self || self->m_flowTabsDocs.empty()) return;
+    HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    if (hSci != nppData._scintillaMainHandle && hSci != nppData._scintillaSecondHandle) return;
+    self->m_flowTabs.onModified(directSend(hSci), notifyCode->modificationType, notifyCode->position,
+        notifyCode->length, notifyCode->text, notifyCode->linesAdded);
+}
+
+// Saving writes the text without padding; once saved, the same padding comes back
+void MultiReplace::onFileBeforeSave(UINT_PTR bufferId) {
+    MultiReplace* self = instance;
+    if (!self) return;
+    const auto it = self->m_flowTabsDocs.find(bufferId);
+    if (it == self->m_flowTabsDocs.end() || !self->m_flowTabs.padded(it->second)) return;
+    const HWND hSci = viewShowing(it->second);
+    if (!hSci) return;
+
+    std::vector<ColumnTabs::Range> ranges;
+    {
+        WaitCursor wait;
+        ScopedRedrawLock redrawLock(hSci);
+        ScopedFlag noLog(isLoggingEnabled, false);
+        self->m_flowTabs.switchOff(directSend(hSci), &ranges);
     }
+    self->m_flowTabsSaving = bufferId;
+    if (hSci == self->_hScintilla) self->afterFlowTabsChange(ranges, false, false);
+}
+
+void MultiReplace::onFileSaved(UINT_PTR bufferId) {
+    MultiReplace* self = instance;
+    if (!self || self->m_flowTabsSaving != bufferId) return;
+    self->m_flowTabsSaving = 0;
+    if (self->m_flowTabsClosing) return;
+    const auto it = self->m_flowTabsDocs.find(bufferId);
+    if (it == self->m_flowTabsDocs.end()) return;
+    const HWND hSci = viewShowing(it->second);
+    if (!hSci) return;
+
+    std::vector<ColumnTabs::Range> ranges;
+    {
+        WaitCursor wait;
+        ScopedRedrawLock redrawLock(hSci);
+        ScopedFlag noLog(isLoggingEnabled, false);
+        self->m_flowTabs.realign(directSend(hSci), self->flowTabsSettings(), &ranges);
+    }
+    if (hSci == self->_hScintilla) self->afterFlowTabsChange(ranges, true, true);
+}
+
+void MultiReplace::onFileBeforeClose(UINT_PTR bufferId) {
+    MultiReplace* self = instance;
+    if (!self) return;
+    const auto it = self->m_flowTabsDocs.find(bufferId);
+    if (it == self->m_flowTabsDocs.end()) return;
+    self->m_flowTabs.forget(it->second);
+    self->m_flowTabsDocs.erase(it);
+}
+
+// Notepad++ closes: no padding into files or session backups
+void MultiReplace::onBeforeShutdown() {
+    MultiReplace* self = instance;
+    if (!self) return;
+    self->m_flowTabsClosing = true;
+    for (const auto& known : self->m_flowTabsDocs) {
+        const std::intptr_t document = known.second;
+        if (!self->m_flowTabs.padded(document)) continue;
+        if (const HWND hSci = viewShowing(document)) {
+            ScopedFlag noLog(isLoggingEnabled, false);
+            self->m_flowTabs.switchOff(directSend(hSci), nullptr);
+        }
+    }
+    self->syncFlowTabsState();
+}
+
+void MultiReplace::onCancelShutdown() {
+    if (instance) instance->m_flowTabsClosing = false;
+}
+
+void MultiReplace::onZoom(SCNotification* notifyCode) {
+    MultiReplace* self = instance;
+    if (!self || self->m_flowTabsDocs.empty()) return;
+    HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    if (hSci != nppData._scintillaMainHandle && hSci != nppData._scintillaSecondHandle) return;
+    self->m_flowTabs.refreshStops(directSend(hSci));
+}
+
+void MultiReplace::ensureModEventMask() {
+    if (!_hScintilla) return;
+    // Notepad++'s default mod-event mask omits SC_MOD_CONTAINER, which Flow Tabs undo markers report through, and
+    // SC_MOD_BEFOREDELETE, which the scope frame and Flow Tabs need once in use
+    const LRESULT wanted = SC_MOD_CONTAINER | ((m_scopeFrameAnnounced || m_flowTabsAnnounced) ? SC_MOD_BEFOREDELETE : 0);
+    const LRESULT mask = ::SendMessage(_hScintilla, SCI_GETMODEVENTMASK, 0, 0);
+    if ((mask & wanted) != wanted)
+        ::SendMessage(_hScintilla, SCI_SETMODEVENTMASK, (WPARAM)(mask | wanted), 0);
 }
 
 // Resolve (view, index) from BufferID. Returns false if not found in any view.
@@ -20548,8 +20323,8 @@ void MultiReplace::onDocumentSwitched()
     if (!self->_hScintilla) return;
     HWND hSci = self->_hScintilla;
 
-    // Re-arm container-undo notify for the now-active view (mask is per view).
-    self->ensureContainerUndoNotify();
+    // Re-arm MR's mod-event flags for the now-active view (mask is per view).
+    self->ensureModEventMask();
 
     // MR is cycling documents itself: no user switch, only the mask above applies
     if (DocCycleGuard::active()) return;
@@ -20565,53 +20340,18 @@ void MultiReplace::onDocumentSwitched()
         g_prevBufId = currBufId;
 
     // PHASE A: We posted an activation to the *previous* buffer, and it is now active.
-    // Clean *here*, because now the leaving document is really active.
+    // Clean *here*, because now the leaving document is really active. The padding goes
+    // out with an undo marker: Ctrl+Z there brings it back.
     if (g_cleanInProgress && g_pendingCleanId == currBufId)
     {
-        ColumnTabs::CT_SetIndicatorId(30);
-
-        const BOOL ro = (BOOL)::SendMessage(hSci, SCI_GETREADONLY, 0, 0);
-        if (!ro) {
-            // Collect padding ranges BEFORE removal for ResultDock position adjustment
-            std::vector<std::pair<Sci_Position, Sci_Position>> paddingRanges;
-            std::string cleanFileUtf8;
-            bool hasResultHits = false;
-
-            if (ColumnTabs::CT_HasAlignedPadding(hSci)) {
-                wchar_t pathBuf[MAX_PATH] = {};
-                ::SendMessage(nppData._nppHandle, NPPM_GETFULLCURRENTPATH, MAX_PATH, reinterpret_cast<LPARAM>(pathBuf));
-                cleanFileUtf8 = Encoding::wstringToUtf8(pathBuf);
-                hasResultHits = ResultDock::instance().hasHitsForFile(cleanFileUtf8);
-
-                if (hasResultHits) {
-                    const int ctInd = ColumnTabs::CT_GetIndicatorId();
-                    const Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(hSci, SCI_GETLENGTH, 0, 0));
-                    Sci_Position scanPos = 0;
-                    while (scanPos < docLen) {
-                        const Sci_Position end = static_cast<Sci_Position>(::SendMessage(hSci, SCI_INDICATOREND, ctInd, scanPos));
-                        if (end <= scanPos) break;
-                        if (static_cast<int>(::SendMessage(hSci, SCI_INDICATORVALUEAT, ctInd, scanPos)) != 0) {
-                            const Sci_Position start = static_cast<Sci_Position>(::SendMessage(hSci, SCI_INDICATORSTART, ctInd, scanPos));
-                            if (end > start)
-                                paddingRanges.emplace_back(start, end);
-                        }
-                        scanPos = end;
-                    }
-                }
-            }
-
-            ColumnTabs::CT_RemoveAlignedPadding(hSci); // removes only our marked ranges (or fallback)
-            ColumnTabs::CT_SetCurDocHasPads(hSci, false);
-
-            ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
-
-            // Adjust ResultDock hit positions after padding removal
-            if (hasResultHits && !paddingRanges.empty()) {
-                ResultDock::instance().adjustHitPositionsForFlowTab(cleanFileUtf8, paddingRanges, /*added=*/false);
-            }
+        std::vector<ColumnTabs::Range> ranges;
+        {
+            WaitCursor wait;
+            ScopedRedrawLock redrawLock(hSci);
+            ScopedFlag noLog(isLoggingEnabled, false);
+            self->m_flowTabs.switchOff(directSend(hSci), &ranges);
         }
-        // Update O(1) gate: cleaned
-        g_padBufs.erase(currBufId);
+        self->afterFlowTabsChange(ranges, false, false);
 
         // Now go back to the originally requested target buffer, asynchronously.
         const BufferId backId = g_returnBufId;
@@ -20622,11 +20362,16 @@ void MultiReplace::onDocumentSwitched()
     }
 
     // PHASE B: Natural user switch (we just arrived on a target buffer).
-    // If the previous buffer had pads, schedule an async hop back to clean it.
+    // If the previous buffer has padding, schedule an async hop back to clean it.
+    // Aligned by tab stops only, it lost them with the view and is aligned no more.
     const bool differentDoc = (g_prevBufId != 0 && g_prevBufId != currBufId);
-    const bool prevHasPads = (g_padBufs.find(g_prevBufId) != g_padBufs.end());
+    const auto prev = self->m_flowTabsDocs.find(g_prevBufId);
+    const bool prevKnown = differentDoc && prev != self->m_flowTabsDocs.end();
+    const bool prevHasPads = prevKnown && self->m_flowTabs.padded(prev->second);
+    if (prevKnown && !prevHasPads)
+        self->m_flowTabs.leave(prev->second);
 
-    if (!g_cleanInProgress && differentDoc && prevHasPads)
+    if (!g_cleanInProgress && prevHasPads)
     {
         // Remember where to return after cleaning; then hop back asynchronously.
         g_returnBufId = currBufId;
@@ -20635,7 +20380,6 @@ void MultiReplace::onDocumentSwitched()
         if (!PostActivateBufferId(g_prevBufId))
         {
             // Buffer was closed before we could hop back - abandon cleanup.
-            g_padBufs.erase(g_prevBufId);
             g_pendingCleanId = 0;
             g_cleanInProgress = false;
             // Fall through to normal arrival housekeeping below.
@@ -20646,9 +20390,14 @@ void MultiReplace::onDocumentSwitched()
         }
     }
 
-    // From here: normal "arrival" housekeeping for the active doc (cheap; no text scans)
-    ColumnTabs::CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
-    ColumnTabs::CT_ResetFlowVisualState();
+    // From here: normal "arrival" housekeeping for the active doc (cheap; no text scans).
+    // The view dropped the tab stops with the previous document; a clone of an aligned one gets them here.
+    const ColumnTabs::Send arrived = directSend(hSci);
+    if (self->m_flowTabs.aligned(arrived)) {
+        ScopedRedrawLock redrawLock(hSci);
+        self->m_flowTabs.ensureStops(arrived);
+    }
+    self->syncFlowTabsState();
 
     const int currentBufferID =
         static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
@@ -20664,10 +20413,6 @@ void MultiReplace::onDocumentSwitched()
 
     self->handleClearColumnMarks();
     self->isColumnHighlighted = false;
-
-    self->_flowTabsActive = false;
-    if (HWND h = ::GetDlgItem(self->_hSelf, IDC_COLUMN_GRIDTABS_BUTTON))
-        ::SetWindowText(h, L"⇥");
 
     self->showStatusMessage(L"", MessageStatus::Info);
 

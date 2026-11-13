@@ -284,6 +284,7 @@
     <ClInclude Include="..\src\DialogFreeze.h" />
     <ClInclude Include="..\src\StringUtils.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
+    <ClInclude Include="..\src\CsvLine.h" />
     <ClInclude Include="..\src\OnePassHits.h" />
     <ClInclude Include="..\src\NumericToken.h" />
     <ClInclude Include="..\src\NppStyleKit.h" />

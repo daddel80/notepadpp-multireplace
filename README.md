@@ -129,6 +129,10 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
   - For CSV files, temporary tabs are inserted to simulate uniform column spacing. For tab-delimited files, existing tabs are realigned.
   - The **Column Alignment** button toggles alignment on or off; pressing it again restores the original spacing.
   - Numeric values are right-aligned by default; this behavior can be turned off in [Settings > CSV Options](#4-csv-options).
+  - The inserted tabs and spaces are never saved: saving writes the file without them, and the view stays aligned.
+  - Undo and Redo step through switching alignment on and off like through any other edit; the document keeps its saved state.
+  - MultiReplace functions that change text (Replace, Replace All, sorting, deleting columns or duplicates) remove the alignment first and align again afterwards.
+  - Notepad++'s change history marks of the document are cleared when the alignment is switched on or off.
 - **Duplicate Line Detection** — Identifies and marks duplicate rows based on specified columns.
   - The first occurrence of each group is kept; only subsequent duplicates are marked.
   - After detection, a dialog offers the option to delete duplicates or keep them for inspection.

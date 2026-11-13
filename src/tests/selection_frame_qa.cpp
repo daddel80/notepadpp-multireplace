@@ -15,7 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // QA for SelectionFrame on the real Scintilla Document: the area the Selection scope remembers follows edits
-// the way Scintilla moves indicators, generations retire old frames, and frames belong to their document.
+// the way Scintilla moves indicators, announced edits keep replaced text framed, generations retire old frames,
+// and frames belong to their document.
 // VERBATIM: the indicator messages as Editor::WndProc hands them to the Document.
 // Build: object files as for onepass_engine_qa (Notepad++ sources: scintilla + boostregex, Boost.Regex), then
 //   g++ -std=c++17 -O2 -DNDEBUG -I$S/include -I$S/src -I.. selection_frame_qa.cpp ../SelectionFrame.cpp *.o -lboost_regex -o selection_frame_qa
@@ -105,6 +106,7 @@ struct Doc {
             case SCI_INDICATORCLEARRANGE: d->DecorationFillRange(static_cast<Sci::Position>(w), 0, l); return 0;
             case SCI_INDICATORVALUEAT: return d->decorations->ValueAt(static_cast<int>(w), l);
             case SCI_INDICATOREND: return d->decorations->End(static_cast<int>(w), l);
+            case SCI_GETDOCPOINTER: return reinterpret_cast<std::intptr_t>(d);
             default: std::fprintf(stderr, "unexpected message %u\n", msg); std::abort();
             }
         };
@@ -119,6 +121,29 @@ struct Doc {
     void erase(Sci::Position pos, Sci::Position len) { d->DeleteChars(pos, len); }
     // Editor::ReplaceTarget without patterns: delete, then insert
     void replace(Sci::Position pos, Sci::Position len, const std::string& s) { d->BeginUndoAction(); erase(pos, len); insert(pos, s); d->EndUndoAction(); }
+};
+
+// Edits announced the way MR passes SCN_MODIFIED on: deletions before, insertions after; off for MR's own Replace
+struct Announce : DocWatcher {
+    Doc& doc;
+    SelectionFrame::Frame& frame;
+    bool on = true;
+    Announce(Doc& d, SelectionFrame::Frame& f) : doc(d), frame(f) { doc.d->AddWatcher(this, nullptr); }
+    ~Announce() override { doc.d->RemoveWatcher(this, nullptr); }
+    Announce(const Announce&) = delete;
+    Announce& operator=(const Announce&) = delete;
+    void NotifyModified(Document*, DocModification mh, void*) override {
+        const int type = static_cast<int>(mh.modificationType);
+        if (!on) return;
+        if (type & SC_MOD_BEFOREDELETE) frame.noteDelete(doc.send(), mh.position, mh.length);
+        else if (type & SC_MOD_INSERTTEXT) frame.keepInsert(doc.send(), mh.position, mh.length);
+    }
+    void NotifyModifyAttempt(Document*, void*) override {}
+    void NotifySavePoint(Document*, void*, bool) override {}
+    void NotifyDeleted(Document*, void*) noexcept override {}
+    void NotifyStyleNeeded(Document*, void*, Sci::Position) override {}
+    void NotifyErrorOccurred(Document*, void*, Scintilla::Status) override {}
+    void NotifyGroupCompleted(Document*, void*) noexcept override {}
 };
 
 static int fails = 0, checks = 0;
@@ -167,7 +192,7 @@ int main() {
     { Doc doc(four); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.erase(doc.line(1) + 3, 7);
       check("deleting a whole row drops it", texts(doc, f) == std::vector<std::string>{ "foo foo", "foo foo", "foo foo" }); }
     { Doc doc(four); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.erase(doc.line(1) + 3, 7); doc.d->Undo();
-      check("undo brings the text back but not the dropped row",
+      check("plain Scintilla: undo brings the text back but not the dropped row",
           texts(doc, f) == std::vector<std::string>{ "foo foo", "foo foo", "foo foo" } && doc.d->Length() == static_cast<Sci::Position>(four.size())); }
     { Doc doc(four); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.insert(doc.line(2) + 6, "XY"); doc.d->Undo();
       check("undo of typing restores the row", texts(doc, f) == rows); }
@@ -182,6 +207,48 @@ int main() {
     { Doc doc("ab foo cd\nab foo cd"); f.draw(doc.send(), { { 3, 6 }, { doc.line(1) + 3, doc.line(1) + 6 } });
       doc.replace(3, 3, "ZZ");
       check("plain Scintilla: a row that was only the hit is gone after a replacement", texts(doc, f) == std::vector<std::string>{ "foo" }); }
+
+    // Undo, redo and typing as MR announces them; MR's own Replace is left out and drawn again as above
+    { Doc doc(four); Announce a(doc, f); std::vector<Span> copy = block(doc, 0, 4, 3, 7); f.draw(doc.send(), copy);
+      a.on = false; doc.replace(doc.line(1) + 3, 3, "QUUXX"); a.on = true;
+      copy[1].end += 2; for (size_t i = 2; i < copy.size(); ++i) { copy[i].start += 2; copy[i].end += 2; }
+      f.draw(doc.send(), copy);
+      doc.d->Undo();
+      check("undo of a Replace at the start of a row keeps the old text in the row", texts(doc, f) == rows);
+      doc.d->Redo();
+      check("redo keeps the replacement in the row", texts(doc, f) == std::vector<std::string>{ "foo foo", "QUUXX foo", "foo foo", "foo foo" }); }
+    { Doc doc("ab foo cd\nab foo cd"); Announce a(doc, f); f.draw(doc.send(), { { 3, 6 }, { doc.line(1) + 3, doc.line(1) + 6 } });
+      a.on = false; doc.replace(3, 3, "ZZ"); a.on = true;
+      f.draw(doc.send(), { { 3, 5 }, { doc.line(1) + 3, doc.line(1) + 6 } });
+      doc.d->Undo();
+      check("undo brings back a row that was only the hit", texts(doc, f) == std::vector<std::string>{ "foo", "foo" });
+      doc.d->Redo();
+      check("redo keeps that row", texts(doc, f) == std::vector<std::string>{ "ZZ", "foo" }); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.erase(doc.line(1) + 3, 7); doc.d->Undo();
+      check("undo of deleting a whole row brings the row back", texts(doc, f) == rows); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.replace(doc.line(1) + 3, 3, "QUUXX");
+      check("typing over the start of a row stays in the row", texts(doc, f) == std::vector<std::string>{ "foo foo", "QUUXX foo", "foo foo", "foo foo" }); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.insert(doc.line(1) + 3, "Z");
+      check("announced typing at the start of a row still stays outside", texts(doc, f) == rows); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.replace(doc.line(1) + 1, 2, "XY");
+      check("replacing the text just before a row stays outside", texts(doc, f) == rows); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.replace(doc.line(1) + 2, 2, "XY");
+      check("replacing across the start of a row stays outside", texts(doc, f) == std::vector<std::string>{ "foo foo", "oo foo", "foo foo", "foo foo" }); }
+    { Doc a(four), b(four); f.draw(a.send(), block(a, 0, 4, 3, 7));
+      f.noteDelete(a.send(), a.line(1) + 3, 3); f.keepInsert(b.send(), b.line(1) + 3, 3);
+      check("an insertion in another document is not framed", f.read(b.send()).empty()); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.erase(doc.line(1) + 3, 3);
+      a.on = false; doc.insert(doc.line(3), "XX"); a.on = true; doc.insert(doc.line(1) + 3, "foo");
+      check("an edit not announced in between leaves the insertion outside", texts(doc, f)[1] == " foo"); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.erase(doc.line(1) + 3, 7); f.erase(doc.send()); doc.d->Undo();
+      check("after erase undo frames nothing again", f.read(doc.send()).empty()); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7)); doc.erase(doc.line(1) + 3, 7); f.retire(); doc.d->Undo();
+      check("after retire undo frames nothing again", f.read(doc.send()).empty()); f.dropStale(doc.send()); }
+    { Doc doc(four); Announce a(doc, f); f.draw(doc.send(), block(doc, 0, 4, 3, 7));
+      doc.d->DecorationSetCurrentIndicator(12); doc.d->decorations->SetCurrentValue(5);
+      doc.replace(doc.line(1) + 3, 3, "QUUXX");
+      check("keeping a replacement framed leaves the current indicator and value as found",
+          doc.d->decorations->GetCurrentIndicator() == 12 && doc.d->decorations->GetCurrentValue() == 5 && texts(doc, f)[1] == "QUUXX foo"); }
 
     // Generations: a retired frame no longer counts and each document drops it
     { Doc doc(four); f.draw(doc.send(), block(doc, 0, 2, 3, 7)); f.retire();

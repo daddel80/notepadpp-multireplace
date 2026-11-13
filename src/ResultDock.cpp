@@ -23,7 +23,7 @@
 #include "StaticDialog/Docking.h"
 #include "StaticDialog/DockingDlgInterface.h"
 #include "ResultDock.h"
-#include "ColumnTabs.h"
+#include "NppStyleKit.h"
 #include "image_data.h"
 #include "LanguageManager.h"
 #include <algorithm>
@@ -1147,7 +1147,7 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
     std::vector<size_t> mapRawToFiltered;
 
     // FlowTabs filtering: only scan when the document actually has padding.
-    const int flowTabsIndicatorId = ColumnTabs::CT_GetIndicatorId();
+    const int flowTabsIndicatorId = NppStyleKit::gColumnTabsIndicatorId;
     bool docHasFlowTabPadding = false;
     if (flowTabsIndicatorId >= 0) {
         // Quick check: does the document have any indicator at all?

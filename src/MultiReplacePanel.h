@@ -18,12 +18,12 @@
 #define MULTI_REPLACE_H
 
 // Project headers
-#include "ColumnTabs.h"
 #include "ConfigManager.h"
 #include "DPIManager.h"
 #include "DocScope.h"
 #include "DropTarget.h"
 #include "Encoding.h"
+#include "ColumnTabs.h"
 #include "LanguageManager.h"
 #include "MultiReplaceConfigDialog.h"
 #include "NppStyleKit.h"
@@ -491,7 +491,7 @@ public:
 
     /// RAII guard for Scintilla undo grouping.
     /// Uses shared nesting counter from SciUndoGuard.h to ensure that
-    /// nested operations (e.g., ColumnTabs functions called from here)
+    /// nested operations (e.g., helper functions called from here)
     /// all become part of ONE undo step.
     class ScopedUndoAction {
         MultiReplace& _owner;
@@ -620,8 +620,7 @@ public:
     };
 
     // RAII bool guard: sets a flag on construction, restores it on scope exit
-    // (also on early return or exception). Used to make the FlowTab undo-replay
-    // flag self-healing so the normal toggle path can never get stuck.
+    // (also on early return or exception).
     class ScopedFlag {
         bool& _flag;
         bool  _prev;
@@ -836,7 +835,16 @@ public:
 
 #pragma region Event Handling
     static void processTextChange(SCNotification* notifyCode);
+    static bool isRepeatedChange(const SCNotification* notifyCode);
     static void processContainerUndo(SCNotification* notifyCode);
+    static void processScopeFrameEdit(SCNotification* notifyCode);
+    static void processFlowTabsEdit(SCNotification* notifyCode);
+    static void onFileBeforeSave(UINT_PTR bufferId);
+    static void onFileSaved(UINT_PTR bufferId);
+    static void onFileBeforeClose(UINT_PTR bufferId);
+    static void onBeforeShutdown();
+    static void onCancelShutdown();
+    static void onZoom(SCNotification* notifyCode);
     static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam);
     static void processLog();
     static void onDocumentSwitched();
@@ -1185,6 +1193,8 @@ private:
     // Selection Scope Management for interactive search
     std::vector<SelectionRange> m_selectionScope;
     SelectionFrame::Frame m_scopeFrame;  // the remembered area as its document keeps it, framed
+    bool m_scopeFrameAnnounced = false;  // the views report deletions beforehand, see processScopeFrameEdit
+    bool m_ownReplace = false;           // MR's own replacement: the panel keeps the frame itself
     SelectionRange m_lastFindResult = { -1, -1 };
     int m_lastTotalReplaceCount = 0;
     // Replace in Files on an open document: verify replacement conversions
@@ -1201,17 +1211,24 @@ private:
     bool _editIsExpanded = false; // track expand state
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     inline static bool  _isShuttingDown = false; // Flag to signal app shutdown
-    bool _flowTabsActive = false;   // current visual state (editor tabstops)
-    int  _flowPaddingPx = 8;       // min pixel gap after each column
 
-    // FlowTab container-undo: undo/redo of our own marker drives the toggle.
-    // _containerUndoAvailable is verified at runtime (mod-event mask read-back);
-    // if false, MR falls back to clearing the undo buffer (no toggle-undo, but
-    // stable). _flowTabUndoPending serializes notify -> deferred handler;
-    // _inFlowTabUndoReplay guards against re-entrancy during the replay.
-    static bool _containerUndoAvailable;
-    static bool _flowTabUndoPending;
-    bool _inFlowTabUndoReplay = false;
+    // Flow Tabs: the aligner, the documents it knows (forgotten on close), and the markers undo or redo reached,
+    // replayed once that step has finished
+    struct FlowTabsReplay {
+        HWND view;
+        std::intptr_t document;
+        std::intptr_t token;
+        bool undo;
+    };
+    ColumnTabs::Aligner m_flowTabs;
+    std::unordered_map<UINT_PTR, std::intptr_t> m_flowTabsDocs;   // buffer -> document
+    std::vector<FlowTabsReplay> m_flowTabsReplays;
+    UINT_PTR m_flowTabsSaving = 0;      // buffer saved without its padding, aligned again once saved
+    bool m_flowTabsAnnounced = false;   // from the first alignment on, the views report deletions beforehand
+    bool m_flowTabsClosing = false;     // Notepad++ is closing: nothing is aligned again
+    bool m_flowTabsProgress = false;    // a long run shows its progress over the status line kept here
+    std::wstring m_flowTabsStatusText;
+    MessageStatus m_flowTabsStatusType = MessageStatus::Info;
     static HHOOK _hGetMsgHook;
 
     enum class CsvOp {
@@ -1222,9 +1239,6 @@ private:
         Mark,           // mark/highlight
         BatchReplace,   // replace in files or multi-doc
     };
-
-    // ETabs presentation mode used by the layer (derived internally by default)
-    enum class EtabsMode { Off, Visual, Padding };
 
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
@@ -1549,11 +1563,14 @@ private:
     bool confirmColumnDeletion();
     void handleDeleteColumns();
     void handleCopyColumnsToClipboard();
-    bool buildCTModelFromMatrix(ColumnTabs::CT_ColumnModelView& outModel) const;
-    bool applyFlowTabStops(const ColumnTabs::CT_ColumnModelView* existingModel = nullptr);
     void handleColumnGridTabsButton();
-    void flowTabsFinalizeUndo();
-    void ensureContainerUndoNotify();
+    ColumnTabs::Settings flowTabsSettings() const;
+    static ColumnTabs::Send directSend(HWND hSci);
+    void afterFlowTabsChange(const std::vector<ColumnTabs::Range>& ranges, bool added, bool rescan);
+    void syncFlowTabsState();
+    void flushFlowTabsReplays();
+    bool withFlowTabsLifted(const std::function<bool()>& body);
+    void ensureModEventMask();
     void bindToView(int view);
     void handleDuplicatesButton();
     void findAndMarkDuplicates(bool showDialog = true);
@@ -1609,6 +1626,7 @@ private:
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
+    void resetDelimiterState();
 
 #pragma endregion
 

@@ -83,8 +83,9 @@ namespace SelectionFrame {
         view(SCI_INDICSETUNDER, id, 1);
     }
 
-    void Frame::draw(const Send& doc, const std::vector<Span>& spans) const
+    void Frame::draw(const Send& doc, const std::vector<Span>& spans)
     {
+        deleted_ = {};
         if (id_ < 0) return;
         const KeepCurrent keep(doc);
         clearAll(doc, id_);
@@ -94,8 +95,9 @@ namespace SelectionFrame {
         }
     }
 
-    void Frame::erase(const Send& doc) const
+    void Frame::erase(const Send& doc)
     {
+        deleted_ = {};
         if (id_ < 0) return;
         const KeepCurrent keep(doc);
         clearAll(doc, id_);
@@ -126,8 +128,31 @@ namespace SelectionFrame {
         }
     }
 
+    void Frame::noteDelete(const Send& doc, std::intptr_t pos, std::intptr_t length)
+    {
+        deleted_ = {};
+        if (id_ < 0 || length <= 0) return;
+        const auto id = static_cast<std::uintptr_t>(id_);
+        if (doc(SCI_INDICATORVALUEAT, id, pos) == generation_ && doc(SCI_INDICATOREND, id, pos) >= pos + length) {
+            deleted_ = { doc(SCI_GETDOCPOINTER, 0, 0), pos, doc(SCI_GETLENGTH, 0, 0) - length };
+        }
+    }
+
+    void Frame::keepInsert(const Send& doc, std::intptr_t pos, std::intptr_t length)
+    {
+        const Deleted deleted = deleted_;
+        deleted_ = {};
+        if (id_ < 0 || length <= 0 || deleted.pos != pos || deleted.doc != doc(SCI_GETDOCPOINTER, 0, 0)
+            || deleted.docLength != doc(SCI_GETLENGTH, 0, 0) - length) return;
+        const KeepCurrent keep(doc);
+        doc(SCI_SETINDICATORCURRENT, static_cast<std::uintptr_t>(id_), 0);
+        doc(SCI_SETINDICATORVALUE, static_cast<std::uintptr_t>(generation_), 0);
+        doc(SCI_INDICATORFILLRANGE, static_cast<std::uintptr_t>(pos), length);
+    }
+
     void Frame::retire() noexcept
     {
         generation_ = (generation_ >= GENERATION_LIMIT) ? 1 : generation_ + 1;
+        deleted_ = {};
     }
 }

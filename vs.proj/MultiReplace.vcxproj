@@ -30,6 +30,7 @@
     <ClInclude Include="..\src\AboutDialog.h" />
     <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
+    <ClInclude Include="..\src\CsvLine.h" />
     <ClInclude Include="..\src\OnePassHits.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
     <ClInclude Include="..\src\CsvListFormat.h" />

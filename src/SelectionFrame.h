@@ -41,16 +41,29 @@ namespace SelectionFrame {
         void applyStyle(const Send& view, bool dark) const;
 
         // Per document, leaving its current indicator and value as found; draw replaces the frame
-        void draw(const Send& doc, const std::vector<Span>& spans) const;
-        void erase(const Send& doc) const;
+        void draw(const Send& doc, const std::vector<Span>& spans);
+        void erase(const Send& doc);
         std::vector<Span> read(const Send& doc) const;
         void dropStale(const Send& doc) const;
+
+        // Text that replaces framed text stays framed (undo, redo, typing over a selection), which Scintilla does
+        // not do at the edges of an indicator: noteDelete before each deletion, keepInsert after each insertion
+        void noteDelete(const Send& doc, std::intptr_t pos, std::intptr_t length);
+        void keepInsert(const Send& doc, std::intptr_t pos, std::intptr_t length);
 
         // The frames drawn so far stop counting; each document drops its own in dropStale
         void retire() noexcept;
 
     private:
+        // Where framed text was deleted last, until the next insertion; edits not announced in between void it
+        struct Deleted {
+            std::intptr_t doc = 0;
+            std::intptr_t pos = -1;
+            std::intptr_t docLength = -1;
+        };
+
         int id_ = -1;
         int generation_ = 1;
+        Deleted deleted_;
     };
 }

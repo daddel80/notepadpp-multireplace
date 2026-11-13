@@ -15,1064 +15,1069 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "ColumnTabs.h"
+
+#include "CsvLine.h"
 #include "NumericToken.h"
+#include "Scintilla.h"
+
 #include <algorithm>
-#include <unordered_map>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <deque>
+#include <map>
 #include <string_view>
-#include <cctype> 
+#include <unordered_map>
 
-// --- Scintilla direct --------------------------------------------------------
-static inline sptr_t S(HWND hSci, UINT m, uptr_t w = 0, sptr_t l = 0)
-{
-    static thread_local HWND         cachedHwnd = nullptr;
-    static thread_local SciFnDirect  cachedFn = nullptr;
-    static thread_local sptr_t       cachedPtr = 0;
-
-    if (hSci != cachedHwnd || !cachedFn || !cachedPtr) {
-        cachedFn = reinterpret_cast<SciFnDirect>(::SendMessage(hSci, SCI_GETDIRECTFUNCTION, 0, 0));
-        cachedPtr = (sptr_t)::SendMessage(hSci, SCI_GETDIRECTPOINTER, 0, 0);
-        cachedHwnd = hSci;
-    }
-    return cachedFn ? cachedFn(cachedPtr, m, w, l) : ::SendMessage(hSci, m, w, l);
-}
-
-// -----------------------------------------------------------------------------
-// File-local helpers (no linkage outside this TU)
-// -----------------------------------------------------------------------------
-struct RedrawGuard {
-    HWND h{};
-    explicit RedrawGuard(HWND hwnd) : h(hwnd) {
-        ::SendMessage(h, WM_SETREDRAW, FALSE, 0);
-    }
-    ~RedrawGuard() {
-        ::SendMessage(h, WM_SETREDRAW, TRUE, 0);
-        ::InvalidateRect(h, nullptr, TRUE);
-    }
-};
-
-struct OptionalRedrawGuard {
-    HWND  h{};
-    bool  active = false;
-    OptionalRedrawGuard(HWND hwnd, size_t opCount,
-        size_t threshold = 2000) : h(hwnd) {
-        // threshold: expected number of editor calls/line operations
-        active = (opCount >= threshold);
-        if (active) ::SendMessage(h, WM_SETREDRAW, FALSE, 0);
-    }
-    ~OptionalRedrawGuard() {
-        if (active) {
-            ::SendMessage(h, WM_SETREDRAW, TRUE, 0);
-            ::InvalidateRect(h, nullptr, TRUE);
-        }
-    }
-};
-
-// small helpers (file-local)
-static int CT_TextWidthPx(HWND hSci, const std::string& s) {
-    const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
-    if (w > 0) return w;
-    const int sp = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-    return (int)s.size() * (sp > 0 ? sp : 8);
-}
-
-static void CT_GetSubTextUtf8(HWND hSci, Sci_Position pos0, Sci_Position pos1, std::string& out) {
-    out.clear();
-    if (pos1 <= pos0) return;
-    const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
-    out.assign((size_t)need + 1u, '\0');
-    Sci_TextRangeFull tr{}; tr.chrg.cpMin = pos0; tr.chrg.cpMax = pos1; tr.lpstrText = out.data();
-    S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
-    if (!out.empty()) out.pop_back();
-}
-
-// find number in [fieldPos0, fieldPos1): returns doc pos of first digit/sign and px width of left part
-static bool CT_FindNumericToken(HWND hSci,
-    Sci_Position fieldPos0,
-    Sci_Position fieldPos1,
-    Sci_Position& outStartDoc,
-    int& outLeftPx,
-    bool& outHasDecimal)
-{
-    std::string fld;
-    CT_GetSubTextUtf8(hSci, fieldPos0, fieldPos1, fld);
-    if (fld.empty()) return false;
-
-    auto is_space = [](unsigned char c) noexcept { return c == ' ' || c == '\t'; };
-    std::size_t n = fld.size();
-    std::size_t t0 = 0, t1 = n;
-    while (t0 < n && is_space((unsigned char)fld[t0])) ++t0;
-    while (t1 > t0 && is_space((unsigned char)fld[t1 - 1])) --t1;
-
-    if (t1 <= t0) return false;
-    std::string_view trimmed(fld.data() + t0, t1 - t0);
-
-    mr::num::NumericToken tok;
-    if (!mr::num::classify_numeric_field(trimmed, tok))
-        return false;
-
-    std::size_t intStart = tok.start + (tok.hasSign ? 1u : 0u);
-    std::size_t intLen = (tok.intDigits > 0) ? (std::size_t)tok.intDigits : 0u;
-
-    std::string leftDigits;
-    if (intLen > 0 && intStart + intLen <= trimmed.size())
-        leftDigits.assign(trimmed.data() + intStart, intLen);
-
-    outLeftPx = CT_TextWidthPx(hSci, leftDigits);
-    outStartDoc = fieldPos0 + (Sci_Position)(t0 + tok.start);
-    outHasDecimal = tok.hasDecimal;
-    return true;
-}
-
-// -----------------------------------------------------------------------------
-// ColumnTabs::detail – persistent state and helpers  (separater Namespace)
-// -----------------------------------------------------------------------------
-namespace ColumnTabs::detail {
-
-    // docPtr -> has pads (for O(1) gate)
-    static std::unordered_map<sptr_t, bool> g_docHasPads;
-
-    // Tracks which lines currently have ETS-owned visual tab stops.
-    static std::vector<uint8_t> g_hasETSLine;                 // 0/1 per line
-
-    // Snapshot of manual tab stops (in px) that existed before ETS took over the line.
-    static std::vector<std::vector<int>> g_savedManualStopsPx;
-
-    // Ensure our global tracking vectors have capacity for the current buffer.
-    inline void ensureCapacity(HWND hSci) {
-        const int total = (int)S(hSci, SCI_GETLINECOUNT, 0, 0);
-
-        if ((int)g_hasETSLine.size() != total)
-            g_hasETSLine.resize((size_t)total, 0u);
-
-        if ((int)g_savedManualStopsPx.size() != total)
-            g_savedManualStopsPx.resize((size_t)total);
-    }
-
-    // Collect all current tab stops (px) on a given line (manual or otherwise).
-    static std::vector<int> collectTabStopsPx(HWND hSci, int line) {
-        std::vector<int> stops;
-        int pos = 0;
-        for (;;) {
-            const int next = (int)S(hSci, SCI_GETNEXTTABSTOP, (uptr_t)line, (sptr_t)pos);
-            if (next <= 0 || next == pos) break;
-            stops.push_back(next);
-            pos = next;
-        }
-        return stops;
-    }
-
-    // Pixel width of a space in the current style; stable fallback if renderer reports 0.
-    static inline int pxOfSpace(HWND hSci) {
-        const int px = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-        return (px > 0) ? px : 8;
-    }
-
-    // Fetch a model line by absolute document line number.
-    static inline CT_ColumnLineInfo fetchLine(const CT_ColumnModelView& model, int line) {
-        const size_t idx = (size_t)(line - (int)model.docStartLine);
-        return model.getLineInfo ? model.getLineInfo(idx) : model.Lines[idx];
-    }
-
-    // Expects doc-absolute line indices [line0..line1].
-    static bool computeStopsFromWidthsPx(
-        HWND hSci,
-        const ColumnTabs::CT_ColumnModelView& model,
-        int line0, int line1,
-        std::vector<int>& stopPx,   // OUT
-        int gapPx)
-    {
-        using namespace ColumnTabs;
-
-        if (line1 < line0) std::swap(line0, line1);
-
-        // Uniform spacing: left-only gap; right gap must be 0.
-        const int gapBeforePx = (gapPx >= 0) ? gapPx : 0;
-        const int gapAfterPx = 0;
-
-        // Safety margin to stay strictly left of stop with rounding/kerning.
-        const int spacePx = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)" ");
-        const int minAdvancePx = (spacePx > 0) ? ((spacePx + 1) / 2) : 2;
-
-        // Determine maximum field count across the range.
-        size_t maxCols = 0;
-        for (int ln = line0; ln <= line1; ++ln) {
-            const auto L = fetchLine(model, ln); // model/doc-absolute
-            maxCols = (std::max)(maxCols, L.FieldCount()); // FieldCount = nDelims + 1
-        }
-        if (maxCols < 2) { stopPx.clear(); return true; }
-        const size_t stopsCount = maxCols - 1;
-
-        // Helpers: extract text; measure width in px.
-        auto getSubText = [&](Sci_Position pos0, Sci_Position pos1, std::string& out) {
-            if (pos1 <= pos0) { out.clear(); return; }
-            const ptrdiff_t need = (ptrdiff_t)(pos1 - pos0);
-            out.assign((size_t)need + 1u, '\0'); // +1 for '\0'
-
-            Sci_TextRangeFull tr{};
-            tr.chrg.cpMin = pos0;
-            tr.chrg.cpMax = pos1;
-            tr.lpstrText = out.data();
-            S(hSci, SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
-
-            if (!out.empty()) out.pop_back(); // drop trailing '\0'
-            };
-
-        auto measurePx = [&](const std::string& s) -> int {
-            const int w = (int)S(hSci, SCI_TEXTWIDTH, STYLE_DEFAULT, (sptr_t)s.c_str());
-            return (w > 0) ? w : (int)s.size() * ((spacePx > 0) ? spacePx : 8);
-            };
-
-        // PASS 1: collect max cell width and max delimiter width per column.
-        std::vector<int> maxCellWidthPx(maxCols, 0);
-        std::vector<int> maxDelimiterWidthPx(stopsCount, 0);
-
-        for (int ln = line0; ln <= line1; ++ln) {
-            const auto L = fetchLine(model, ln);
-            const size_t nDel = L.delimiterOffsets.size();
-            const size_t nFld = nDel + 1;
-            if (nFld == 0) continue;
-
-            const Sci_Position base = (Sci_Position)S(hSci, SCI_POSITIONFROMLINE, (uptr_t)ln);
-
-            // Cells
-            for (size_t k = 0; k < nFld; ++k) {
-                Sci_Position s = base;
-                if (k > 0)
-                    s = base + (Sci_Position)L.delimiterOffsets[k - 1]
-                    + (Sci_Position)model.delimiterLength;
-
-                Sci_Position e = (k < nDel)
-                    ? (base + (Sci_Position)L.delimiterOffsets[k])
-                    : (base + (Sci_Position)L.lineLength);
-
-                std::string cell;
-                getSubText(s, e, cell);
-
-                // Tab-invariant measure: ignore '\t' for width.
-                if (!cell.empty())
-                    cell.erase(std::remove(cell.begin(), cell.end(), '\t'), cell.end());
-
-                const int w = measurePx(cell);
-                if (w > maxCellWidthPx[k]) maxCellWidthPx[k] = w;
-            }
-
-            // Delimiters (only if not TAB)
-            if (!model.delimiterIsTab && model.delimiterLength > 0) {
-                for (size_t d = 0; d < nDel && d < stopsCount; ++d) {
-                    Sci_Position d0 = base + (Sci_Position)L.delimiterOffsets[d];
-                    Sci_Position d1 = d0 + (Sci_Position)model.delimiterLength;
-                    std::string del;
-                    getSubText(d0, d1, del);
-                    const int dw = measurePx(del);
-                    if (dw > maxDelimiterWidthPx[d]) maxDelimiterWidthPx[d] = dw;
-                }
-            }
-        }
-
-        // PASS 2: compute tab stops from maxima (+ safety margin), enforce monotonicity.
-        stopPx.assign(stopsCount, 0);
-        {
-            int acc = 0;
-            for (size_t c = 0; c < stopsCount; ++c) {
-                acc += maxCellWidthPx[c] + gapBeforePx + minAdvancePx; // strictly beyond widest cell
-                stopPx[c] = acc;
-                acc += maxDelimiterWidthPx[c] + gapAfterPx;            // 0
-                // Monotonicity is guaranteed by cumulative addition
-            }
-        }
-
-        return true;
-    }
-
-    // Set tab stops (in pixels) for all lines in [line0..line1].
-    static void setTabStopsRangePx(HWND hSci, int line0, int line1, const std::vector<int>& stops)
-    {
-        const size_t perLine = 1u + stops.size();
-        const size_t lines = (line1 >= line0) ? (size_t)(line1 - line0 + 1) : 0;
-        OptionalRedrawGuard rg(hSci, perLine * lines); // active from ~2000 operations
-
-        for (int ln = line0; ln <= line1; ++ln) {
-            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
-            for (size_t i = 0; i < stops.size(); ++i)
-                S(hSci, SCI_ADDTABSTOP, (uptr_t)ln, (sptr_t)stops[i]);
-        }
-    }
-
-} // namespace ColumnTabs::detail
-
-// -----------------------------------------------------------------------------
-// ColumnTabs – all public APIs (separater Namespace)
-// -----------------------------------------------------------------------------
 namespace ColumnTabs {
 
-    // -------------------------------------------------------------------------
-    // Indicator (tracks inserted padding)
-    // -------------------------------------------------------------------------
-    static int g_CT_IndicatorId = 30;
+    namespace {
 
-    void CT_SetIndicatorId(int id) noexcept { g_CT_IndicatorId = id; }
-    int  CT_GetIndicatorId() noexcept { return g_CT_IndicatorId; }
+        using Pos = std::intptr_t;
 
-    // -------------------------------------------------------------------------
-    // Destructive API (edits text)
-    // -------------------------------------------------------------------------
-    bool CT_InsertAlignedPadding(HWND hSci,
-        const CT_ColumnModelView& model,
-        const CT_AlignOptions& opt,
-        bool* outNothingToAlign /*=nullptr*/,
-        bool suppressUndoBufferClear /*=false*/)
-    {
-        using namespace ColumnTabs::detail;
+        // Marker tokens: 'MR' in the upper half, a number per document in the lower
+        constexpr Pos MARKER_TAG = 0x4D52;
+        constexpr Pos MARKER_IDS = 0xFFFF;
 
-        if (outNothingToAlign) *outNothingToAlign = false;
+        constexpr int GAP_SPACES = 2;                       // between a column and the next delimiter
+        constexpr std::size_t MAX_RECORDS = 1024;           // markers per document that can be replayed
+        constexpr std::size_t MAX_JOURNAL_BYTES = 32u << 20;
 
-        auto Sci = [hSci](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t {
-            return (sptr_t)::S(hSci, msg, w, l);
-            };
+        // Padding of a line without padding: count times ch at offset
+        struct Run {
+            std::int32_t offset;
+            std::int32_t count;
+            char ch;
+            bool operator==(const Run& o) const noexcept { return offset == o.offset && count == o.count && ch == o.ch; }
+        };
+        using Runs = std::vector<Run>;
+        using Exceptions = std::map<Pos, Runs>;     // line -> padding that differs from the recipe
 
-        const bool hasVec = !model.Lines.empty();
-        if (!hasVec && !model.getLineInfo) {
-            return false;
-        }
+        // Marked bytes, relative to the start of a piece of text
+        struct Mark {
+            std::int32_t offset;
+            std::int32_t length;
+        };
 
-        const int baseDoc = (int)model.docStartLine;
-        const int rel0 = (opt.firstLine < 0) ? 0 : opt.firstLine;
+        struct Fingerprint {
+            Pos length = -1;
+            std::uint64_t hash = 0;
+            bool operator==(const Fingerprint& o) const noexcept { return length == o.length && hash == o.hash; }
+            bool operator!=(const Fingerprint& o) const noexcept { return !(*this == o); }
+        };
 
-        int line0 = baseDoc + rel0;
-        int line1;
-
-        if (hasVec) {
-            const int rel1 = (opt.lastLine < 0)
-                ? ((int)model.Lines.size() - 1)
-                : (std::max)(opt.firstLine, opt.lastLine);
-            line1 = baseDoc + rel1;
-
-            const int modelFirst = baseDoc;
-            const int modelLast = baseDoc + (int)model.Lines.size() - 1;
-            if (line0 < modelFirst) line0 = modelFirst;
-            if (line1 > modelLast)  line1 = modelLast;
-        }
-        else {
-            if (opt.lastLine < 0) {
-                const int docLast = (int)S(hSci, SCI_GETLINECOUNT, 0, 0) - 1;
-                line1 = (docLast < line0) ? line0 : docLast;
+        std::uint64_t fnv1a(const char* p, std::size_t n) noexcept
+        {
+            std::uint64_t h = 1469598103934665603ull;
+            for (std::size_t i = 0; i < n; ++i) {
+                h ^= static_cast<unsigned char>(p[i]);
+                h *= 1099511628211ull;
             }
-            else {
-                line1 = baseDoc + opt.lastLine;
-                if (line1 < line0) line1 = line0;
-            }
+            return h;
         }
 
-        if (line1 < line0) {
-            if (outNothingToAlign) *outNothingToAlign = true;
-            return false;
+        Fingerprint fingerprint(const Send& v)
+        {
+            const Pos length = v(SCI_GETLENGTH, 0, 0);
+            const char* text = reinterpret_cast<const char*>(v(SCI_GETCHARACTERPOINTER, 0, 0));
+            return { length, text ? fnv1a(text, static_cast<std::size_t>(length)) : 0 };
         }
 
-        ensureCapacity(hSci);
-
-        const int gapPx = (opt.gapCells > 0) ? (pxOfSpace(hSci) * opt.gapCells) : 0;
-        std::vector<int> stops;
-        if (!computeStopsFromWidthsPx(hSci, model, line0, line1, stops, gapPx)) {
-            return false;
+        // One line without its line end; valid until the next change
+        std::string_view lineText(const Send& v, Pos line, Pos* start = nullptr)
+        {
+            const Pos from = v(SCI_POSITIONFROMLINE, static_cast<std::uintptr_t>(line), 0);
+            const Pos to = v(SCI_GETLINEENDPOSITION, static_cast<std::uintptr_t>(line), 0);
+            if (start) *start = from;
+            if (to <= from) return {};
+            const char* p = reinterpret_cast<const char*>(v(SCI_GETRANGEPOINTER, static_cast<std::uintptr_t>(from), to - from));
+            return p ? std::string_view(p, static_cast<std::size_t>(to - from)) : std::string_view();
         }
 
-        if (stops.empty()) {
-            if (outNothingToAlign) *outNothingToAlign = true;
-            return false;
-        }
+        bool isBlank(char c) noexcept { return c == ' ' || c == '\t'; }
 
-        for (int ln = line0; ln <= line1; ++ln) {
-            if ((int)g_hasETSLine.size() > ln &&
-                (int)g_savedManualStopsPx.size() > ln &&
-                g_hasETSLine[(size_t)ln] == 0u)
-            {
-                g_savedManualStopsPx[(size_t)ln] = collectTabStopsPx(hSci, ln);
-            }
-        }
+        // Widths at one zoom: ASCII measured once, other text measured as it comes
+        struct Metrics {
+            std::array<double, 128> ascii{};
+            double gap = 0;                 // between a column and the next delimiter
+            double delimiter = 0;           // width of the delimiter, 0 for TAB
+        };
 
-        setTabStopsRangePx(hSci, line0, line1, stops);
+        // How a document is aligned: settings and what was measured when switching on
+        struct Recipe {
+            Settings settings;
+            bool tabDelimited = false;      // the delimiters are TABs already
+            bool numbers = false;           // spaces before numbers
+            std::vector<int> intWidth;      // per column: digits of the widest integer part, 0 = no numbers
+            Metrics metrics;
+            std::vector<int> stops;         // pixels, shared by all lines
+            Pos zoom = 0;                   // zoom the stops were measured at
+        };
 
-        for (int ln = line0; ln <= line1; ++ln) {
-            if ((int)g_hasETSLine.size() > ln)
-                g_hasETSLine[(size_t)ln] = 1u;
-        }
+        // A field's number as numeric alignment sees it: prefix and suffix allowed, as in CSV sorting
+        struct Number {
+            std::size_t start = 0;          // sign or first digit
+            int intDigits = 0;
+            bool sign = false;
+            bool aligned = false;           // has digits or a decimal separator
+        };
 
-        if (opt.oneFlowTabOnly && model.delimiterIsTab)
+        bool numberIn(std::string_view line, std::size_t s, std::size_t e, Number& out)
+        {
+            while (s < e && isBlank(line[s])) ++s;
+            while (e > s && isBlank(line[e - 1])) --e;
+            if (e <= s) return false;
+            mr::num::NumericToken tok;
+            if (!mr::num::classify_numeric_field(line.substr(s, e - s), tok)) return false;
+
+            std::size_t i = s + tok.start;
+            out.start = i;
+            out.sign = i < e && (line[i] == '+' || line[i] == '-');
+            if (out.sign) ++i;
+            int digits = 0;
+            while (i < e && line[i] >= '0' && line[i] <= '9') { ++digits; ++i; }
+            const bool separator = i < e && (line[i] == '.' || line[i] == ',');
+            out.intDigits = digits;
+            out.aligned = digits > 0 || separator || tok.hasDecimal;
             return true;
+        }
 
-        RedrawGuard rd(hSci);
+        void delimitersOf(std::string_view line, const Settings& s, std::vector<std::size_t>& out)
+        {
+            out.clear();
+            CsvLine::forEachDelimiter(line, s.delimiter, s.quote, [&](std::size_t d) { out.push_back(d); });
+        }
 
-        // Suppress undo collection: FlowTab padding is cosmetic, the toggle
-        // button serves as the undo mechanism.  We keep BEGIN/ENDUNDOACTION
-        // as a performance hint so Scintilla optimises its gap buffer.
-        const bool undoWasOn = Sci(SCI_GETUNDOCOLLECTION) != 0;
-        if (undoWasOn) Sci(SCI_SETUNDOCOLLECTION, 0);
+        // Field c of a line with these delimiters: [first, second)
+        std::pair<std::size_t, std::size_t> field(std::string_view line, const std::vector<std::size_t>& delims,
+            std::size_t delimiterLength, std::size_t c)
+        {
+            const std::size_t s = c == 0 ? 0 : delims[c - 1] + delimiterLength;
+            const std::size_t e = c < delims.size() ? delims[c] : line.size();
+            return { (std::min)(s, e), e };
+        }
 
-        // Suppress modification notifications during bulk insert to avoid
-        // per-edit re-lexing and folding overhead.
-        const int savedEventMask = (int)Sci(SCI_GETMODEVENTMASK);
-        Sci(SCI_SETMODEVENTMASK, 0);
-
-        Sci(SCI_BEGINUNDOACTION);
-
-        Sci(SCI_SETINDICATORCURRENT, g_CT_IndicatorId);
-        Sci(SCI_INDICSETSTYLE, g_CT_IndicatorId, INDIC_HIDDEN);
-        Sci(SCI_INDICSETALPHA, g_CT_IndicatorId, 0);
-
-        bool madePads = false;
-
-        // Bulk approach: build modified text per line in memory, then replace
-        // the whole line via SCI_REPLACETARGET (one Scintilla call per line
-        // instead of one per delimiter — avoids O(n²) gap-buffer shifts).
-        auto fetch = [&](int ln)->CT_ColumnLineInfo {
-            return detail::fetchLine(model, ln);
-            };
-
-        for (int ln = line0; ln <= line1; ++ln) {
-            const auto L = fetch(ln);
-            const size_t nDelims = L.delimiterOffsets.size();
-            if (nDelims == 0) continue;
-
-            const Sci_Position lineStart = (Sci_Position)Sci(SCI_POSITIONFROMLINE, (uptr_t)ln);
-            const Sci_Position lineEnd = (Sci_Position)Sci(SCI_GETLINEENDPOSITION, (uptr_t)ln);
-            const Sci_Position lineLen = lineEnd - lineStart;
-            if (lineLen <= 0) continue;
-
-            // Collect existing indicator runs on this line (e.g. from NumericPadding)
-            // as byte offsets relative to lineStart.  REPLACETARGET destroys them,
-            // so we must capture and re-apply after the replace.
-            std::vector<std::pair<size_t, size_t>> existingIndicRuns; // (offset, len)
-            {
-                Sci_Position p = lineStart;
-                while (p < lineEnd) {
-                    int val = (int)Sci(SCI_INDICATORVALUEAT, (uptr_t)g_CT_IndicatorId, (sptr_t)p);
-                    Sci_Position runEnd = (Sci_Position)Sci(SCI_INDICATOREND, (uptr_t)g_CT_IndicatorId, (sptr_t)p);
-                    if (runEnd <= p) break;
-                    if (runEnd > lineEnd) runEnd = lineEnd;
-                    if (val != 0) {
-                        existingIndicRuns.push_back({
-                            (size_t)(p - lineStart),
-                            (size_t)(runEnd - p) });
+        // Padding of one line without padding, left to right
+        void planLine(std::string_view line, const Recipe& r, std::vector<std::size_t>& delims, Runs& runs)
+        {
+            runs.clear();
+            delimitersOf(line, r.settings, delims);
+            const std::size_t dl = r.settings.delimiter.size();
+            for (std::size_t c = 0; c <= delims.size(); ++c) {
+                const auto [s, e] = field(line, delims, dl, c);
+                if (r.numbers && c < r.intWidth.size() && r.intWidth[c] > 0) {
+                    Number n;
+                    if (numberIn(line, s, e, n) && n.aligned) {
+                        int touching = 0;
+                        for (std::size_t p = n.start; p > s && line[p - 1] == ' '; --p) ++touching;
+                        int need = 1 + r.intWidth[c] - n.intDigits;
+                        if (need < 0) need = 0;
+                        if (n.sign && need > 0) --need;
+                        if (need > touching)
+                            runs.push_back({ static_cast<std::int32_t>(n.start), need - touching, ' ' });
                     }
-                    p = runEnd;
                 }
-            }
-
-            // Read current line text
-            std::string origLine((size_t)lineLen, '\0');
-            Sci_TextRangeFull tr{};
-            tr.chrg.cpMin = lineStart;
-            tr.chrg.cpMax = lineEnd;
-            tr.lpstrText = origLine.data();
-            Sci(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
-
-            // Build new line with tabs inserted before delimiters.
-            std::string newLine;
-            newLine.reserve(origLine.size() + nDelims);
-            std::vector<std::pair<size_t, size_t>> indicRanges; // (pos, len) in newLine
-            std::vector<size_t> tabInsertOffsets;                // original offsets of insertions
-
-            size_t prevOff = 0;
-            int tabsInserted = 0;
-            for (size_t c = 0; c < nDelims; ++c) {
-                size_t delimOff = (size_t)L.delimiterOffsets[c];
-                if (delimOff > origLine.size()) continue;
-
-                size_t wsStart = delimOff;
-                while (wsStart > 0 && (origLine[wsStart - 1] == ' ' || origLine[wsStart - 1] == '\t'))
-                    --wsStart;
-
-                bool keepExistingTab =
-                    (wsStart < delimOff) && (origLine[delimOff - 1] == '\t');
-
-                newLine.append(origLine, prevOff, delimOff - prevOff);
-
-                if (!keepExistingTab) {
-                    size_t tabPos = newLine.size();
-                    newLine += '\t';
-                    indicRanges.push_back({ tabPos, 1 });
-                    tabInsertOffsets.push_back(delimOff);
-                    ++tabsInserted;
-                    madePads = true;
-                }
-
-                prevOff = delimOff;
-            }
-            newLine.append(origLine, prevOff, origLine.size() - prevOff);
-
-            if (tabsInserted == 0) continue;
-
-            // Remap existing indicator runs to new positions (shifted by inserted tabs).
-            for (const auto& er : existingIndicRuns) {
-                size_t origOff = er.first;
-                size_t shift = 0;
-                for (size_t tOff : tabInsertOffsets) {
-                    if (tOff <= origOff) ++shift;
-                    else break;
-                }
-                indicRanges.push_back({ origOff + shift, er.second });
-            }
-
-            // Replace the entire line in one shot
-            Sci(SCI_SETTARGETRANGE, (uptr_t)lineStart, (sptr_t)lineEnd);
-            Sci(SCI_REPLACETARGET, (uptr_t)newLine.size(), (sptr_t)newLine.c_str());
-
-            // Re-apply all indicators (new tabs + remapped existing)
-            for (const auto& ir : indicRanges) {
-                Sci(SCI_INDICATORFILLRANGE,
-                    (uptr_t)(lineStart + (Sci_Position)ir.first),
-                    (sptr_t)ir.second);
+                // A TAB already in front of the delimiter does the job
+                if (c < delims.size() && !r.tabDelimited && !(e > 0 && line[e - 1] == '\t'))
+                    runs.push_back({ static_cast<std::int32_t>(e), 1, '\t' });
             }
         }
 
-        Sci(SCI_ENDUNDOACTION);
-        Sci(SCI_SETMODEVENTMASK, (uptr_t)savedEventMask);
+        // Pixel widths of text in STYLE_DEFAULT, TABs not counted: ASCII from the table, the rest measured
+        class Widths {
+        public:
+            Widths(const Send& v, const std::array<double, 128>& ascii) : v_(v), ascii_(ascii) {}
 
-        if (undoWasOn) {
-            Sci(SCI_SETUNDOCOLLECTION, 1);
-            if (madePads && !suppressUndoBufferClear) Sci(SCI_EMPTYUNDOBUFFER);
+            static std::array<double, 128> measureAscii(const Send& v)
+            {
+                std::array<double, 128> ascii{};
+                char sample[101] = {};
+                for (int c = 32; c < 127; ++c) {
+                    std::fill(sample, sample + 100, static_cast<char>(c));
+                    ascii[c] = static_cast<double>(v(SCI_TEXTWIDTH, STYLE_DEFAULT, reinterpret_cast<std::intptr_t>(sample))) / 100.0;
+                }
+                return ascii;
+            }
+
+            double of(std::string_view text)
+            {
+                double w = 0;
+                for (const char ch : text) {
+                    const unsigned char c = static_cast<unsigned char>(ch);
+                    if (c == '\t') continue;
+                    if (c < 32 || c > 126) return measured(text);
+                    w += ascii_[c];
+                }
+                return w;
+            }
+
+            double space() const noexcept { return ascii_[' ']; }
+
+        private:
+            double measured(std::string_view text)
+            {
+                buffer_.clear();
+                for (const char ch : text)
+                    if (ch != '\t') buffer_.push_back(ch);
+                return static_cast<double>(v_(SCI_TEXTWIDTH, STYLE_DEFAULT, reinterpret_cast<std::intptr_t>(buffer_.c_str())));
+            }
+
+            const Send& v_;
+            const std::array<double, 128>& ascii_;
+            std::string buffer_;
+        };
+
+        // Progress over the passes of one run, checked every 1024 lines; reported after a delay, then at intervals
+        class Meter {
+        public:
+            Meter(const Progress& report, bool padding, int delayMs, int intervalMs)
+                : report_(report), padding_(padding), interval_(intervalMs),
+                next_(Clock::now() + std::chrono::milliseconds(delayMs)) {}
+            ~Meter()
+            {
+                if (!shown_ || !report_) return;
+                try { report_(padding_, 100); } catch (...) {}
+            }
+            Meter(const Meter&) = delete;
+            Meter& operator=(const Meter&) = delete;
+
+            // The next pass is this share of the run, in percent
+            void pass(int share) noexcept { base_ += share_; share_ = share; }
+
+            void at(Pos done, Pos total)
+            {
+                if (!report_ || (done & 1023) != 0 || total <= 0) return;
+                const Clock::time_point now = Clock::now();
+                if (now < next_) return;
+                next_ = now + std::chrono::milliseconds(interval_);
+                const int percent = base_ + static_cast<int>(static_cast<long long>(share_) * done / total);
+                shown_ = (std::min)(99, (std::max)(shown_, (std::max)(1, percent)));
+                report_(padding_, shown_);
+            }
+
+        private:
+            using Clock = std::chrono::steady_clock;
+            const Progress& report_;
+            bool padding_;
+            int interval_;
+            Clock::time_point next_;
+            int base_ = 0;
+            int share_ = 0;
+            int shown_ = 0;
+        };
+
+        // Widths at the current zoom, and stops from the widest cell per column: the gap, half a space to spare, then
+        // the delimiter
+        void measure(const Send& v, Recipe& r, Meter* meter = nullptr)
+        {
+            r.metrics.ascii = Widths::measureAscii(v);
+            Widths w(v, r.metrics.ascii);
+            const double space = (std::max)(1.0, std::round(w.space()));
+            r.metrics.gap = GAP_SPACES * space + std::ceil(space / 2);
+            r.metrics.delimiter = r.tabDelimited ? 0.0 : std::ceil(w.of(r.settings.delimiter));
+            r.zoom = v(SCI_GETZOOM, 0, 0);
+
+            std::vector<double> widest;
+            std::vector<std::size_t> delims;
+            const std::size_t dl = r.settings.delimiter.size();
+            const Pos lines = v(SCI_GETLINECOUNT, 0, 0);
+            for (Pos line = 0; line < lines; ++line) {
+                if (meter) meter->at(line, lines);
+                const std::string_view text = lineText(v, line);
+                delimitersOf(text, r.settings, delims);
+                if (delims.empty()) continue;
+                if (widest.size() < delims.size() + 1) widest.resize(delims.size() + 1, 0.0);
+                for (std::size_t c = 0; c <= delims.size(); ++c) {
+                    const auto [s, e] = field(text, delims, dl, c);
+                    widest[c] = (std::max)(widest[c], w.of(text.substr(s, e - s)));
+                }
+            }
+
+            r.stops.clear();
+            double x = 0;
+            for (std::size_t c = 0; c + 1 < widest.size(); ++c) {
+                x += std::ceil(widest[c]) + r.metrics.gap;
+                r.stops.push_back(static_cast<int>(x));
+                x += r.metrics.delimiter;
+            }
         }
 
-        if (madePads) {
-            CT_SetCurDocHasPads(hSci, true);
+        // Stops of one line: the shared ones, pushed right only where a cell of this line needs more room. The TAB
+        // in front of a delimiter jumps to the stop, text typed behind it starts there; a cell without one uses none
+        void lineStops(std::string_view text, const Recipe& r, Widths& w, std::vector<std::size_t>& delims,
+            std::vector<int>& out)
+        {
+            out.clear();
+            delimitersOf(text, r.settings, delims);
+            const std::size_t dl = r.settings.delimiter.size();
+            double x = 0;
+            for (std::size_t c = 0; c < delims.size(); ++c) {
+                const auto [s, e] = field(text, delims, dl, c);
+                const std::string_view cell = text.substr(s, e - s);
+                const std::size_t tab = r.tabDelimited ? cell.size() : cell.rfind('\t');
+                if (tab == std::string_view::npos) {
+                    x += w.of(cell) + r.metrics.delimiter;
+                    continue;
+                }
+                const int fit = static_cast<int>(std::ceil(x + w.of(cell.substr(0, tab))) + r.metrics.gap);
+                const int stop = (std::max)(c < r.stops.size() ? r.stops[c] : 0, fit);
+                out.push_back(stop);
+                x = stop + w.of(cell.substr((std::min)(tab + 1, cell.size()))) + r.metrics.delimiter;
+            }
+            // Stops of columns this line lacks, as far as they lie behind its own
+            for (std::size_t c = delims.size(); c < r.stops.size(); ++c)
+                if (out.empty() || r.stops[c] > out.back()) out.push_back(r.stops[c]);
         }
 
+        void setStops(const Send& v, Pos first, Pos last, const std::vector<int>& stops, Meter* meter = nullptr)
+        {
+            for (Pos line = first; line <= last; ++line) {
+                if (meter) meter->at(line - first, last - first + 1);
+                v(SCI_CLEARTABSTOPS, static_cast<std::uintptr_t>(line), 0);
+                for (const int x : stops) v(SCI_ADDTABSTOP, static_cast<std::uintptr_t>(line), x);
+            }
+        }
+
+        // Each line its own stops, measured from its cells; cells that fit keep the shared ones
+        void fitStops(const Send& v, Pos first, Pos last, const Recipe& r, Meter* meter = nullptr)
+        {
+            Widths w(v, r.metrics.ascii);
+            std::vector<std::size_t> delims;
+            std::vector<int> stops;
+            for (Pos line = first; line <= last; ++line) {
+                if (meter) meter->at(line - first, last - first + 1);
+                lineStops(lineText(v, line), r, w, delims, stops);
+                v(SCI_CLEARTABSTOPS, static_cast<std::uintptr_t>(line), 0);
+                for (const int x : stops) v(SCI_ADDTABSTOP, static_cast<std::uintptr_t>(line), x);
+            }
+        }
+
+        void clearStops(const Send& v, Meter* meter = nullptr)
+        {
+            const Pos lines = v(SCI_GETLINECOUNT, 0, 0);
+            for (Pos line = 0; line < lines; ++line) {
+                if (meter) meter->at(line, lines);
+                v(SCI_CLEARTABSTOPS, static_cast<std::uintptr_t>(line), 0);
+            }
+        }
+
+        // Notepad++ and other plugins fill with the document's current indicator and value: put both back
+        class KeepCurrent {
+        public:
+            explicit KeepCurrent(const Send& v)
+                : v_(v), indicator_(v(SCI_GETINDICATORCURRENT, 0, 0)), value_(v(SCI_GETINDICATORVALUE, 0, 0)) {}
+            ~KeepCurrent()
+            {
+                v_(SCI_SETINDICATORCURRENT, static_cast<std::uintptr_t>(indicator_), 0);
+                v_(SCI_SETINDICATORVALUE, static_cast<std::uintptr_t>(value_), 0);
+            }
+            KeepCurrent(const KeepCurrent&) = delete;
+            KeepCurrent& operator=(const KeepCurrent&) = delete;
+
+        private:
+            const Send& v_;
+            Pos indicator_;
+            Pos value_;
+        };
+
+        // While Flow Tabs change the text: outside the undo history, unannounced, past a read-only flag. Scintilla's
+        // change history replays the undo history and breaks on changes outside it (a crash on a later undo): the
+        // document's change history goes first. The view keeps its setting, it starts a new history only without undo
+        class Quiet {
+        public:
+            Quiet(const Send& v, int indicator)
+                : v_(v), keep_(v), undo_(v(SCI_GETUNDOCOLLECTION, 0, 0) != 0), mask_(v(SCI_GETMODEVENTMASK, 0, 0)),
+                readOnly_(v(SCI_GETREADONLY, 0, 0) != 0), changeHistory_(v(SCI_GETCHANGEHISTORY, 0, 0))
+            {
+                v(SCI_SETCHANGEHISTORY, SC_CHANGE_HISTORY_DISABLED, 0);
+                if (undo_) v(SCI_SETUNDOCOLLECTION, 0, 0);
+                v(SCI_SETMODEVENTMASK, 0, 0);
+                if (readOnly_) v(SCI_SETREADONLY, 0, 0);
+                v(SCI_SETINDICATORCURRENT, static_cast<std::uintptr_t>(indicator), 0);
+                v(SCI_SETINDICATORVALUE, 1, 0);
+            }
+            ~Quiet()
+            {
+                if (readOnly_) v_(SCI_SETREADONLY, 1, 0);
+                v_(SCI_SETMODEVENTMASK, static_cast<std::uintptr_t>(mask_), 0);
+                if (undo_) v_(SCI_SETUNDOCOLLECTION, 1, 0);
+                if (changeHistory_) v_(SCI_SETCHANGEHISTORY, static_cast<std::uintptr_t>(changeHistory_), 0);
+            }
+            Quiet(const Quiet&) = delete;
+            Quiet& operator=(const Quiet&) = delete;
+
+            // Notepad++ rewrites its session backup only after a change it was told about
+            void announce(bool on) { v_(SCI_SETMODEVENTMASK, on ? static_cast<std::uintptr_t>(mask_) : 0, 0); }
+
+        private:
+            const Send& v_;
+            KeepCurrent keep_;
+            bool undo_;
+            Pos mask_;
+            bool readOnly_;
+            Pos changeHistory_;
+        };
+
+        void insertRuns(const Send& v, Pos lineStart, const Runs& runs, std::vector<Range>* inserted, std::string& buffer)
+        {
+            Pos delta = 0;
+            for (const Run& r : runs) {
+                const Pos at = lineStart + r.offset + delta;
+                buffer.assign(static_cast<std::size_t>(r.count), r.ch);
+                v(SCI_SETTARGETRANGE, static_cast<std::uintptr_t>(at), at);
+                v(SCI_REPLACETARGET, buffer.size(), reinterpret_cast<std::intptr_t>(buffer.data()));
+                v(SCI_INDICATORFILLRANGE, static_cast<std::uintptr_t>(at), r.count);
+                if (inserted) inserted->push_back({ at, at + r.count });
+                delta += r.count;
+            }
+        }
+
+        // Pads every line: the exception where there is one, else the recipe. Returns the number of runs
+        std::size_t padLines(const Send& v, const Recipe* recipe, const Exceptions* exceptions, std::vector<Range>* inserted,
+            Meter* meter)
+        {
+            std::size_t count = 0;
+            std::string buffer;
+            std::vector<std::size_t> delims;
+            Runs runs;
+            const Pos lines = v(SCI_GETLINECOUNT, 0, 0);
+            for (Pos ln = 0; ln < lines; ++ln) {
+                if (meter) meter->at(ln, lines);
+                Pos start = 0;
+                const Runs* use = nullptr;
+                if (exceptions) {
+                    const auto it = exceptions->find(ln);
+                    if (it != exceptions->end()) use = &it->second;
+                }
+                if (!use) {
+                    if (!recipe) continue;
+                    planLine(lineText(v, ln, &start), *recipe, delims, runs);
+                    use = &runs;
+                }
+                else {
+                    start = v(SCI_POSITIONFROMLINE, static_cast<std::uintptr_t>(ln), 0);
+                }
+                insertRuns(v, start, *use, inserted, buffer);
+                count += use->size();
+            }
+            return count;
+        }
+
+        // Takes the marked padding out, line by line; the first deletion is announced. Lines whose padding differs from
+        // the recipe go into exceptions exactly, so padLines(recipe, exceptions) puts back what was taken out
+        void stripLines(const Send& v, int indicator, const Recipe* recipe, Quiet& quiet, Exceptions& exceptions,
+            std::vector<Range>* removed, Meter* meter)
+        {
+            std::vector<std::size_t> delims;
+            std::vector<Range> marked;
+            Runs actual, planned;
+            Pos removedBefore = 0;
+            bool announced = false;
+            const Pos lines = v(SCI_GETLINECOUNT, 0, 0);
+            for (Pos ln = 0; ln < lines; ++ln) {
+                if (meter) meter->at(ln, lines);
+                Pos start = 0;
+                const std::string_view text = lineText(v, ln, &start);
+                const Pos end = start + static_cast<Pos>(text.size());
+
+                marked.clear();
+                for (Pos p = start; p < end;) {
+                    Pos e = v(SCI_INDICATOREND, static_cast<std::uintptr_t>(indicator), p);
+                    if (e <= p) break;
+                    if (e > end) e = end;
+                    if (v(SCI_INDICATORVALUEAT, static_cast<std::uintptr_t>(indicator), p)) marked.push_back({ p, e });
+                    p = e;
+                }
+
+                actual.clear();
+                Pos inLine = 0;
+                for (const Range& m : marked) {
+                    for (Pos p = m.start; p < m.end;) {
+                        const char ch = text[static_cast<std::size_t>(p - start)];
+                        Pos q = p + 1;
+                        while (q < m.end && text[static_cast<std::size_t>(q - start)] == ch) ++q;
+                        actual.push_back({ static_cast<std::int32_t>(p - start - inLine), static_cast<std::int32_t>(q - p), ch });
+                        inLine += q - p;
+                        p = q;
+                    }
+                    if (removed) removed->push_back({ m.start + removedBefore, m.end + removedBefore });
+                }
+                for (std::size_t k = marked.size(); k-- > 0;) {
+                    if (!announced) quiet.announce(true);
+                    v(SCI_DELETERANGE, static_cast<std::uintptr_t>(marked[k].start), marked[k].end - marked[k].start);
+                    if (!announced) { quiet.announce(false); announced = true; }
+                }
+                removedBefore += inLine;
+
+                if (recipe) {
+                    planLine(lineText(v, ln), *recipe, delims, planned);
+                    if (planned != actual) exceptions.emplace(ln, actual);
+                }
+                else if (!actual.empty()) {
+                    exceptions.emplace(ln, actual);
+                }
+            }
+        }
+
+        // Every line of a piece of text without its line end: visit(offset, content)
+        template <class Visit>
+        void forEachPiece(std::string_view text, Visit visit)
+        {
+            std::size_t from = 0;
+            for (;;) {
+                const std::size_t nl = text.find('\n', from);
+                std::size_t to = nl == std::string_view::npos ? text.size() : nl;
+                if (to > from && text[to - 1] == '\r') --to;
+                visit(from, text.substr(from, to - from));
+                if (nl == std::string_view::npos) break;
+                from = nl + 1;
+            }
+        }
+
+        // Deleted text that held padding: enough to mark the padding again when the text comes back
+        struct Deleted {
+            struct Piece {
+                std::uint64_t hash = 0;      // of the line content
+                std::int32_t offset = 0;     // in the deleted text
+                std::int32_t length = 0;
+                std::vector<Mark> marks;     // relative to the piece
+            };
+            Pos position = 0;
+            Pos length = 0;
+            Pos lengthAfter = 0;     // document length after the deletion
+            std::uint64_t hash = 0;
+            std::vector<Piece> pieces;
+            std::size_t bytes = 0;
+        };
+
+        void fillMarks(const Send& v, Pos at, const std::vector<Mark>& marks)
+        {
+            for (const Mark& m : marks) v(SCI_INDICATORFILLRANGE, static_cast<std::uintptr_t>(at + m.offset), m.length);
+        }
+
+        // A change as Scintilla reports it, once for each view that shows the document
+        struct Change {
+            int type = 0;
+            Pos position = -1;
+            Pos length = 0;
+            Pos documentLength = -1;
+            bool operator==(const Change& o) const noexcept
+            {
+                return type == o.type && position == o.position && length == o.length && documentLength == o.documentLength;
+            }
+        };
+
+        // Undo history entry of one switch: which padding, and the text with and without it
+        struct Record {
+            std::shared_ptr<const Recipe> recipe;
+            std::shared_ptr<const Exceptions> exceptions;
+            Fingerprint unpadded;
+            Fingerprint padded;
+            bool padsOnRedo = true;      // switched on; a switch off pads on undo
+        };
+    }
+
+    struct Aligner::Doc {
+        std::shared_ptr<const Recipe> recipe;    // while aligned
+        bool padded = false;                     // padding in the text, else tab stops only
+        std::unordered_map<Pos, Record> records;
+        std::deque<Pos> order;                   // tokens, oldest first
+        Pos nextId = 0;
+        Pos lastOff = 0;                         // marker of the last switch off
+        std::deque<Deleted> journal;
+        std::size_t journalBytes = 0;
+        const Deleted* pending = nullptr;        // deleted just now: the next insertion may replace it
+        Change lastChange;                       // the other view reports it again
+    };
+
+    namespace {
+
+        Pos addMarker(const Send& v, Aligner::Doc& d, Record record)
+        {
+            d.nextId = d.nextId % MARKER_IDS + 1;
+            const Pos token = (MARKER_TAG << 16) | d.nextId;
+            if (d.records.erase(token)) d.order.erase(std::find(d.order.begin(), d.order.end(), token));
+            d.records.emplace(token, std::move(record));
+            d.order.push_back(token);
+            while (d.order.size() > MAX_RECORDS) {
+                d.records.erase(d.order.front());
+                d.order.pop_front();
+            }
+            // The marker leaves the save point unannounced: a saved document stays saved, Notepad++ keeps track
+            const bool saved = v(SCI_GETMODIFY, 0, 0) == 0;
+            v(SCI_ADDUNDOACTION, static_cast<std::uintptr_t>(token), 0);
+            if (saved) v(SCI_SETSAVEPOINT, 0, 0);
+            return token;
+        }
+
+        // The undo history no longer matches the text: clear it, an unsaved document stays unsaved
+        void resetHistory(const Send& v, Aligner::Doc& d)
+        {
+            const bool modified = v(SCI_GETMODIFY, 0, 0) != 0;
+            v(SCI_EMPTYUNDOBUFFER, 0, 0);
+            if (modified) v(SCI_SETUNDOSAVEPOINT, static_cast<std::uintptr_t>(-1), 0);
+            d.records.clear();
+            d.order.clear();
+            d.journal.clear();
+            d.journalBytes = 0;
+            d.pending = nullptr;
+            d.lastOff = 0;
+        }
+
+        // Was the document at its save point before the undo or redo step that reached a marker? A marker never changes
+        // that: the text without padding is the same on both sides of it
+        bool savedBeforeStep(const Send& v, bool undo)
+        {
+            const Pos savePoint = v(SCI_GETUNDOSAVEPOINT, 0, 0);
+            return savePoint >= 0 && savePoint == v(SCI_GETUNDOCURRENT, 0, 0) + (undo ? 1 : -1);
+        }
+
+        void stripAll(const Send& v, int indicator, const Recipe* recipe, Exceptions& exceptions, std::vector<Range>* removed,
+            Meter* meter = nullptr)
+        {
+            Quiet quiet(v, indicator);
+            stripLines(v, indicator, recipe, quiet, exceptions, removed, meter);
+        }
+
+        std::size_t padAll(const Send& v, int indicator, const Recipe* recipe, const Exceptions* exceptions,
+            std::vector<Range>* inserted, Meter* meter = nullptr)
+        {
+            Quiet quiet(v, indicator);
+            return padLines(v, recipe, exceptions, inserted, meter);
+        }
+
+        // Stops of a recipe for the whole text: measured anew when the zoom changed since, else line by line, as lines
+        // edited meanwhile may need more room
+        std::shared_ptr<const Recipe> applyStops(const Send& v, std::shared_ptr<const Recipe> recipe, Meter* meter = nullptr)
+        {
+            const Pos last = v(SCI_GETLINECOUNT, 0, 0) - 1;
+            if (v(SCI_GETZOOM, 0, 0) != recipe->zoom) {
+                auto fresh = std::make_shared<Recipe>(*recipe);
+                measure(v, *fresh, meter);
+                setStops(v, 0, last, fresh->stops, meter);
+                return fresh;
+            }
+            fitStops(v, 0, last, *recipe, meter);
+            return recipe;
+        }
+
+        struct Busy {
+            explicit Busy(bool& flag) : flag_(flag) { flag_ = true; }
+            ~Busy() { flag_ = false; }
+            Busy(const Busy&) = delete;
+            Busy& operator=(const Busy&) = delete;
+            bool& flag_;
+        };
+    }
+
+    Aligner::Aligner() = default;
+    Aligner::~Aligner() = default;
+
+    Aligner::Doc* Aligner::find(const Send& view) const
+    {
+        const auto it = docs_.find(view(SCI_GETDOCPOINTER, 0, 0));
+        return it == docs_.end() ? nullptr : it->second.get();
+    }
+
+    Aligner::Doc& Aligner::at(const Send& view)
+    {
+        auto& slot = docs_[view(SCI_GETDOCPOINTER, 0, 0)];
+        if (!slot) slot = std::make_unique<Doc>();
+        return *slot;
+    }
+
+    bool Aligner::aligned(const Send& view) const
+    {
+        const Doc* d = find(view);
+        return d && d->recipe;
+    }
+
+    bool Aligner::padded(const Send& view) const
+    {
+        const Doc* d = find(view);
+        return d && d->recipe && d->padded;
+    }
+
+    bool Aligner::padded(std::intptr_t document) const
+    {
+        const auto it = docs_.find(document);
+        return it != docs_.end() && it->second->recipe && it->second->padded;
+    }
+
+    void Aligner::leave(std::intptr_t document) noexcept
+    {
+        const auto it = docs_.find(document);
+        if (it != docs_.end() && !it->second->padded) it->second->recipe.reset();
+    }
+
+    bool Aligner::isMarker(std::intptr_t token) noexcept
+    {
+        return (token >> 16) == MARKER_TAG && (token & MARKER_IDS) != 0;
+    }
+
+    void Aligner::forget(std::intptr_t document) noexcept
+    {
+        docs_.erase(document);
+    }
+
+    void Aligner::setProgress(Progress progress, int delayMs, int intervalMs)
+    {
+        progress_ = std::move(progress);
+        progressDelayMs_ = delayMs;
+        progressIntervalMs_ = intervalMs;
+    }
+
+    SwitchedOn Aligner::switchOn(const Send& view, const Settings& settings, std::vector<Range>* inserted)
+    {
+        Doc& d = at(view);
+        if (d.recipe) return d.padded ? SwitchedOn::Padded : SwitchedOn::StopsOnly;
+        if (indicator_ < 0 || settings.delimiter.empty()) return SwitchedOn::NothingToAlign;
+        if (view(SCI_GETREADONLY, 0, 0)) return SwitchedOn::ReadOnly;
+        Busy busy(busy_);
+        Meter meter(progress_, true, progressDelayMs_, progressIntervalMs_);
+        meter.pass(5);
+
+        auto recipe = std::make_shared<Recipe>();
+        recipe->settings = settings;
+        recipe->tabDelimited = settings.delimiter == "\t";
+        // Spaces before numbers would turn into delimiters
+        recipe->numbers = settings.alignNumbers && settings.delimiter.find(' ') == std::string::npos;
+
+        bool anyDelimiter = false;
+        std::vector<std::size_t> delims;
+        const std::size_t dl = settings.delimiter.size();
+        const Pos lines = view(SCI_GETLINECOUNT, 0, 0);
+        for (Pos ln = 0; ln < lines; ++ln) {
+            meter.at(ln, lines);
+            const std::string_view text = lineText(view, ln);
+            delimitersOf(text, settings, delims);
+            if (delims.empty()) continue;
+            anyDelimiter = true;
+            if (!recipe->numbers) continue;
+            for (std::size_t c = 0; c <= delims.size(); ++c) {
+                const auto [s, e] = field(text, delims, dl, c);
+                Number n;
+                if (!numberIn(text, s, e, n)) continue;
+                if (recipe->intWidth.size() <= c) recipe->intWidth.resize(c + 1, 0);
+                recipe->intWidth[c] = (std::max)(recipe->intWidth[c], n.intDigits);
+            }
+        }
+        if (!anyDelimiter) return SwitchedOn::NothingToAlign;
+
+        const Fingerprint unpadded = fingerprint(view);
+        meter.pass(50);
+        const std::size_t runs = padAll(view, indicator_, recipe.get(), nullptr, inserted, &meter);
+        meter.pass(10);
+        measure(view, *recipe, &meter);
+        meter.pass(35);
+        setStops(view, 0, lines - 1, recipe->stops, &meter);
+
+        d.recipe = recipe;
+        d.padded = runs > 0;
+        if (!d.padded) return SwitchedOn::StopsOnly;
+        addMarker(view, d, { recipe, nullptr, unpadded, fingerprint(view), true });
+        return SwitchedOn::Padded;
+    }
+
+    bool Aligner::switchOff(const Send& view, std::vector<Range>* removed)
+    {
+        Doc* d = find(view);
+        if (!d || !d->recipe) return false;
+        Busy busy(busy_);
+        Meter meter(progress_, false, progressDelayMs_, progressIntervalMs_);
+        if (!d->padded) {
+            meter.pass(100);
+            clearStops(view, &meter);
+            d->recipe.reset();
+            return true;
+        }
+
+        const Fingerprint padded = fingerprint(view);
+        auto exceptions = std::make_shared<Exceptions>();
+        meter.pass(85);
+        stripAll(view, indicator_, d->recipe.get(), *exceptions, removed, &meter);
+        meter.pass(15);
+        clearStops(view, &meter);
+        // No padding left to take out (the file was reloaded, say): no step for undo
+        const Fingerprint unpadded = fingerprint(view);
+        d->lastOff = unpadded == padded ? 0 : addMarker(view, *d, { d->recipe, exceptions, unpadded, padded, false });
+        d->recipe.reset();
+        d->padded = false;
         return true;
     }
 
-    bool CT_RemoveAlignedPadding(HWND hSci, bool suppressUndoBufferClear /*=false*/)
+    SwitchedOn Aligner::realign(const Send& view, const Settings& settings, std::vector<Range>* inserted)
     {
-        if (!ColumnTabs::CT_GetCurDocHasPads(hSci))
-            return false;
+        Doc& d = at(view);
+        if (d.recipe) return d.padded ? SwitchedOn::Padded : SwitchedOn::StopsOnly;
+        const auto it = d.records.find(d.lastOff);
+        if (it != d.records.end() && !view(SCI_GETREADONLY, 0, 0)) {
+            const Record previous = it->second;
+            Busy busy(busy_);
+            if (fingerprint(view) == previous.unpadded) {
+                Meter meter(progress_, true, progressDelayMs_, progressIntervalMs_);
+                meter.pass(60);
+                std::vector<Range> added;
+                padAll(view, indicator_, previous.recipe.get(), previous.exceptions.get(), &added, &meter);
+                if (fingerprint(view) == previous.padded) {
+                    meter.pass(40);
+                    d.recipe = applyStops(view, previous.recipe, &meter);
+                    d.padded = true;
+                    addMarker(view, d, { previous.recipe, previous.exceptions, previous.unpadded, previous.padded, true });
+                    if (inserted) inserted->insert(inserted->end(), added.begin(), added.end());
+                    return SwitchedOn::Padded;
+                }
+                Exceptions none;
+                stripAll(view, indicator_, nullptr, none, nullptr);
+            }
+        }
+        return switchOn(view, settings, inserted);
+    }
 
-        auto S = [hSci](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t {
-            return (sptr_t)::S(hSci, msg, w, l);
-            };
+    Replayed Aligner::replay(const Send& view, std::intptr_t token, bool undo, std::vector<Range>* changed)
+    {
+        if (!isMarker(token)) return Replayed::NotOurs;
+        Doc& d = at(view);
+        Busy busy(busy_);
+        d.pending = nullptr;
+        const auto it = d.records.find(token);
+        if (it == d.records.end()) {
+            resetHistory(view, d);
+            return Replayed::Reset;
+        }
+        const Record record = it->second;
+        const bool saved = savedBeforeStep(view, undo);
+        std::vector<Range> ranges;
 
-        const int ind = CT_GetIndicatorId();
-        S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
-
-        const Sci_Position docLen = (Sci_Position)S(SCI_GETLENGTH);
-        if (docLen <= 0) {
-            ColumnTabs::CT_SetCurDocHasPads(hSci, false);
-            return false;
+        if (record.padsOnRedo != undo) {
+            if (d.recipe || fingerprint(view) != record.unpadded) {
+                resetHistory(view, d);
+                return Replayed::Reset;
+            }
+            Meter meter(progress_, true, progressDelayMs_, progressIntervalMs_);
+            meter.pass(60);
+            padAll(view, indicator_, record.recipe.get(), record.exceptions.get(), &ranges, &meter);
+            if (fingerprint(view) != record.padded) {
+                Exceptions none;
+                stripAll(view, indicator_, nullptr, none, nullptr);
+                resetHistory(view, d);
+                return Replayed::Reset;
+            }
+            meter.pass(40);
+            d.recipe = applyStops(view, record.recipe, &meter);
+            d.padded = true;
+            if (saved) view(SCI_SETSAVEPOINT, 0, 0);
+            if (changed) *changed = std::move(ranges);
+            return Replayed::Padded;
         }
 
-        // Suppress undo collection and modification notifications.
-        const bool undoWasOn = S(SCI_GETUNDOCOLLECTION) != 0;
-        if (undoWasOn) S(SCI_SETUNDOCOLLECTION, 0);
+        if (!d.padded || fingerprint(view) != record.padded) {
+            resetHistory(view, d);
+            return Replayed::Reset;
+        }
+        Meter meter(progress_, false, progressDelayMs_, progressIntervalMs_);
+        meter.pass(85);
+        Exceptions taken;
+        stripAll(view, indicator_, record.recipe.get(), taken, &ranges, &meter);
+        if (fingerprint(view) != record.unpadded) {
+            padAll(view, indicator_, record.recipe.get(), &taken, nullptr);
+            resetHistory(view, d);
+            return Replayed::Reset;
+        }
+        meter.pass(15);
+        clearStops(view, &meter);
+        d.recipe.reset();
+        d.padded = false;
+        if (saved) view(SCI_SETSAVEPOINT, 0, 0);
+        if (changed) *changed = std::move(ranges);
+        return Replayed::Unpadded;
+    }
 
-        const int savedEventMask = (int)S(SCI_GETMODEVENTMASK);
-        S(SCI_SETMODEVENTMASK, 0);
+    void Aligner::onModified(const Send& view, int modificationType, std::intptr_t position, std::intptr_t length,
+        const char* text, std::intptr_t linesAdded)
+    {
+        constexpr int handled = SC_MOD_BEFOREDELETE | SC_MOD_DELETETEXT | SC_MOD_INSERTTEXT;
+        if (busy_ || indicator_ < 0 || length <= 0 || !(modificationType & handled)) return;
+        Doc* d = find(view);
+        if (!d || !d->recipe) return;
+        const auto ind = static_cast<std::uintptr_t>(indicator_);
+        // A document in both views reports each change twice: the padding follows it once, the stops in each view
+        const Change change{ modificationType, position, length, view(SCI_GETLENGTH, 0, 0) };
+        const bool repeated = change == d->lastChange;
+        d->lastChange = change;
 
-        S(SCI_BEGINUNDOACTION);
+        if (modificationType & SC_MOD_BEFOREDELETE) {
+            if (repeated) return;
+            d->pending = nullptr;
+            if (!d->padded) return;
+            std::vector<Range> marked;
+            for (Pos p = position; p < position + length;) {
+                Pos e = view(SCI_INDICATOREND, ind, p);
+                if (e <= p) break;
+                if (e > position + length) e = position + length;
+                if (view(SCI_INDICATORVALUEAT, ind, p)) marked.push_back({ p, e });
+                p = e;
+            }
+            if (marked.empty()) return;
 
-        // Bulk removal: for each line that contains indicator-marked bytes,
-        // build a new line without them and replace via SCI_REPLACETARGET.
-        // Iterating back-to-front keeps earlier line positions stable.
-        const int lineCount = (int)S(SCI_GETLINECOUNT);
+            const char* p = reinterpret_cast<const char*>(view(SCI_GETRANGEPOINTER, static_cast<std::uintptr_t>(position), length));
+            if (!p) return;
+            const std::string_view gone(p, static_cast<std::size_t>(length));
+            Deleted entry;
+            entry.position = position;
+            entry.length = length;
+            entry.lengthAfter = view(SCI_GETLENGTH, 0, 0) - length;
+            entry.hash = fnv1a(gone.data(), gone.size());
+            forEachPiece(gone, [&](std::size_t from, std::string_view piece) {
+                Deleted::Piece out;
+                out.hash = fnv1a(piece.data(), piece.size());
+                out.offset = static_cast<std::int32_t>(from);
+                out.length = static_cast<std::int32_t>(piece.size());
+                const Pos pieceStart = position + static_cast<Pos>(from);
+                const Pos pieceEnd = pieceStart + static_cast<Pos>(piece.size());
+                for (const Range& m : marked) {
+                    const Pos s = (std::max)(m.start, pieceStart);
+                    const Pos e = (std::min)(m.end, pieceEnd);
+                    if (s < e) out.marks.push_back({ static_cast<std::int32_t>(s - pieceStart), static_cast<std::int32_t>(e - s) });
+                }
+                entry.bytes += sizeof(Deleted::Piece) + out.marks.size() * sizeof(Mark);
+                entry.pieces.push_back(std::move(out));
+            });
 
-        for (int ln = lineCount - 1; ln >= 0; --ln) {
-            const Sci_Position lineStart = (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln);
-            const Sci_Position lineEnd = (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln);
-            const Sci_Position lineLen = lineEnd - lineStart;
-            if (lineLen <= 0) continue;
+            for (auto it = d->journal.begin(); it != d->journal.end(); ++it) {
+                if (it->position == entry.position && it->lengthAfter == entry.lengthAfter && it->hash == entry.hash) {
+                    d->journalBytes -= it->bytes;
+                    d->journal.erase(it);
+                    break;
+                }
+            }
+            d->journalBytes += entry.bytes;
+            d->journal.push_back(std::move(entry));
+            while (d->journalBytes > MAX_JOURNAL_BYTES && d->journal.size() > 1) {
+                d->journalBytes -= d->journal.front().bytes;
+                d->journal.pop_front();
+            }
+            d->pending = &d->journal.back();
+            return;
+        }
 
-            // Quick check: any indicator on this line?
-            bool hasIndicator = false;
-            {
-                Sci_Position p = lineStart;
-                while (p < lineEnd) {
-                    if ((int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)p) != 0) {
-                        hasIndicator = true;
+        // What is left of a line after a deletion gets its stops
+        if (modificationType & SC_MOD_DELETETEXT) {
+            const Pos line = view(SCI_LINEFROMPOSITION, static_cast<std::uintptr_t>(position), 0);
+            fitStops(view, line, line, *d->recipe);
+            return;
+        }
+
+        if (!(modificationType & SC_MOD_INSERTTEXT)) return;
+        const Deleted* pending = repeated ? nullptr : d->pending;
+        if (!repeated) d->pending = nullptr;
+
+        if (d->padded && !repeated) {
+            std::string_view added;
+            if (text) added = std::string_view(text, static_cast<std::size_t>(length));
+            else if (const char* p = reinterpret_cast<const char*>(view(SCI_GETRANGEPOINTER, static_cast<std::uintptr_t>(position), length)))
+                added = std::string_view(p, static_cast<std::size_t>(length));
+            const Pos lengthBefore = view(SCI_GETLENGTH, 0, 0) - length;
+            const std::uint64_t hash = fnv1a(added.data(), added.size());
+
+            KeepCurrent keep(view);
+            view(SCI_SETINDICATORCURRENT, ind, 0);
+            view(SCI_SETINDICATORVALUE, 1, 0);
+            // Inserted text never becomes padding
+            view(SCI_INDICATORCLEARRANGE, static_cast<std::uintptr_t>(position), length);
+
+            const Deleted* back = nullptr;
+            if (modificationType & SC_PERFORMED_UNDO) {
+                for (auto it = d->journal.rbegin(); it != d->journal.rend(); ++it) {
+                    if (it->position == position && it->length == length && it->lengthAfter == lengthBefore && it->hash == hash) {
+                        back = &*it;
                         break;
                     }
-                    Sci_Position nextEnd = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)p);
-                    if (nextEnd <= p) break;
-                    p = nextEnd;
                 }
             }
-            if (!hasIndicator) continue;
-
-            // Read line text
-            std::string origLine((size_t)lineLen, '\0');
-            Sci_TextRangeFull tr{};
-            tr.chrg.cpMin = lineStart;
-            tr.chrg.cpMax = lineEnd;
-            tr.lpstrText = origLine.data();
-            S(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
-
-            // Build new line without indicator-marked bytes
-            std::string newLine;
-            newLine.reserve(origLine.size());
-
-            Sci_Position p = lineStart;
-            size_t srcIdx = 0;
-            while (p < lineEnd) {
-                int val = (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)p);
-                Sci_Position runEnd = (Sci_Position)S(SCI_INDICATOREND, (uptr_t)ind, (sptr_t)p);
-                if (runEnd <= p) break;
-                if (runEnd > lineEnd) runEnd = lineEnd;
-
-                const size_t runLen = (size_t)(runEnd - p);
-
-                if (val == 0) {
-                    newLine.append(origLine, srcIdx, runLen);
-                }
-                // else: skip indicator-marked padding bytes
-
-                srcIdx += runLen;
-                p = runEnd;
+            if (back) {
+                // Undo brings deleted padding back
+                for (const Deleted::Piece& piece : back->pieces)
+                    fillMarks(view, position + piece.offset, piece.marks);
             }
-
-            if (newLine.size() == (size_t)lineLen) continue;
-
-            S(SCI_INDICATORCLEARRANGE, (uptr_t)lineStart, (sptr_t)lineLen);
-            S(SCI_SETTARGETRANGE, (uptr_t)lineStart, (sptr_t)lineEnd);
-            S(SCI_REPLACETARGET, (uptr_t)newLine.size(), (sptr_t)newLine.c_str());
-        }
-
-        S(SCI_ENDUNDOACTION);
-        S(SCI_SETMODEVENTMASK, (uptr_t)savedEventMask);
-
-        if (undoWasOn) {
-            S(SCI_SETUNDOCOLLECTION, 1);
-            if (!suppressUndoBufferClear) S(SCI_EMPTYUNDOBUFFER);
-        }
-
-        // Safety: clear any leftover indicator fragments across entire doc
-        S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
-        S(SCI_INDICATORCLEARRANGE, 0, (sptr_t)S(SCI_GETLENGTH));
-
-        ColumnTabs::CT_SetCurDocHasPads(hSci, false);
-        return true;
-    }
-
-    bool CT_HasAlignedPadding(HWND hSci) noexcept
-    {
-        return CT_GetCurDocHasPads(hSci);
-    }
-
-    bool CT_ApplyNumericPadding(
-        HWND hSci,
-        const CT_ColumnModelView& model,
-        int firstLine,
-        int lastLine,
-        bool suppressUndoBufferClear /*=false*/)
-    {
-        const HWND hwnd = hSci;
-        auto S = [hwnd](UINT msg, WPARAM w = 0, LPARAM l = 0)->sptr_t { return (sptr_t)::S(hwnd, msg, w, l); };
-        auto ls = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_POSITIONFROMLINE, (uptr_t)ln); };
-        auto le = [&](int ln)->Sci_Position { return (Sci_Position)S(SCI_GETLINEENDPOSITION, (uptr_t)ln); };
-        auto gc = [&](Sci_Position p)->int { return (int)S(SCI_GETCHARAT, (uptr_t)p);  };
-
-        const bool haveVec = !model.Lines.empty();
-        const bool liveInfo = (model.getLineInfo != nullptr);
-        if (!haveVec && !liveInfo) return false;
-
-        const int baseDoc = (int)model.docStartLine;
-        int l0 = (firstLine < 0) ? baseDoc : firstLine; // non-const
-        int l1 = (lastLine < 0)
-            ? (haveVec ? (l0 + (int)model.Lines.size() - 1) : l0)
-            : ((lastLine < l0) ? l0 : lastLine);         // non-const
-
-        // clamp to model bounds
-        if (haveVec) {
-            const int modelFirst = baseDoc;
-            const int modelLast = baseDoc + (int)model.Lines.size() - 1;
-            if (l0 < modelFirst) l0 = modelFirst;
-            if (l1 > modelLast)  l1 = modelLast;
-        }
-        else
-        {
-            const int modelFirst = baseDoc;
-            if (l0 < modelFirst) l0 = modelFirst;
-            // (l1 is already normalized relative to l0; no further clamping needed here)
-        }
-
-        if (l1 < l0) return false;
-
-        RedrawGuard rg(hSci);
-
-        S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
-        S(SCI_INDICSETSTYLE, (uptr_t)CT_GetIndicatorId(), INDIC_HIDDEN);
-        S(SCI_INDICSETALPHA, (uptr_t)CT_GetIndicatorId(), 0);
-
-        auto countDigits = [](const std::string& s, int& intD, int& fracD, bool& hasDec) {
-            intD = fracD = 0; hasDec = false;
-            size_t i = 0;
-            if (i < s.size() && (s[i] == '+' || s[i] == '-')) ++i;
-            for (; i < s.size() && isdigit((unsigned char)s[i]); ++i) ++intD;
-            if (i < s.size() && (s[i] == '.' || s[i] == ',')) { hasDec = true; ++i; }
-            for (; i < s.size() && isdigit((unsigned char)s[i]); ++i) ++fracD;
-            };
-
-        // PASS 1: collect maxima
-        size_t maxCols = 0;
-        for (int ln = l0; ln <= l1; ++ln) {
-            const auto L = ColumnTabs::detail::fetchLine(model, ln);
-            maxCols = (std::max)(maxCols, L.FieldCount());
-        }
-        if (maxCols == 0) return true;
-
-        std::vector<int>  maxIntDigits(maxCols, 0);
-        std::vector<int>  maxFracDigits(maxCols, 0);
-        std::vector<bool> colHasDec(maxCols, false);
-
-        for (int ln = l0; ln <= l1; ++ln) {
-            const auto L = ColumnTabs::detail::fetchLine(model, ln);
-            const size_t nField = L.FieldCount();
-            const size_t nDelim = L.delimiterOffsets.size();
-            const Sci_Position base = ls(ln);
-
-            for (size_t c = 0; c < nField; ++c) {
-                if (c >= nDelim + 1) continue;
-
-                Sci_Position s = (c == 0) ? base
-                    : base + (Sci_Position)L.delimiterOffsets[c - 1]
-                    + (Sci_Position)model.delimiterLength;
-                Sci_Position e = (c < nDelim)
-                    ? base + (Sci_Position)L.delimiterOffsets[c]
-                    : le(ln);
-
-                while (s < e) { int ch = gc(s);     if (ch == ' ' || ch == '\t') ++s; else break; }
-                while (e > s) { int ch = gc(e - 1); if (ch == ' ' || ch == '\t') --e; else break; }
-                if (e <= s) continue;
-
-                Sci_Position tokStart{}; int leftPx = 0; bool hasDec = false;
-                if (!CT_FindNumericToken(hSci, s, e, tokStart, leftPx, hasDec))
-                    continue;
-
-                std::string tok; tok.assign((size_t)(e - tokStart), '\0');
-                Sci_TextRangeFull tr{}; tr.chrg.cpMin = tokStart; tr.chrg.cpMax = e; tr.lpstrText = tok.data();
-                S(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
-                while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t')) tok.pop_back();
-
-                int intD = 0, fracD = 0; bool hd = false;
-                countDigits(tok, intD, fracD, hd);
-
-                if (intD > maxIntDigits[c])   maxIntDigits[c] = intD;
-                if (fracD > maxFracDigits[c]) maxFracDigits[c] = fracD;
-                if (hasDec || hd) colHasDec[c] = true;
-            }
-        }
-
-        // PASS 2: apply padding and decimal alignment
-        // Suppress undo and modification notifications during bulk padding.
-        const bool undoWasOn = S(SCI_GETUNDOCOLLECTION) != 0;
-        if (undoWasOn) S(SCI_SETUNDOCOLLECTION, 0);
-        const int savedEventMask = (int)S(SCI_GETMODEVENTMASK);
-        S(SCI_SETMODEVENTMASK, 0);
-        S(SCI_BEGINUNDOACTION);
-        bool madeAny = false;
-
-        for (int ln = l0; ln <= l1; ++ln) {
-            const auto L = ColumnTabs::detail::fetchLine(model, ln);
-            const size_t nField = L.FieldCount();
-            const size_t nDelim = L.delimiterOffsets.size();
-            const Sci_Position base = ls(ln);
-            Sci_Position delta = 0;
-
-            for (size_t c = 0; c < nField; ++c) {
-                if (c >= maxCols || maxIntDigits[c] <= 0) continue;
-                if (c >= nDelim + 1) continue;
-
-                Sci_Position s = (c == 0) ? base
-                    : base + (Sci_Position)L.delimiterOffsets[c - 1]
-                    + (Sci_Position)model.delimiterLength + delta;
-                Sci_Position e = (c < nDelim)
-                    ? base + (Sci_Position)L.delimiterOffsets[c] + delta
-                    : le(ln);
-
-                while (s < e) { int ch = gc(s);     if (ch == ' ' || ch == '\t') ++s; else break; }
-                while (e > s) { int ch = gc(e - 1); if (ch == ' ' || ch == '\t') --e; else break; }
-                if (e <= s) continue;
-
-                Sci_Position tokStart{}; int leftPx = 0; bool hasDec = false;
-                if (!CT_FindNumericToken(hSci, s, e, tokStart, leftPx, hasDec))
-                    continue;
-
-                int intD = 0, fracD = 0; bool hd = false;
-                {
-                    std::string tok; tok.assign((size_t)(e - tokStart), '\0');
-                    Sci_TextRangeFull tr{}; tr.chrg.cpMin = tokStart; tr.chrg.cpMax = e; tr.lpstrText = tok.data();
-                    S(SCI_GETTEXTRANGEFULL, 0, (sptr_t)&tr);
-                    while (!tok.empty() && (tok.back() == ' ' || tok.back() == '\t')) tok.pop_back();
-                    countDigits(tok, intD, fracD, hd);
-                }
-                if (intD <= 0 && !hasDec && !hd) continue;
-
-                const Sci_Position fieldStart =
-                    (c == 0)
-                    ? base
-                    : base + (Sci_Position)L.delimiterOffsets[c - 1]
-                    + (Sci_Position)model.delimiterLength + delta;
-
-                int spacesTouching = 0;
-                { Sci_Position p = tokStart; while (p > fieldStart && gc(p - 1) == ' ') { --p; ++spacesTouching; } }
-
-                const bool hasSign = (tokStart < e) && (gc(tokStart) == '+' || gc(tokStart) == '-');
-                int needUnits = 1 + (maxIntDigits[c] - intD);
-                if (needUnits < 0) needUnits = 0;
-                if (hasSign && needUnits > 0) --needUnits;
-
-                int appliedShift = 0;
-                const int diff = needUnits - spacesTouching;
-
-                if (diff > 0) {
-                    std::string pad((size_t)diff, ' ');
-                    S(SCI_INSERTTEXT, (uptr_t)tokStart, (sptr_t)pad.c_str());
-                    S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
-                    S(SCI_INDICATORFILLRANGE, (uptr_t)tokStart, (sptr_t)diff);
-                    delta += (Sci_Position)diff;
-                    appliedShift += diff;
-                    madeAny = true;
-                }
-                else if (diff < 0) {
-                    int toDel = -diff;
-                    const int ind = CT_GetIndicatorId();
-                    S(SCI_SETINDICATORCURRENT, (uptr_t)ind);
-
-                    int delAvail = 0;
-                    if (tokStart > 0 &&
-                        (int)S(SCI_INDICATORVALUEAT, (uptr_t)ind, (sptr_t)(tokStart - 1)) != 0)
-                    {
-                        const Sci_Position runBeg = (Sci_Position)S(SCI_INDICATORSTART, (uptr_t)ind, (sptr_t)(tokStart - 1));
-                        const Sci_Position lower = (runBeg < fieldStart) ? fieldStart : runBeg;
-                        delAvail = (int)(tokStart - lower);
+            else if (pending && pending->position == position && pending->lengthAfter == lengthBefore) {
+                // Replaced lines (sorted, moved): lines that came back unchanged keep their padding
+                std::unordered_multimap<std::uint64_t, const Deleted::Piece*> byHash;
+                for (const Deleted::Piece& piece : pending->pieces)
+                    if (!piece.marks.empty()) byHash.emplace(piece.hash, &piece);
+                forEachPiece(added, [&](std::size_t from, std::string_view piece) {
+                    const auto range = byHash.equal_range(fnv1a(piece.data(), piece.size()));
+                    for (auto it = range.first; it != range.second; ++it) {
+                        if (it->second->length != static_cast<std::int32_t>(piece.size())) continue;
+                        fillMarks(view, position + static_cast<Pos>(from), it->second->marks);
+                        byHash.erase(it);
+                        break;
                     }
-                    if (delAvail > 0) {
-                        if (toDel > delAvail) toDel = delAvail;
-                        const Sci_Position posDel = tokStart - (Sci_Position)toDel;
-                        S(SCI_INDICATORCLEARRANGE, (uptr_t)posDel, (sptr_t)toDel);
-                        S(SCI_DELETERANGE, (uptr_t)posDel, (sptr_t)toDel);
-                        delta -= (Sci_Position)toDel;
-                        appliedShift -= toDel;
-                        madeAny = true;
-                    }
-                }
-
-                if (colHasDec[c] && (maxFracDigits[c] > 0) && (fracD == 0)) {
-                    const Sci_Position tokEnd = tokStart + (Sci_Position)appliedShift
-                        + (Sci_Position)((hasSign ? 1 : 0) + intD);
-                    std::string pad = "."; pad.append((size_t)maxFracDigits[c], '0');
-                    S(SCI_INSERTTEXT, (uptr_t)tokEnd, (sptr_t)pad.c_str());
-                    S(SCI_SETINDICATORCURRENT, (uptr_t)CT_GetIndicatorId());
-                    S(SCI_INDICATORFILLRANGE, (uptr_t)tokEnd, (sptr_t)pad.size());
-                    delta += (Sci_Position)pad.size();
-                    madeAny = true;
-                }
+                });
             }
         }
 
-        S(SCI_ENDUNDOACTION);
-        S(SCI_SETMODEVENTMASK, (uptr_t)savedEventMask);
-        if (undoWasOn) {
-            S(SCI_SETUNDOCOLLECTION, 1);
-            if (madeAny && !suppressUndoBufferClear) S(SCI_EMPTYUNDOBUFFER);
-        }
-        if (madeAny) CT_SetCurDocHasPads(hSci, true);
-        return true;
+        // Inserted lines get stops; a cell that grew past its column moves only its own line on
+        const Pos first = view(SCI_LINEFROMPOSITION, static_cast<std::uintptr_t>(position), 0);
+        fitStops(view, first, first + (std::max)(linesAdded, static_cast<std::intptr_t>(0)), *d->recipe);
     }
 
-    // -------------------------------------------------------------------------
-    // Visual API (non-destructive; manages Scintilla tab stops)
-    // -------------------------------------------------------------------------
-    bool CT_ApplyFlowTabStops(HWND hSci,
-        const CT_ColumnModelView& model,
-        int firstLine,
-        int lastLine,
-        int paddingPx /*pixels*/)
+    void Aligner::refreshStops(const Send& view)
     {
-        using namespace ColumnTabs::detail;
-
-        ensureCapacity(hSci);
-
-        const bool hasVec = !model.Lines.empty();
-        if (!hasVec && !model.getLineInfo) return false;
-
-        int line0 = firstLine;
-        int effectiveLast = firstLine;
-
-        if (hasVec) {
-            const int modelFirst = static_cast<int>(model.docStartLine);
-            const int modelLast = modelFirst + static_cast<int>(model.Lines.size()) - 1;
-
-            if (line0 < modelFirst) line0 = modelFirst;
-
-            if (lastLine < 0) {
-                effectiveLast = modelLast;
-            }
-            else {
-                effectiveLast = (lastLine < line0) ? line0 : lastLine;
-                if (effectiveLast > modelLast) effectiveLast = modelLast;
-            }
-        }
-        else {
-            const int modelFirst = static_cast<int>(model.docStartLine);
-            if (line0 < modelFirst) line0 = modelFirst;
-
-            if (lastLine < 0) {
-                const int docLast = (int)S(hSci, SCI_GETLINECOUNT, 0, 0) - 1;
-                effectiveLast = (docLast < line0) ? line0 : docLast;
-            }
-            else {
-                effectiveLast = (lastLine < line0) ? line0 : lastLine;
-            }
-        }
-
-        if (line0 > effectiveLast) return false;
-
-        const int gapPx = (paddingPx > 0) ? paddingPx : 0;
-
-        std::vector<int> stops;
-        if (!computeStopsFromWidthsPx(hSci, model, line0, effectiveLast, stops, gapPx))
-            return false;
-        if (stops.empty())
-            return false;
-
-        for (int ln = line0; ln <= effectiveLast; ++ln) {
-            if ((int)g_hasETSLine.size() > ln &&
-                (int)g_savedManualStopsPx.size() > ln &&
-                g_hasETSLine[(size_t)ln] == 0u)
-            {
-                g_savedManualStopsPx[(size_t)ln] = collectTabStopsPx(hSci, ln);
-            }
-        }
-
-        setTabStopsRangePx(hSci, line0, effectiveLast, stops);
-
-        for (int ln = line0; ln <= effectiveLast; ++ln) {
-            if ((int)g_hasETSLine.size() > ln)
-                g_hasETSLine[(size_t)ln] = 1u;
-        }
-
-        return true;
+        Doc* d = find(view);
+        if (!d || !d->recipe) return;
+        Busy busy(busy_);
+        Meter meter(progress_, true, progressDelayMs_, progressIntervalMs_);
+        meter.pass(25);
+        auto fresh = std::make_shared<Recipe>(*d->recipe);
+        measure(view, *fresh, &meter);
+        meter.pass(75);
+        setStops(view, 0, view(SCI_GETLINECOUNT, 0, 0) - 1, fresh->stops, &meter);
+        d->recipe = fresh;
     }
 
-    bool CT_DisableFlowTabStops(HWND hSci, bool restoreManual)
+    void Aligner::restoreStops(const Send& view)
     {
-        using namespace detail;
-
-        if (!ColumnTabs::CT_HasFlowTabStops())
-            return true;
-
-        ensureCapacity(hSci);
-
-        RedrawGuard rd(hSci);
-
-        const int total = (int)S(hSci, SCI_GETLINECOUNT, 0, 0);
-        const int limit = (std::min)(total, (int)g_hasETSLine.size());
-
-        for (int ln = 0; ln < limit; ++ln) {
-            if (!g_hasETSLine[(size_t)ln]) continue;
-
-            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
-
-            if (restoreManual) {
-                const auto& manual = g_savedManualStopsPx[(size_t)ln];
-                for (int px : manual)
-                    S(hSci, SCI_ADDTABSTOP, (uptr_t)ln, (sptr_t)px);
-            }
-
-            g_hasETSLine[(size_t)ln] = 0u;
-            g_savedManualStopsPx[(size_t)ln].clear();
+        Doc* d = find(view);
+        if (!d) return;
+        Busy busy(busy_);
+        if (!d->recipe) {
+            clearStops(view);
+            return;
         }
-        return true;
+        Meter meter(progress_, true, progressDelayMs_, progressIntervalMs_);
+        meter.pass(100);
+        d->recipe = applyStops(view, d->recipe, &meter);
     }
 
-    bool CT_ClearAllTabStops(HWND hSci)
+    void Aligner::ensureStops(const Send& view)
     {
-        const int total = (int)S(hSci, SCI_GETLINECOUNT);
-        OptionalRedrawGuard rg(hSci, /*opCount=*/(size_t)total);
-        for (int ln = 0; ln < total; ++ln)
-            S(hSci, SCI_CLEARTABSTOPS, (uptr_t)ln, 0);
-        return true;
+        const Doc* d = find(view);
+        if (!d || !d->recipe || d->recipe->stops.empty() || view(SCI_GETNEXTTABSTOP, 0, 0) > 0) return;
+        restoreStops(view);
     }
 
-    void CT_ResetFlowVisualState() noexcept
+    std::string Aligner::withoutPadding(const Send& view, std::intptr_t start, std::intptr_t end) const
     {
-        detail::g_hasETSLine.clear();
-        detail::g_savedManualStopsPx.clear();
-    }
-
-    bool CT_HasFlowTabStops() noexcept
-    {
-        using namespace detail;
-        for (size_t i = 0, n = g_hasETSLine.size(); i < n; ++i) {
-            if (g_hasETSLine[i]) return true;
+        std::string out;
+        if (end <= start) return out;
+        const auto copy = [&](Pos from, Pos to) {
+            if (to <= from) return;
+            if (const char* p = reinterpret_cast<const char*>(view(SCI_GETRANGEPOINTER, static_cast<std::uintptr_t>(from), to - from)))
+                out.append(p, static_cast<std::size_t>(to - from));
+        };
+        if (!padded(view)) {
+            copy(start, end);
+            return out;
         }
-        return false;
-    }
-
-    // -------------------------------------------------------------------------
-    // Utilities (kept for callers)
-    // -------------------------------------------------------------------------
-    size_t CT_VisualCellWidth(const char* s, size_t n, int tabWidth)
-    {
-        size_t col = 0;
-        for (size_t i = 0; i < n; ++i) {
-            const unsigned char c = (unsigned char)s[i];
-            if (c == '\t') {
-                if (tabWidth <= 1) { ++col; continue; }
-                const size_t mod = col % (size_t)tabWidth;
-                col += (mod == 0) ? (size_t)tabWidth : ((size_t)tabWidth - mod);
-            }
-            else if (c != '\r' && c != '\n') {
-                ++col;
-            }
+        const auto ind = static_cast<std::uintptr_t>(indicator_);
+        for (Pos p = start; p < end;) {
+            Pos e = view(SCI_INDICATOREND, ind, p);
+            if (e <= p) { copy(p, end); break; }
+            if (e > end) e = end;
+            if (!view(SCI_INDICATORVALUEAT, ind, p)) copy(p, e);
+            p = e;
         }
-        return col;
+        return out;
     }
-
-    // -------------------------------------------------------------------------
-    // Per-document state
-    // -------------------------------------------------------------------------
-    void CT_SetDocHasPads(sptr_t docPtr, bool has) noexcept {
-        if (has) detail::g_docHasPads[docPtr] = true;
-        else     detail::g_docHasPads.erase(docPtr);
-    }
-
-    bool CT_GetDocHasPads(sptr_t docPtr) noexcept {
-        auto it = detail::g_docHasPads.find(docPtr);
-        return it != detail::g_docHasPads.end();
-    }
-
-    void CT_SetCurDocHasPads(HWND hSci, bool has) noexcept {
-        const sptr_t doc = (sptr_t)::S(hSci, SCI_GETDOCPOINTER, 0, 0);
-        if (!doc) return;
-        CT_SetDocHasPads(doc, has);
-    }
-
-    bool CT_GetCurDocHasPads(HWND hSci) noexcept {
-        const sptr_t doc = (sptr_t)::S(hSci, SCI_GETDOCPOINTER, 0, 0);
-        if (!doc) return false;
-        return CT_GetDocHasPads(doc);
-    }
-
-    // -------------------------------------------------------------------------
-    // Cleanup
-    // -------------------------------------------------------------------------
-    bool CT_CleanupVisuals(HWND hSci) noexcept
-    {
-        if (!hSci) return false;
-        CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
-        CT_ResetFlowVisualState();
-        return true;
-    }
-
-    bool CT_CleanupAllForDoc(HWND hSci) noexcept
-    {
-        if (!hSci) return false;
-
-        if (ColumnTabs::CT_GetCurDocHasPads(hSci)) {
-            CT_RemoveAlignedPadding(hSci);
-        }
-        if (ColumnTabs::CT_HasFlowTabStops()) {
-            CT_DisableFlowTabStops(hSci, /*restoreManual=*/false);
-        }
-        CT_ResetFlowVisualState();
-        return true;
-    }
-
-} // namespace ColumnTabs
+}

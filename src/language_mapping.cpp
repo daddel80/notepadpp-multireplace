@@ -208,14 +208,14 @@ const LangKV kEnglishPairs[] = {
 { L"status_duplicates_skipped", L" $REPLACE_STRING duplicate list row(s) skipped." },
 { L"status_replace_open_unsaved", L" $REPLACE_STRING of them in open document(s), not saved." },
 { L"status_docs_filtered", L" $REPLACE_STRING1 document(s) searched, $REPLACE_STRING2 excluded by filter." },
-{ L"status_no_delimiters", L"No delimiters found." },
-{ L"status_model_build_failed", L"Flow Tabs: model build failed." },
-{ L"status_padding_insert_failed", L"Flow Tabs: insert failed." },
-{ L"status_visual_fail", L"Flow Tabs: visual tabstops failed." },
 { L"status_tabs_inserted", L"Flow Tabs: INSERTED." },
 { L"status_tabs_removed", L"Flow Tabs: REMOVED." },
 { L"status_tabs_aligned", L"Flow Tabs: ALIGNED." },
 { L"status_nothing_to_align", L"Flow Tabs: nothing to align." },
+{ L"status_tabs_aligning", L"Flow Tabs: aligning ..." },
+{ L"status_tabs_removing", L"Flow Tabs: removing ..." },
+{ L"status_tabs_read_only", L"Flow Tabs: the document is read-only." },
+{ L"status_tabs_undo_reset", L"Flow Tabs: undo history cleared, it no longer matched the text." },
 { L"status_no_selection", L"No text selected." },
 { L"status_select_area_first", L"Please select an area first." },
 { L"status_report_failed", L"Copy Report to clipboard failed." },
@@ -299,7 +299,7 @@ const LangKV kEnglishPairs[] = {
   L"Please note the following before proceeding:\n\n"
   L"• Tab-delimited files: Existing tabs are reused for alignment.\n"
   L"• Non-tab delimited files: Real Tabs (\\t) are inserted. Note these may affect Find/Replace.\n"
-  L"• Before saving: Click the Flow-Tabs button again to remove inserted tabs." },
+  L"• Notepad++ change history: the margin marks of this document are cleared when the tabs are inserted or removed." },
 { L"msgbox_flowtabs_intro_checkbox", L"Do not show this message again" },
 { L"msgbox_button_ok",     L"OK" },
 { L"msgbox_button_cancel", L"Cancel" },
