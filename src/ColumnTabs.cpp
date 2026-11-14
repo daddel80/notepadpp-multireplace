@@ -1080,4 +1080,76 @@ namespace ColumnTabs {
         }
         return out;
     }
+
+    bool Aligner::copiedWithoutPadding(const Send& view, std::string& text) const
+    {
+        const Doc* d = find(view);
+        if (!d || !d->recipe || !d->padded || indicator_ < 0) return false;
+
+        // The selection as Scintilla copies it: the ranges in order, sorted in a rectangle, each followed by the line
+        // end when there are several; with nothing selected the caret line and the line end
+        static constexpr std::string_view eols[] = { "\r\n", "\r", "\n" };
+        const Pos mode = view(SCI_GETEOLMODE, 0, 0);
+        const std::string_view eol = eols[(mode >= 0 && mode <= 2) ? mode : 0];
+        std::vector<Range> ranges;
+        const Pos count = view(SCI_GETSELECTIONS, 0, 0);
+        for (Pos i = 0; i < count; ++i) {
+            const auto n = static_cast<std::uintptr_t>(i);
+            ranges.push_back({ view(SCI_GETSELECTIONNSTART, n, 0), view(SCI_GETSELECTIONNEND, n, 0) });
+        }
+        bool lineEnds = ranges.size() > 1;
+        if (std::all_of(ranges.begin(), ranges.end(), [](const Range& r) { return r.end <= r.start; })) {
+            const Pos line = view(SCI_LINEFROMPOSITION, static_cast<std::uintptr_t>(view(SCI_GETCURRENTPOS, 0, 0)), 0);
+            ranges.assign(1, { view(SCI_POSITIONFROMLINE, static_cast<std::uintptr_t>(line), 0),
+                view(SCI_GETLINEENDPOSITION, static_cast<std::uintptr_t>(line), 0) });
+            lineEnds = true;
+        }
+        else if (view(SCI_SELECTIONISRECTANGLE, 0, 0)) {
+            std::sort(ranges.begin(), ranges.end(), [](const Range& a, const Range& b) { return a.start < b.start; });
+        }
+        std::size_t at = 0;
+        bool selection = true;
+        for (const Range& r : ranges) {
+            const auto n = static_cast<std::size_t>((std::max)(r.end - r.start, Pos(0)));
+            const char* p = n ? reinterpret_cast<const char*>(view(SCI_GETRANGEPOINTER, static_cast<std::uintptr_t>(r.start), r.end - r.start)) : "";
+            const std::size_t e = lineEnds ? eol.size() : 0;
+            if (!p || at + n + e > text.size() || text.compare(at, n, p, n) != 0 || text.compare(at + n, e, eol.data(), e) != 0) {
+                selection = false;
+                break;
+            }
+            at += n + e;
+        }
+        if (selection && at == text.size()) {
+            std::string out;
+            out.reserve(text.size());
+            for (const Range& r : ranges) {
+                out += withoutPadding(view, r.start, r.end);
+                if (lineEnds) out += eol;
+            }
+            if (out.size() == text.size()) return false;
+            text = std::move(out);
+            return true;
+        }
+
+        // The text just cut: the last change, a deletion the journal kept together with its padding
+        if (d->journal.empty() || !(d->lastChange.type & SC_MOD_DELETETEXT)) return false;
+        const Deleted& cut = d->journal.back();
+        if (d->lastChange.position != cut.position || d->lastChange.length != cut.length || d->lastChange.documentLength != cut.lengthAfter
+            || text.size() != static_cast<std::size_t>(cut.length) || fnv1a(text.data(), text.size()) != cut.hash)
+            return false;
+        std::string out;
+        out.reserve(text.size());
+        std::size_t from = 0;
+        for (const Deleted::Piece& piece : cut.pieces) {
+            for (const Mark& m : piece.marks) {
+                const auto s = static_cast<std::size_t>(piece.offset) + static_cast<std::size_t>(m.offset);
+                out.append(text, from, s - from);
+                from = s + static_cast<std::size_t>(m.length);
+            }
+        }
+        out.append(text, from, std::string::npos);
+        if (out.size() == text.size()) return false;
+        text = std::move(out);
+        return true;
+    }
 }

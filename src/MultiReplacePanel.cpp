@@ -233,6 +233,7 @@ HHOOK MultiReplace::_hTandemSnapKeyHook = nullptr;
 
 // A Flow Tabs undo marker reached by undo or redo: replayed once Scintilla has finished the step
 static constexpr UINT WM_FLOWTAB_UNDO = WM_APP + 4;
+static constexpr UINT_PTR NPP_SUBCLASS_ID = 0x4D52;   // the Notepad++ window, for Save a Copy As
 static constexpr UINT WM_TANDEM_SNAP = WM_APP + 5;    // LL hook -> snap the pair
 HHOOK MultiReplace::_hGetMsgHook = nullptr;
 
@@ -5665,6 +5666,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             _hGetMsgHook = SetWindowsHookEx(WH_GETMESSAGE, GetMsgHookProc, nullptr, GetCurrentThreadId());
         }
 
+        // Flow Tabs: text copied or cut from an aligned document and saved copies leave without the padding
+        ::AddClipboardFormatListener(_hSelf);
+        ::SetWindowSubclass(nppData._nppHandle, nppSubclassProc, NPP_SUBCLASS_ID, 0);
+
         ensureModEventMask();
 
         return TRUE;
@@ -5702,6 +5707,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         // The hook may have replayed already before a further Ctrl+Z/Y; then nothing is pending
         flushFlowTabsReplays();
+        return TRUE;
+    }
+
+    case WM_CLIPBOARDUPDATE:
+    {
+        onClipboardUpdate();
         return TRUE;
     }
 
@@ -5907,6 +5918,8 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             UnhookWindowsHookEx(_hGetMsgHook);
             _hGetMsgHook = nullptr;
         }
+        ::RemoveClipboardFormatListener(_hSelf);
+        ::RemoveWindowSubclass(nppData._nppHandle, nppSubclassProc, NPP_SUBCLASS_ID);
 
         // Shut down the tandem ticker. INI flags decide auto-restore
         // on the next panel open; we only clear runtime state here.
@@ -6954,7 +6967,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         case IDC_COLUMN_HIGHLIGHT_BUTTON:
         {
-            int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+            const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
             if (!highlightedTabs.isHighlighted(currentBufferID)) {
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
@@ -12703,9 +12716,8 @@ void MultiReplace::findAndMarkDuplicates(bool showDialog)
     _duplicateScanColumns = columnDelimiterData.columns;
     _duplicateScanDelimiter = columnDelimiterData.extendedDelimiter;
 
-    // Store bookmark setting at scan time (to know if we created bookmarks)
-    Settings settings = getSettings();
-    _duplicateBookmarksEnabled = settings.duplicateBookmarksEnabled;
+    // Bookmarks follow the setting at scan time
+    const bool bookmarks = getSettings().duplicateBookmarksEnabled;
 
     // Perform the scan (this calls findAllDelimitersInDocument internally)
     if (!scanForDuplicates()) {
@@ -12714,7 +12726,7 @@ void MultiReplace::findAndMarkDuplicates(bool showDialog)
     }
 
     // Apply visual marking
-    applyDuplicateMarks();
+    applyDuplicateMarks(bookmarks);
 
     // Show dialog asking whether to delete (only if requested)
     if (showDialog) {
@@ -12844,7 +12856,7 @@ bool MultiReplace::validateAndRescanIfNeeded()
     return true;  // Duplicates unchanged, proceed with delete
 }
 
-void MultiReplace::applyDuplicateMarks()
+void MultiReplace::applyDuplicateMarks(bool bookmarks)
 {
     if (_markedDuplicateLines.empty() || _duplicateIndicatorId < 0) return;
 
@@ -12865,8 +12877,9 @@ void MultiReplace::applyDuplicateMarks()
     int markerId = resolveBookmarkMarkerId();
 
     // If bookmarks enabled: clear ALL bookmarks first, then set new ones on duplicates
-    if (_duplicateBookmarksEnabled) {
+    if (bookmarks) {
         send(SCI_MARKERDELETEALL, markerId, 0);
+        _duplicateBookmarkBuffers.insert(static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)));
     }
 
     // Apply visual indicators and bookmarks
@@ -12880,7 +12893,7 @@ void MultiReplace::applyDuplicateMarks()
         }
 
         // Add bookmark if enabled
-        if (_duplicateBookmarksEnabled) {
+        if (bookmarks) {
             send(SCI_MARKERADD, static_cast<uptr_t>(lineIdx), static_cast<sptr_t>(markerId));
         }
     }
@@ -12889,32 +12902,27 @@ void MultiReplace::applyDuplicateMarks()
     ::InvalidateRect(_hScintilla, nullptr, FALSE);
 }
 
-void MultiReplace::clearDuplicateMarks()
+// The whole document: the remembered rows may belong to a scan of another document
+void MultiReplace::clearDuplicateIndicator()
 {
-    // Always clear indicators (prophylactically, even if list is empty)
-    if (_duplicateIndicatorId >= 0) {
-        const int indicId = _duplicateIndicatorId;
-        send(SCI_SETINDICATORCURRENT, indicId, 0);
+    if (_duplicateIndicatorId < 0) return;
+    send(SCI_SETINDICATORCURRENT, _duplicateIndicatorId, 0);
+    send(SCI_INDICATORCLEARRANGE, 0, send(SCI_GETLENGTH, 0, 0));
+}
 
-        // Clear indicators on known duplicate lines
-        const size_t currentLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
-        for (size_t lineIdx : _markedDuplicateLines) {
-            if (lineIdx >= currentLineCount) continue;
-
-            LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
-            LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, lineIdx, 0);
-            LRESULT lineLen = lineEnd - lineStart;
-
-            if (lineLen > 0) {
-                send(SCI_INDICATORCLEARRANGE, lineStart, lineLen);
-            }
-        }
-    }
-
-    // If bookmark feature was enabled during scan, clear ALL bookmarks
-    if (_duplicateBookmarksEnabled) {
+// Bookmarks go only where Find Duplicates replaced them
+void MultiReplace::clearDuplicateBookmarks()
+{
+    const auto bufferId = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+    if (_duplicateBookmarkBuffers.erase(bufferId) > 0) {
         send(SCI_MARKERDELETEALL, resolveBookmarkMarkerId(), 0);
     }
+}
+
+void MultiReplace::clearDuplicateMarks()
+{
+    clearDuplicateIndicator();
+    clearDuplicateBookmarks();
 
     _markedDuplicateLines.clear();
     _duplicateGroupCount = 0;
@@ -12989,19 +12997,7 @@ void MultiReplace::deleteDuplicateLines()
     const size_t deleteCount = _markedDuplicateLines.size();
 
     // Clear visual marks first
-    if (_duplicateIndicatorId >= 0) {
-        const int indicId = _duplicateIndicatorId;
-        ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
-        const size_t currentLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
-        for (size_t lineIdx : _markedDuplicateLines) {
-            if (lineIdx >= currentLineCount) continue;
-            LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
-            LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, lineIdx, 0);
-            if (lineEnd > lineStart) {
-                ::SendMessage(_hScintilla, SCI_INDICATORCLEARRANGE, lineStart, lineEnd - lineStart);
-            }
-        }
-    }
+    clearDuplicateIndicator();
 
     // Delete the marked duplicate lines
     runCsvWithFlowTabs(CsvOp::DeleteColumns, [&]() -> bool {
@@ -13045,10 +13041,8 @@ void MultiReplace::deleteDuplicateLines()
         return true;
         });
 
-    // Clear all bookmarks if bookmark feature was enabled
-    if (_duplicateBookmarksEnabled) {
-        send(SCI_MARKERDELETEALL, resolveBookmarkMarkerId(), 0);
-    }
+    // Clear all bookmarks if Find Duplicates set them
+    clearDuplicateBookmarks();
 
     // Clear state
     _markedDuplicateLines.clear();
@@ -13112,7 +13106,7 @@ bool MultiReplace::showFlowTabsIntroDialog(bool& dontShowFlag) const
 
     // --- Build an in-memory DLGTEMPLATE (no .rc, USER32 only) ---
     // Layout (DLUs)
-    const short W = 320, H = 140, Mx = 7, My = 7;
+    const short W = 320, H = 96, Mx = 7, My = 7;
     const short Tw = W - 2 * Mx;
     const short Ch = 12, Bw = 60, Bh = 14, Bp = 6;
     const short Gt = 4, Gb = 4;
@@ -14080,7 +14074,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     // --- Viewport snapshot (vertical + horizontal + selection)
     const ViewState vs = saveViewState();
 
-    int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+    const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
     highlightedTabs.mark(currentBufferID);
     initializeColumnStyles();
     LRESULT totalLines = static_cast<LRESULT>(lineDelimiterPositions.size());
@@ -14218,7 +14212,7 @@ void MultiReplace::highlightColumnsInLine(LRESULT line) {
 
 void MultiReplace::handleClearColumnMarks() {
     // Get the current buffer ID
-    int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+    const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
     // If the tab was not highlighted, exit early
     if (!highlightedTabs.isHighlighted(currentBufferID)) {
@@ -14496,7 +14490,7 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         }
 
         // Check current highlight status (global or per-tab)
-        const int currentBufferID = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+        const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
         const bool highlightActive = (isColumnHighlighted != FALSE) ||
             highlightedTabs.isHighlighted(currentBufferID);
 
@@ -20045,10 +20039,6 @@ void MultiReplace::applyConfigSettingsOnly()
     useListColorsForMarking = CFG.readBool(optSec(L"UseListColorsForMarking"), L"UseListColorsForMarking", true);
     ResultDock::setPerEntryColorsEnabled(resultDockPerEntryColorsEnabled);
 
-    // Just update the bookmark setting - no action needed
-    // Bookmarks will be handled correctly on next duplicate scan
-    _duplicateBookmarksEnabled = CFG.readBool(optSec(L"DuplicateBookmarks"), L"DuplicateBookmarks", false);
-
     // Hover Text
     bool newHover = CFG.readBool(optSec(L"HoverText"), L"HoverText", true);
     if (isHoverTextEnabled != newHover) {
@@ -20223,6 +20213,94 @@ void MultiReplace::onFileBeforeSave(UINT_PTR bufferId) {
     if (hSci == self->_hScintilla) self->afterFlowTabsChange(ranges, false, false);
 }
 
+// Notepad++ tells plugins nothing when it saves a copy: the padding goes out before and comes back after
+LRESULT CALLBACK MultiReplace::nppSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR)
+{
+    if (msg == WM_COMMAND && LOWORD(wParam) == IDM_FILE_SAVECOPYAS && instance)
+        return instance->saveCopyWithoutPadding([&] { return ::DefSubclassProc(hwnd, msg, wParam, lParam); });
+    return ::DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+LRESULT MultiReplace::saveCopyWithoutPadding(const std::function<LRESULT()>& save)
+{
+    pointerToScintilla();
+    if (!_hScintilla || !m_flowTabs.padded(directSend(_hScintilla)))
+        return save();
+
+    // The view keeps its picture while the file dialog is open
+    const HWND hSci = _hScintilla;
+    const ColumnTabs::Send view = directSend(hSci);
+    std::vector<ColumnTabs::Range> removed;
+    std::vector<ColumnTabs::Range> inserted;
+    LRESULT result = 0;
+    {
+        ScopedRedrawLock redrawLock(hSci);
+        ScopedFlag noLog(isLoggingEnabled, false);
+        {
+            WaitCursor wait;
+            m_flowTabs.switchOff(view, &removed);
+        }
+        result = save();
+        WaitCursor wait;
+        m_flowTabs.realign(view, flowTabsSettings(), &inserted);
+    }
+    afterFlowTabsChange(removed, false, false);
+    afterFlowTabsChange(inserted, true, true);
+    return result;
+}
+
+// Text Scintilla copied or cut from an aligned document goes on the clipboard without the padding; line and block
+// copies keep their marks for pasting
+void MultiReplace::onClipboardUpdate()
+{
+    const HWND owner = ::GetClipboardOwner();
+    if (!owner || (owner != nppData._scintillaMainHandle && owner != nppData._scintillaSecondHandle)) return;
+    const ColumnTabs::Send view = directSend(owner);
+    if (!m_flowTabs.padded(view)) return;
+
+    static const UINT marks[] = { ::RegisterClipboardFormatW(L"MSDEVColumnSelect"), ::RegisterClipboardFormatW(L"Borland IDE Block Type"),
+        ::RegisterClipboardFormatW(L"MSDEVLineSelect"), ::RegisterClipboardFormatW(L"VisualStudioEditorOperationsLineCutCopyClipboardTag") };
+    std::wstring copied;
+    std::vector<UINT> kept;
+    if (!::OpenClipboard(_hSelf)) return;
+    const DWORD sequence = ::GetClipboardSequenceNumber();
+    if (const HANDLE h = ::GetClipboardData(CF_UNICODETEXT)) {
+        if (const auto* p = static_cast<const wchar_t*>(::GlobalLock(h))) {
+            copied.assign(p, ::wcsnlen(p, ::GlobalSize(h) / sizeof(wchar_t)));
+            ::GlobalUnlock(h);
+        }
+    }
+    for (const UINT mark : marks)
+        if (mark && ::IsClipboardFormatAvailable(mark)) kept.push_back(mark);
+    ::CloseClipboard();
+    if (copied.empty()) return;
+
+    const LRESULT cp = view(SCI_GETCODEPAGE, 0, 0);
+    const UINT codePage = cp ? static_cast<UINT>(cp) : CP_ACP;
+    std::string text = Encoding::wstringToBytes(copied, codePage);
+    if (!m_flowTabs.copiedWithoutPadding(view, text)) return;
+    const std::wstring stripped = Encoding::bytesToWString(text, codePage);
+
+    const auto put = [](UINT format, const void* data, size_t size) {
+        if (const HGLOBAL memory = ::GlobalAlloc(GMEM_MOVEABLE, size)) {
+            if (void* p = ::GlobalLock(memory)) {
+                std::copy_n(static_cast<const BYTE*>(data), size, static_cast<BYTE*>(p));
+                ::GlobalUnlock(memory);
+                if (::SetClipboardData(format, memory)) return;
+            }
+            ::GlobalFree(memory);
+        }
+    };
+    // Only while the clipboard still holds what the view put there
+    if (!::OpenClipboard(_hSelf)) return;
+    if (::GetClipboardSequenceNumber() == sequence && ::EmptyClipboard()) {
+        put(CF_UNICODETEXT, stripped.c_str(), (stripped.size() + 1) * sizeof(wchar_t));
+        const BYTE block = 0x02;   // Borland: a block; the other marks count by being there
+        for (const UINT mark : kept) put(mark, &block, 1);
+    }
+    ::CloseClipboard();
+}
+
 void MultiReplace::onFileSaved(UINT_PTR bufferId) {
     MultiReplace* self = instance;
     if (!self || self->m_flowTabsSaving != bufferId) return;
@@ -20244,8 +20322,11 @@ void MultiReplace::onFileSaved(UINT_PTR bufferId) {
 }
 
 void MultiReplace::onFileBeforeClose(UINT_PTR bufferId) {
+    // Notepad++ may hand the id of a closed document to the next one it opens
+    _duplicateBookmarkBuffers.erase(bufferId);
     MultiReplace* self = instance;
     if (!self) return;
+    self->highlightedTabs.clear(bufferId);
     const auto it = self->m_flowTabsDocs.find(bufferId);
     if (it == self->m_flowTabsDocs.end()) return;
     self->m_flowTabs.forget(it->second);

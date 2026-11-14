@@ -88,6 +88,9 @@ namespace ColumnTabs {
         // A view that shows an aligned document without its stops (the other view aligned it) gets them
         void ensureStops(const Send& view);
         std::string withoutPadding(const Send& view, std::intptr_t start, std::intptr_t end) const;
+        // Text the view just put on the clipboard, freed of its padding: the selection as Scintilla joins its ranges,
+        // the line copied without one, or the text just cut. False if it is none of these or holds no padding
+        bool copiedWithoutPadding(const Send& view, std::string& text) const;
         void forget(std::intptr_t document) noexcept;
 
         struct Doc;     // per document, in ColumnTabs.cpp

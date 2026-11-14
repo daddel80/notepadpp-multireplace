@@ -176,17 +176,17 @@ struct ColumnInfo {
 };
 
 struct HighlightedTabs {
-    std::unordered_set<int> bufferIDs;  // Stores buffer IDs with active highlighting
+    std::unordered_set<UINT_PTR> bufferIDs;  // Stores buffer IDs with active highlighting
 
-    bool isHighlighted(int bufferID) const {
+    bool isHighlighted(UINT_PTR bufferID) const {
         return bufferIDs.find(bufferID) != bufferIDs.end();
     }
 
-    void mark(int bufferID) {
+    void mark(UINT_PTR bufferID) {
         bufferIDs.insert(bufferID);
     }
 
-    void clear(int bufferID) {
+    void clear(UINT_PTR bufferID) {
         bufferIDs.erase(bufferID);
     }
 };
@@ -824,7 +824,7 @@ public:
     inline static std::vector<size_t> _markedDuplicateLines{};  // Stores line indices of marked duplicates
     inline static size_t _duplicateGroupCount = 0;              // Number of unique duplicate groups
     inline static bool _duplicateMatchCase = false;             // Match case setting used when marking
-    inline static bool _duplicateBookmarksEnabled = false;      // Tracks bookmark setting for rescan detection
+    inline static std::unordered_set<UINT_PTR> _duplicateBookmarkBuffers{};  // Documents whose bookmarks Find Duplicates replaced
 
     // Stored scan criteria for validation rescan before delete
     inline static std::set<int> _duplicateScanColumns{};        // Columns used for scan
@@ -845,6 +845,7 @@ public:
     static void onBeforeShutdown();
     static void onCancelShutdown();
     static void onZoom(SCNotification* notifyCode);
+    static LRESULT CALLBACK nppSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data);
     static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam);
     static void processLog();
     static void onDocumentSwitched();
@@ -1570,14 +1571,18 @@ private:
     void syncFlowTabsState();
     void flushFlowTabsReplays();
     bool withFlowTabsLifted(const std::function<bool()>& body);
+    LRESULT saveCopyWithoutPadding(const std::function<LRESULT()>& save);
+    void onClipboardUpdate();
     void ensureModEventMask();
     void bindToView(int view);
     void handleDuplicatesButton();
     void findAndMarkDuplicates(bool showDialog = true);
     bool scanForDuplicates();
     bool validateAndRescanIfNeeded();
-    void applyDuplicateMarks();
+    void applyDuplicateMarks(bool bookmarks);
     void clearDuplicateMarks();
+    void clearDuplicateIndicator();
+    void clearDuplicateBookmarks();
     void showDeleteDuplicatesDialog();
     void deleteDuplicateLines();
     void clearFlowTabsIfAny();

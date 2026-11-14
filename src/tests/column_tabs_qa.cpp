@@ -96,6 +96,9 @@ struct Editor : DocWatcher {
     int savePointLeft = 0, savePointReached = 0;
     bool cloned = false;                                    // the document also shows in the other view
     std::intptr_t changeHistoryOption = 0;
+    std::vector<std::pair<Sci::Position, Sci::Position>> sel{ { 0, 0 } };   // anchor, caret per range
+    bool rectangle = false;
+    Sci::Position caret = 0;
 
     explicit Editor(const std::string& s) {
         d = new Document(DocumentOption::Default); d->AddRef(); d->SetDBCSCodePage(kCpUtf8);
@@ -153,6 +156,12 @@ struct Editor : DocWatcher {
             case SCI_GETMODEVENTMASK: return mask;
             case SCI_SETMODEVENTMASK: mask = static_cast<std::intptr_t>(w); return 0;
             case SCI_GETZOOM: return zoom;
+            case SCI_GETSELECTIONS: return static_cast<std::intptr_t>(sel.size());
+            case SCI_GETSELECTIONNSTART: return (std::min)(sel[w].first, sel[w].second);
+            case SCI_GETSELECTIONNEND: return (std::max)(sel[w].first, sel[w].second);
+            case SCI_SELECTIONISRECTANGLE: return rectangle;
+            case SCI_GETCURRENTPOS: return caret;
+            case SCI_GETEOLMODE: return SC_EOL_LF;
             case SCI_SETINDICATORCURRENT: d->DecorationSetCurrentIndicator(static_cast<int>(w)); return 0;
             case SCI_GETINDICATORCURRENT: return d->decorations->GetCurrentIndicator();
             case SCI_SETINDICATORVALUE: d->decorations->SetCurrentValue(static_cast<int>(w)); return 0;
@@ -658,6 +667,40 @@ static void runAll() {
         check("new line without padding: no stops of its own", e.stops.count(4) == 0);
         e.type(e.d->Length() - 2, "\t");                         // "E\t;7"
         check("new line with a TAB in front of the delimiter: the shared stop", e.stops[4] == std::vector<int>{ 52 });
+    }
+
+    // Copied and cut text goes to the clipboard without the padding
+    {
+        Editor e(DECIMAL);
+        e.on();                                                    // DECIMAL_PADDED
+        const auto copied = [&](std::string text) { return e.aligner.copiedWithoutPadding(e.send(), text) ? text : std::string("-"); };
+        const auto line = [&](int n) { return e.d->LineStart(n); };
+        e.sel = { { line(1), line(3) } };
+        check("copy: the selection without padding", copied("A\t;  5\nB\t;  1,25\n") == "A;5\nB;1,25\n");
+        check("copy: other text untouched", copied("A\t;  5\n") == "-");
+        e.sel = { { line(1) + 2, line(1) + 2 } };
+        e.caret = line(1) + 2;
+        check("copy: the line, nothing selected", copied("A\t;  5\n") == "A;5\n");
+        e.sel = { { line(1), line(1) + 1 }, { line(2), line(2) + 4 } };
+        check("copy: several ranges, each with a line end", copied("A\nB\t; \n") == "A\nB;\n");
+        e.sel = { { line(2), line(2) + 4 }, { line(1), line(1) + 4 } };
+        e.rectangle = true;
+        check("copy: a rectangle, top down", copied("A\t; \nB\t; \n") == "A;\nB;\n");
+        e.rectangle = false;
+        e.sel = { { line(0), line(0) + 4 } };
+        check("copy: no padding in the selection, untouched", copied("Item") == "-");
+        e.erase(line(1), line(2) - line(1));                       // cut "A\t;  5\n"
+        e.sel = { { line(1), line(1) } };
+        e.caret = line(1);
+        check("cut: the text just cut without padding", copied("A\t;  5\n") == "A;5\n");
+        e.type(0, "x");
+        check("cut: only right after the cut", copied("A\t;  5\n") == "-");
+    }
+    {
+        Editor e(DECIMAL);
+        e.sel = { { 0, 5 } };
+        std::string text = "Item;";
+        check("copy: not aligned, untouched", !e.aligner.copiedWithoutPadding(e.send(), text) && text == "Item;");
     }
 
     // Text without padding; markers
