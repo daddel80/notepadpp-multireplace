@@ -38,7 +38,9 @@ jobs:
           path: vs.proj\${{ matrix.build_configuration }}\${{ matrix.build_platform }}\MultiReplace.dll
 
     - name: Debug Output
-      run: echo "${{ github.event.commits[0].message }}"
+      env:
+        COMMIT_MESSAGE: ${{ github.event.commits[0].message }}
+      run: echo "$env:COMMIT_MESSAGE"
 
     - name: Create Release
       uses: softprops/action-gh-release@v3.0.4
