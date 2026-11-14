@@ -24,6 +24,7 @@
 #include "DropTarget.h"
 #include "Encoding.h"
 #include "ColumnTabs.h"
+#include "CsvDocState.h"
 #include "LanguageManager.h"
 #include "MultiReplaceConfigDialog.h"
 #include "NppStyleKit.h"
@@ -44,7 +45,6 @@
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 // Third-party
@@ -173,22 +173,6 @@ struct ColumnInfo {
     LRESULT totalLines;
     LRESULT startLine;
     SIZE_T startColumnIndex;
-};
-
-struct HighlightedTabs {
-    std::unordered_set<UINT_PTR> bufferIDs;  // Stores buffer IDs with active highlighting
-
-    bool isHighlighted(UINT_PTR bufferID) const {
-        return bufferIDs.find(bufferID) != bufferIDs.end();
-    }
-
-    void mark(UINT_PTR bufferID) {
-        bufferIDs.insert(bufferID);
-    }
-
-    void clear(UINT_PTR bufferID) {
-        bufferIDs.erase(bufferID);
-    }
 };
 
 struct MenuState {
@@ -813,8 +797,6 @@ public:
 
     inline static bool isWindowOpen = false;
     inline static bool textModified = true;
-    inline static bool documentSwitched = false;
-    inline static int  scannedDelimiterBufferID = -1;
     inline static bool _delimiterPositionsStale = false;
     inline static bool isLoggingEnabled = true;
     inline static bool isCaretPositionEnabled = false;
@@ -824,7 +806,6 @@ public:
     inline static std::vector<size_t> _markedDuplicateLines{};  // Stores line indices of marked duplicates
     inline static size_t _duplicateGroupCount = 0;              // Number of unique duplicate groups
     inline static bool _duplicateMatchCase = false;             // Match case setting used when marking
-    inline static std::unordered_set<UINT_PTR> _duplicateBookmarkBuffers{};  // Documents whose bookmarks Find Duplicates replaced
 
     // Stored scan criteria for validation rescan before delete
     inline static std::set<int> _duplicateScanColumns{};        // Columns used for scan
@@ -854,6 +835,7 @@ public:
     static void onSelectionChanged();
     static void onTextChanged();
     static void onCaretPositionChanged();
+    static void onViewUpdated(HWND view);
     static void onThemeChanged();
     static void signalShutdown();
     static bool shouldReopenPanelOnStartup();
@@ -1050,7 +1032,6 @@ private:
     // Scintilla related
     SciFnDirect pSciMsg = nullptr;
     sptr_t pSciWndData = 0;
-    HighlightedTabs highlightedTabs;
 
     // Multi-tab storage. Active tab is _tabs[_activeTabIndex].
     std::vector<std::unique_ptr<TabState>> _tabs;
@@ -1212,6 +1193,10 @@ private:
     bool _editIsExpanded = false; // track expand state
     bool _isCancelRequested = false; // Flag to signal cancellation in Replace Files
     inline static bool  _isShuttingDown = false; // Flag to signal app shutdown
+
+    CsvDocState::Store m_csvDocs;      // CSV view of each document: column highlight, sort state, replaced bookmarks
+    UINT_PTR m_csvBuffer = 0;          // the document the panel's CSV view belongs to
+    std::intptr_t m_csvDocument = 0;   // its Scintilla document: the original order follows its line changes
 
     // Flow Tabs: the aligner, the documents it knows (forgotten on close), and the markers undo or redo reached,
     // replayed once that step has finished
@@ -1595,12 +1580,14 @@ private:
 
 #pragma region CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);
+    size_t csvRowsEnd() const;
     void sortRowsByColumn(SortDirection sortDirection);
     void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
-    void restoreOriginalLineOrder(const std::vector<size_t>& originalOrder);
+    bool restoreOriginalLineOrder(const std::vector<size_t>& originalOrder);
     void UpdateSortButtonSymbols();
     void handleSortStateAndSort(SortDirection direction);
-    void updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);
+    void followLineOrder(const SCNotification* notifyCode);
+    void endSortState();
     void detectNumericColumns(std::vector<CombinedColumns>& data);
     int compareColumnValue(const ColumnValue& left, const ColumnValue& right);
 
@@ -1612,6 +1599,7 @@ private:
     bool loadDelimitersForScan();
     void discardDelimiterSnapshot();
     void findAllDelimitersInDocument();
+    LineInfo readDelimitersInLine(LRESULT line);
     void findDelimitersInLine(LRESULT line);
     ColumnInfo getColumnInfo(LRESULT startPosition);
     bool extractColumnsForLine(LRESULT line,
@@ -1620,18 +1608,28 @@ private:
     bool ensureCsvHeaderMap() const;
     LRESULT adjustForegroundForDarkMode(LRESULT textColor, LRESULT backgroundColor);
     void initializeColumnStyles();
+    void applyColumnStyleColors();
     void handleHighlightColumnsInDocument();
     void reapplyColumnHighlighting();
     void restoreColumnVisuals();
     void highlightColumnsInLine(LRESULT line);
+    void styleColumnsInLine(LRESULT line, const LineInfo& lineInfo);
     void fixHighlightAtDocumentEnd();
     void handleClearColumnMarks();
+    void clearColumnStyles();
     std::wstring addLineAndColumnMessage(LRESULT pos);
     void updateDelimitersInDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType);
     void processLogForDelimiters();
     void handleDelimiterPositions(DelimiterOperation operation);
     void handleClearDelimiterState();
     void resetDelimiterState();
+    void parkCsvView();
+    void resumeCsvView(UINT_PTR buffer);
+    void noteCsvText();
+    void dropCsvView();
+    bool columnDataFitsText() const;
+    void noteHighlight();
+    CsvDocState::Snapshot csvSnapshot() const;
 
 #pragma endregion
 

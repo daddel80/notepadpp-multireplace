@@ -197,6 +197,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_replace_in_docs_summary", L"Replace in documents: $REPLACE_STRING occurrences replaced." },
 { L"status_rows_sorted", L"Rows sorted." },
 { L"status_sort_restored", L"Original order restored." },
+{ L"status_sort_order_lost", L"Original order discarded, it no longer matched the text." },
 { L"status_tandem_enabled", L"Tandem mode enabled." },
 { L"status_tandem_disabled", L"Tandem mode disabled." },
 { L"status_occurrences_found", L"$REPLACE_STRING occurrences found." },

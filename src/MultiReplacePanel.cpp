@@ -34,6 +34,7 @@
 #include "HiddenSciGuard.h"
 #include "LanguageManager.h"
 #include "language_mapping.h"
+#include "LineOrder.h"
 #include "LiteralPrefilter.h"
 #include "menuCmdID.h"
 #include "MultiReplaceConfigDialog.h"
@@ -5629,9 +5630,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
 
         pointerToScintilla();
         if (_hScintilla) {
-            g_prevBufId = static_cast<int>(static_cast<UINT_PTR>(
-                ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)
-                ));
+            g_prevBufId = static_cast<BufferId>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
         }
 
         ensureIndicatorContext();
@@ -6509,6 +6508,11 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         if (wParam == TRUE) {
             pickupSelectionIntoFindEdit();
 
+            // The CSV view the active document kept while the panel was hidden
+            if (m_csvBuffer == 0) {
+                resumeCsvView(static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)));
+            }
+
             // Re-engage tandem only if hide parked it; a user-chosen
             // free state stays free across hide/show. Direct layout
             // keeps the desired sizes from before the hide.
@@ -6527,6 +6531,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         else {
             handleClearTextMarksButton();
             handleClearDelimiterState();
+            parkCsvView();
             releaseAllSelectionScopes();
 
             // Park tandem while MR is hidden and give the host its
@@ -6841,6 +6846,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             // The remembered areas end with the panel, as on the hide path; so do Flow Tabs and column highlighting
             releaseAllSelectionScopes();
             if (!_isShuttingDown) handleClearDelimiterState();
+            parkCsvView();
 
             EndDialog(_hSelf, 0);
             _MultiReplace.display(false);
@@ -6969,7 +6975,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
-            if (!highlightedTabs.isHighlighted(currentBufferID)) {
+            if (!m_csvDocs.highlighted(currentBufferID)) {
                 handleDelimiterPositions(DelimiterOperation::LoadAll);
                 if (columnDelimiterData.isValid()) {
                     handleHighlightColumnsInDocument();
@@ -12631,6 +12637,9 @@ void MultiReplace::flushFlowTabsReplays()
         if (result == ColumnTabs::Replayed::NotOurs) continue;
         if (view == _hScintilla)
             afterFlowTabsChange(ranges, result == ColumnTabs::Replayed::Padded, true);
+        // The undo history emptied here is no reload: the CSV view of the document stays
+        if (result == ColumnTabs::Replayed::Reset && view == _hScintilla && replay.document == m_csvDocument)
+            m_csvDocs.seen(m_csvBuffer, csvSnapshot());
         if (result == ColumnTabs::Replayed::Reset)
             showStatusMessage(LM.get(L"status_tabs_undo_reset"), MessageStatus::Info);
         else if (view == _hScintilla && result == ColumnTabs::Replayed::Padded)
@@ -12739,7 +12748,8 @@ bool MultiReplace::scanForDuplicates()
     // Ensure delimiter positions are current
     findAllDelimitersInDocument();
 
-    const size_t lineCount = lineDelimiterPositions.size();
+    // The empty last line a final line break leaves is no row
+    const size_t lineCount = csvRowsEnd();
     if (lineCount <= CSVheaderLinesCount) {
         showStatusMessage(LM.get(L"status_no_data_for_duplicates"), MessageStatus::Info);
         return false;
@@ -12879,7 +12889,7 @@ void MultiReplace::applyDuplicateMarks(bool bookmarks)
     // If bookmarks enabled: clear ALL bookmarks first, then set new ones on duplicates
     if (bookmarks) {
         send(SCI_MARKERDELETEALL, markerId, 0);
-        _duplicateBookmarkBuffers.insert(static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)));
+        m_csvDocs.replacedBookmarks(static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)));
     }
 
     // Apply visual indicators and bookmarks
@@ -12914,7 +12924,7 @@ void MultiReplace::clearDuplicateIndicator()
 void MultiReplace::clearDuplicateBookmarks()
 {
     const auto bufferId = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
-    if (_duplicateBookmarkBuffers.erase(bufferId) > 0) {
+    if (m_csvDocs.takeReplacedBookmarks(bufferId)) {
         send(SCI_MARKERDELETEALL, resolveBookmarkMarkerId(), 0);
     }
 }
@@ -13005,15 +13015,19 @@ void MultiReplace::deleteDuplicateLines()
         const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
         send(SCI_SETMODEVENTMASK, 0, 0);
 
+        // A document shown in both views still reports the deletions through the other view: the order follows them here only
+        const bool tracking = isSortedColumn;
+        ScopedFlag noTracking(isSortedColumn, false);
+
         ScopedUndoAction undo(*this);
 
         // Sort descending - delete from bottom to top to keep indices valid
         std::vector<size_t> linesToDelete = _markedDuplicateLines;
         std::sort(linesToDelete.begin(), linesToDelete.end(), std::greater<size_t>());
 
-        const size_t totalLines = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
-
         for (size_t lineIdx : linesToDelete) {
+            // Counted for each line: once the last line is gone, the line above it is the last
+            const size_t totalLines = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
             if (lineIdx >= totalLines) continue;
 
             LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
@@ -13034,7 +13048,7 @@ void MultiReplace::deleteDuplicateLines()
                 send(SCI_DELETERANGE, lineStart, deleteLen, false);
             }
 
-            updateUnsortedDocument(lineIdx, 1, ChangeType::Delete);
+            if (tracking) LineOrder::deleted(originalLineOrder, lineIdx, 1);
         }
 
         send(SCI_SETMODEVENTMASK, savedEventMask, 0);
@@ -13330,6 +13344,13 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
     return combinedData;
 }
 
+// The rows end before the empty last line a final line break leaves
+size_t MultiReplace::csvRowsEnd() const
+{
+    const size_t lineCount = lineDelimiterPositions.size();
+    return (lineCount > CSVheaderLinesCount + 1 && lineDelimiterPositions.back().lineLength == 0) ? lineCount - 1 : lineCount;
+}
+
 void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
 {
     // Validate CSV delimiter config
@@ -13376,8 +13397,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
         detectNumericColumns(combinedData);  // Single call with wstring caching
 
         // A line break at the end leaves an empty last line: it stays last
-        const size_t sortEnd = (lineCount > CSVheaderLinesCount + 1 && lineDelimiterPositions.back().lineLength == 0)
-            ? lineCount - 1 : lineCount;
+        const size_t sortEnd = csvRowsEnd();
 
         // Stable sort preserves original document order for rows with equal keys
         std::stable_sort(tempOrder.begin() + CSVheaderLinesCount, tempOrder.begin() + sortEnd,
@@ -13396,19 +13416,12 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
             }
         );
 
-        // Update originalLineOrder if tracking is used
-        if (!originalLineOrder.empty()) {
-            std::vector<size_t> newOrder(originalLineOrder.size());
-            for (size_t i = 0; i < tempOrder.size(); ++i)
-                newOrder[i] = originalLineOrder[tempOrder[i]];
-            originalLineOrder = std::move(newOrder);
-        }
-        else {
-            originalLineOrder = tempOrder;
-        }
+        // The original order goes along with the lines
+        LineOrder::moved(originalLineOrder, tempOrder);
 
-        // Apply new order in editor
+        // Apply new order in editor; from now on inserted and deleted lines are followed
         reorderLinesInScintilla(tempOrder);
+        isSortedColumn = true;
 
         return true;
         });
@@ -13418,7 +13431,9 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
     const std::string lineBreak = getEOLStyle();
     const size_t lineCount = sortedIndex.size();
 
-    isSortedColumn = false; // Stop logging changes
+    // Written anew as a whole: the column data is read again afterwards and the caller sets the original order
+    ScopedFlag noLog(isLoggingEnabled, false);
+    ScopedFlag noTracking(isSortedColumn, false);
 
     // ============================================================
     // OPTIMIZATION: Read entire document once, then extract lines
@@ -13471,108 +13486,17 @@ void MultiReplace::reorderLinesInScintilla(const std::vector<size_t>& sortedInde
     // Clear and re-insert
     send(SCI_CLEARALL);
     send(SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<sptr_t>(combinedLines.c_str()));
-
-    isSortedColumn = true; // Ready for logging changes
 }
 
-void MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalOrder) {
-
-    size_t totalLineCount = static_cast<size_t>(send(SCI_GETLINECOUNT));
-
-    if (originalOrder.empty() || originalOrder.size() != totalLineCount) {
-        return;
+// Lines back in their original order: lines inserted while sorted come last, an empty last line stays last
+bool MultiReplace::restoreOriginalLineOrder(const std::vector<size_t>& originalOrder) {
+    const size_t lineCount = static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0));
+    if (originalOrder.size() != lineCount) {
+        return false;
     }
-
-    // Normalize indices to [0..n-1] range (closes gaps from deleted lines)
-    std::vector<size_t> normalizedOrder = originalOrder;
-
-    auto maxElementIt = std::max_element(originalOrder.begin(), originalOrder.end());
-    if (maxElementIt != originalOrder.end() && *maxElementIt >= totalLineCount) {
-        // Gaps exist - normalization needed
-        std::vector<size_t> sortedIndices = originalOrder;
-        std::sort(sortedIndices.begin(), sortedIndices.end());
-
-        std::unordered_map<size_t, size_t> indexMapping;
-        for (size_t i = 0; i < sortedIndices.size(); ++i) {
-            indexMapping[sortedIndices[i]] = i;
-        }
-
-        for (size_t i = 0; i < normalizedOrder.size(); ++i) {
-            normalizedOrder[i] = indexMapping[normalizedOrder[i]];
-        }
-    }
-
-    // Validate
-    maxElementIt = std::max_element(normalizedOrder.begin(), normalizedOrder.end());
-    if (maxElementIt == normalizedOrder.end() || *maxElementIt != totalLineCount - 1) {
-        return;
-    }
-
-    std::vector<bool> seen(totalLineCount, false);
-    for (size_t idx : normalizedOrder) {
-        if (idx >= totalLineCount || seen[idx]) {
-            return;
-        }
-        seen[idx] = true;
-    }
-
-    // Perform restore using bulk read (same pattern as reorderLinesInScintilla)
-    const std::string lineBreak = getEOLStyle();
-
-    const Sci_Position docLen = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
-    std::string fullText(static_cast<size_t>(docLen) + 1, '\0');
-    send(SCI_GETTEXT, static_cast<WPARAM>(docLen + 1), reinterpret_cast<sptr_t>(fullText.data()));
-    fullText.resize(static_cast<size_t>(docLen));
-
-    // Pre-cache all line positions
-    std::vector<Sci_Position> lineStarts(totalLineCount);
-    std::vector<Sci_Position> lineEnds(totalLineCount);
-    for (size_t i = 0; i < totalLineCount; ++i) {
-        lineStarts[i] = static_cast<Sci_Position>(send(SCI_POSITIONFROMLINE, i, 0));
-        lineEnds[i] = static_cast<Sci_Position>(send(SCI_GETLINEENDPOSITION, i, 0));
-    }
-
-    // Build reordered document: line at position i goes to normalizedOrder[i]
-    // Build output 0..n-1: map each target line to its source line
-    std::vector<size_t> inverseOrder(totalLineCount);
-    for (size_t i = 0; i < totalLineCount; ++i) {
-        inverseOrder[normalizedOrder[i]] = i;
-    }
-
-    // Calculate total size
-    size_t totalSize = 0;
-    for (size_t i = 0; i < totalLineCount; ++i) {
-        const size_t srcIdx = inverseOrder[i];
-        totalSize += static_cast<size_t>(lineEnds[srcIdx] - lineStarts[srcIdx]);
-        if (i < totalLineCount - 1) {
-            totalSize += lineBreak.size();
-        }
-    }
-
-    // Build combined string
-    std::string combinedLines;
-    combinedLines.reserve(totalSize);
-
-    for (size_t i = 0; i < totalLineCount; ++i) {
-        const size_t srcIdx = inverseOrder[i];
-        const Sci_Position start = lineStarts[srcIdx];
-        const Sci_Position end = lineEnds[srcIdx];
-
-        if (end > start && static_cast<size_t>(start) < fullText.size()) {
-            size_t len = static_cast<size_t>(end - start);
-            if (static_cast<size_t>(start) + len > fullText.size()) {
-                len = fullText.size() - static_cast<size_t>(start);
-            }
-            combinedLines.append(fullText, static_cast<size_t>(start), len);
-        }
-
-        if (i < totalLineCount - 1) {
-            combinedLines += lineBreak;
-        }
-    }
-
-    send(SCI_CLEARALL);
-    send(SCI_APPENDTEXT, combinedLines.length(), reinterpret_cast<sptr_t>(combinedLines.c_str()));
+    const bool emptyLastLine = send(SCI_LINELENGTH, lineCount - 1, 0) == 0;
+    reorderLinesInScintilla(LineOrder::restored(originalOrder, emptyLastLine));
+    return true;
 }
 
 void MultiReplace::UpdateSortButtonSymbols() {
@@ -13601,6 +13525,13 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
         return;
     }
 
+    // Lines added or removed past the change notifications (Replace All): the original order no longer fits
+    if (isSortedColumn && originalLineOrder.size() != static_cast<size_t>(send(SCI_GETLINECOUNT, 0, 0))) {
+        endSortState();
+        showStatusMessage(LM.get(L"status_sort_order_lost"), MessageStatus::Error);
+        return;
+    }
+
     // Snapshot view state once for this sort/unsort toggle
     const ViewState vs = saveViewState();
 
@@ -13610,8 +13541,7 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
         if (!originalLineOrder.empty()) {
             runCsvWithFlowTabs(CsvOp::Sort, [&]() -> bool {
                 ScopedUndoAction undo(*this);
-                restoreOriginalLineOrder(originalLineOrder);
-                return true;
+                return restoreOriginalLineOrder(originalLineOrder);
                 });
         }
         currentSortState = SortDirection::Unsorted;
@@ -13633,56 +13563,49 @@ void MultiReplace::handleSortStateAndSort(SortDirection direction) {
     else {
         showStatusMessage(LM.get(L"status_rows_sorted"), MessageStatus::Success);
     }
+    noteCsvText();
 }
 
-void MultiReplace::updateUnsortedDocument(SIZE_T lineNumber, SIZE_T blockCount, ChangeType changeType) {
-    if (!isSortedColumn || lineNumber > originalLineOrder.size()) {
+// The original order follows the lines inserted and deleted in its own document, in any scope
+void MultiReplace::followLineOrder(const SCNotification* notifyCode) {
+    if (!isSortedColumn || notifyCode->linesAdded == 0) return;
+    const HWND view = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    if (m_csvDocument == 0 || static_cast<std::intptr_t>(::SendMessage(view, SCI_GETDOCPOINTER, 0, 0)) != m_csvDocument) return;
+
+    // Everything deleted, as when the sort is undone: no order is left to go back to
+    if ((notifyCode->modificationType & SC_MOD_DELETETEXT) && ::SendMessage(view, SCI_GETLENGTH, 0, 0) == 0) {
+        endSortState();
         return;
     }
 
-    switch (changeType) {
-    case ChangeType::Insert: {
-        // New lines get indices > all existing ones (will end up at the end on restore)
-        size_t maxIndex = originalLineOrder.empty()
-            ? 0
-            : (*std::max_element(originalLineOrder.begin(), originalLineOrder.end())) + 1;
+    const Sci_Position line = static_cast<Sci_Position>(::SendMessage(view, SCI_LINEFROMPOSITION, notifyCode->position, 0));
+    const bool atLineStart = notifyCode->position == static_cast<Sci_Position>(::SendMessage(view, SCI_POSITIONFROMLINE, line, 0));
+    const auto lineEnd = [&](Sci_Position l) { return static_cast<Sci_Position>(::SendMessage(view, SCI_GETLINEENDPOSITION, l, 0)); };
+    const size_t count = static_cast<size_t>(std::abs(notifyCode->linesAdded));
 
-        std::vector<size_t> newIndices;
-        newIndices.reserve(blockCount);
-
-        for (SIZE_T i = 0; i < blockCount; ++i) {
-            newIndices.push_back(maxIndex + i);
-        }
-
-        originalLineOrder.insert(
-            originalLineOrder.begin() + lineNumber,
-            newIndices.begin(),
-            newIndices.end()
-        );
-        break;
+    // A change that starts inside a line keeps that line; text that fills an empty line keeps it as its first line
+    if (notifyCode->modificationType & SC_MOD_INSERTTEXT) {
+        const bool intoEmptyLine = lineEnd(line + notifyCode->linesAdded) == notifyCode->position + notifyCode->length;
+        LineOrder::inserted(originalLineOrder, static_cast<size_t>(atLineStart && !intoEmptyLine ? line : line + 1), count);
+        return;
     }
+    LineOrder::deleted(originalLineOrder, static_cast<size_t>(atLineStart ? line : line + 1), count);
 
-    case ChangeType::Delete: {
-        // Simply remove entries - do NOT adjust remaining indices!
-        // Gaps will be closed by normalization during restore.
-        SIZE_T endPos = lineNumber + blockCount;
-        if (endPos > originalLineOrder.size()) {
-            endPos = originalLineOrder.size();
-        }
-
-        if (lineNumber < originalLineOrder.size()) {
-            originalLineOrder.erase(
-                originalLineOrder.begin() + lineNumber,
-                originalLineOrder.begin() + endPos
-            );
-        }
-        break;
+    // Whole lines up to the end of a line's text, as when a block of lines is replaced: the line left empty is new
+    const char* text = notifyCode->text;
+    const bool toLineEnd = text && notifyCode->length > 0
+        && text[notifyCode->length - 1] != '\n' && text[notifyCode->length - 1] != '\r';
+    if (atLineStart && toLineEnd && lineEnd(line) == notifyCode->position) {
+        LineOrder::renewed(originalLineOrder, static_cast<size_t>(line));
     }
+}
 
-    case ChangeType::Modify:
-    default:
-        break;
-    }
+// The text stays as it is, the sort buttons go back to unsorted
+void MultiReplace::endSortState() {
+    originalLineOrder.clear();
+    currentSortState = SortDirection::Unsorted;
+    isSortedColumn = false;
+    UpdateSortButtonSymbols();
 }
 
 void MultiReplace::detectNumericColumns(std::vector<CombinedColumns>& data)
@@ -13859,7 +13782,8 @@ void MultiReplace::findAllDelimitersInDocument() {
 
 }
 
-void MultiReplace::findDelimitersInLine(LRESULT line) {
+// The delimiters of one line, read from its own text
+LineInfo MultiReplace::readDelimitersInLine(LRESULT line) {
     // Initialize line information
     LineInfo lineInfo;
 
@@ -13885,6 +13809,11 @@ void MultiReplace::findDelimitersInLine(LRESULT line) {
     CsvLine::forEachDelimiter(lineContent, columnDelimiterData.extendedDelimiter, quote, [&](size_t pos) {
         lineInfo.positions.push_back({ static_cast<LRESULT>(pos) });
     });
+    return lineInfo;
+}
+
+void MultiReplace::findDelimitersInLine(LRESULT line) {
+    LineInfo lineInfo = readDelimitersInLine(line);
 
     // Store line info in vector
     if (line < static_cast<LRESULT>(lineDelimiterPositions.size()))
@@ -14047,7 +13976,11 @@ LRESULT MultiReplace::adjustForegroundForDarkMode(LRESULT textColor, LRESULT bac
 void MultiReplace::initializeColumnStyles() {
 
     ::SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_LANG_TEXT);
+    applyColumnStyleColors();
+}
 
+// The colors of the column styles; Notepad++ resets them whenever it activates a document
+void MultiReplace::applyColumnStyleColors() {
     // Get default text color from Notepad++
     LRESULT fgColor = send(SCI_STYLEGETFORE, STYLE_DEFAULT);
 
@@ -14074,8 +14007,6 @@ void MultiReplace::handleHighlightColumnsInDocument() {
     // --- Viewport snapshot (vertical + horizontal + selection)
     const ViewState vs = saveViewState();
 
-    const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
-    highlightedTabs.mark(currentBufferID);
     initializeColumnStyles();
     LRESULT totalLines = static_cast<LRESULT>(lineDelimiterPositions.size());
 
@@ -14090,6 +14021,7 @@ void MultiReplace::handleHighlightColumnsInDocument() {
 
     isColumnHighlighted = true;
     isCaretPositionEnabled = true;
+    noteHighlight();
 
     // --- Viewport restore
     restoreViewStateExact(vs);
@@ -14112,6 +14044,7 @@ void MultiReplace::restoreColumnVisuals() {
     if (isColumnHighlighted) {
         initializeColumnStyles();
         reapplyColumnHighlighting();
+        noteHighlight();
     }
 }
 
@@ -14130,25 +14063,23 @@ void MultiReplace::fixHighlightAtDocumentEnd() {
     if (!isColumnHighlighted) return;
 
     // Workaround: Highlight last lines to fix N++ bug causing loss of styling
-    size_t lastLine = lineDelimiterPositions.size();
-    LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+    const LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
 
-    if (lastLine >= 2) {
-        size_t highlightLine1 = lastLine - 2;
-        if (highlightLine1 < (size_t)docLineCount) {
-            highlightColumnsInLine(static_cast<LRESULT>(highlightLine1));
-        }
-        size_t highlightLine2 = lastLine - 1;
-        if (highlightLine2 < (size_t)docLineCount) {
-            highlightColumnsInLine(static_cast<LRESULT>(highlightLine2));
-        }
+    if (docLineCount >= 2) {
+        highlightColumnsInLine(docLineCount - 2);
+        highlightColumnsInLine(docLineCount - 1);
     }
 }
 
+// From the column data, or from the line's own text while the column data is not read
 void MultiReplace::highlightColumnsInLine(LRESULT line) {
-    // Retrieve the pre-parsed line information
-    const auto& lineInfo = lineDelimiterPositions[line];
+    if (line >= 0 && static_cast<size_t>(line) < lineDelimiterPositions.size())
+        styleColumnsInLine(line, lineDelimiterPositions[line]);
+    else
+        styleColumnsInLine(line, readDelimitersInLine(line));
+}
 
+void MultiReplace::styleColumnsInLine(LRESULT line, const LineInfo& lineInfo) {
     // Skip empty lines
     if (lineInfo.lineLength == 0) {
         return;
@@ -14215,10 +14146,18 @@ void MultiReplace::handleClearColumnMarks() {
     const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
 
     // If the tab was not highlighted, exit early
-    if (!highlightedTabs.isHighlighted(currentBufferID)) {
+    if (!m_csvDocs.highlighted(currentBufferID)) {
         return;
     }
 
+    clearColumnStyles();
+
+    // Remove tab from tracked highlighted tabs
+    m_csvDocs.unhighlight(currentBufferID);
+}
+
+// Every style back to the default: the column colors leave the document
+void MultiReplace::clearColumnStyles() {
     // --- Save viewport
     const ViewState vs = saveViewState();
 
@@ -14234,9 +14173,6 @@ void MultiReplace::handleClearColumnMarks() {
 
     // Force Scintilla to recalculate word wrapping if highlighting affected layout
     forceWrapRecalculation();
-
-    // Remove tab from tracked highlighted tabs
-    highlightedTabs.clear(currentBufferID);
 
     // --- Restore viewport
     restoreViewStateExact(vs);
@@ -14260,6 +14196,16 @@ void MultiReplace::processLogForDelimiters() {
         return;
     }
 
+    // Back in a document whose column data is not read again yet, lines are colored from their own text
+    const bool columnData = !lineDelimiterPositions.empty();
+    const LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
+    auto colorLine = [&](Sci_Position line) {
+        if (isColumnHighlighted && line >= 0 && line < docLineCount
+            && (!columnData || static_cast<size_t>(line) < lineDelimiterPositions.size())) {
+            highlightColumnsInLine(line);
+        }
+    };
+
     std::vector<LogEntry> modifyLogEntries;
     modifyLogEntries.reserve(logChanges.size());
 
@@ -14278,38 +14224,25 @@ void MultiReplace::processLogForDelimiters() {
                 }
             }
 
-            // Insert new lines
-            updateDelimitersInDocument(
-                static_cast<SIZE_T>(insertPos),
-                static_cast<SIZE_T>(blockCount),
-                ChangeType::Insert
-            );
+            if (columnData) {
+                // Insert new lines
+                updateDelimitersInDocument(
+                    static_cast<SIZE_T>(insertPos),
+                    static_cast<SIZE_T>(blockCount),
+                    ChangeType::Insert
+                );
 
-            // Immediately parse them so they're recognized
-            updateDelimitersInDocument(
-                static_cast<SIZE_T>(insertPos),
-                static_cast<SIZE_T>(blockCount),
-                ChangeType::Modify
-            );
-
-            updateUnsortedDocument(
-                static_cast<SIZE_T>(insertPos),
-                static_cast<SIZE_T>(blockCount),
-                ChangeType::Insert
-            );
+                // Immediately parse them so they're recognized
+                updateDelimitersInDocument(
+                    static_cast<SIZE_T>(insertPos),
+                    static_cast<SIZE_T>(blockCount),
+                    ChangeType::Modify
+                );
+            }
 
             // Optionally highlight all new lines
-            if (isColumnHighlighted) {
-                LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
-                for (Sci_Position offset = 0; offset < blockCount; ++offset) {
-                    Sci_Position lineToHighlight = insertPos + offset;
-                    if (lineToHighlight >= 0
-                        && static_cast<size_t>(lineToHighlight) < lineDelimiterPositions.size()
-                        && lineToHighlight < docLineCount)
-                    {
-                        highlightColumnsInLine(lineToHighlight);
-                    }
-                }
+            for (Sci_Position offset = 0; offset < blockCount; ++offset) {
+                colorLine(insertPos + offset);
             }
             break;
         }
@@ -14329,32 +14262,19 @@ void MultiReplace::processLogForDelimiters() {
                 }
             }
 
-            updateDelimitersInDocument(
-                static_cast<SIZE_T>(deletePos),
-                static_cast<SIZE_T>(blockCount),
-                ChangeType::Delete
-            );
-
-            updateUnsortedDocument(
-                static_cast<SIZE_T>(deletePos),
-                static_cast<SIZE_T>(blockCount),
-                ChangeType::Delete
-            );
+            if (columnData) {
+                updateDelimitersInDocument(
+                    static_cast<SIZE_T>(deletePos),
+                    static_cast<SIZE_T>(blockCount),
+                    ChangeType::Delete
+                );
+            }
 
             // Re-parse ONLY the merged line at deletePos
-            if (deletePos < (Sci_Position)lineDelimiterPositions.size()) {
+            if (columnData && deletePos < (Sci_Position)lineDelimiterPositions.size()) {
                 findDelimitersInLine(deletePos);
-
-                if (isColumnHighlighted) {
-                    LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
-                    if (deletePos >= 0
-                        && deletePos < docLineCount
-                        && static_cast<size_t>(deletePos) < lineDelimiterPositions.size())
-                    {
-                        highlightColumnsInLine(deletePos);
-                    }
-                }
             }
+            colorLine(deletePos);
             break;
         }
 
@@ -14376,23 +14296,14 @@ void MultiReplace::processLogForDelimiters() {
             continue; // skip removed lines
         }
 
-        if (static_cast<size_t>(m.lineNumber) < lineDelimiterPositions.size()) {
+        if (columnData && static_cast<size_t>(m.lineNumber) < lineDelimiterPositions.size()) {
             updateDelimitersInDocument(
                 static_cast<size_t>(m.lineNumber),
                 1,
                 ChangeType::Modify
             );
-
-            if (isColumnHighlighted) {
-                LRESULT docLineCount = send(SCI_GETLINECOUNT, 0, 0);
-                if (m.lineNumber >= 0
-                    && m.lineNumber < docLineCount
-                    && static_cast<size_t>(m.lineNumber) < lineDelimiterPositions.size())
-                {
-                    highlightColumnsInLine(m.lineNumber);
-                }
-            }
         }
+        colorLine(m.lineNumber);
     }
 
     // Workaround: Highlight last lines to fix N++ bug causing loss of styling
@@ -14476,58 +14387,33 @@ void MultiReplace::handleDelimiterPositions(DelimiterOperation operation) {
         return;
     }
 
-    // Active N++ window changed: the column data of the document left goes. Flow Tabs stay: the document
-    // left was cleaned on the switch, and this call can come from inside an edit, where text cannot change
-    if (documentSwitched) {
-        resetDelimiterState();
-        documentSwitched = false;
-    }
-
     if (operation == DelimiterOperation::LoadAll) {
         // Parse column and delimiter data; exit if parsing fails or if delimiter is empty
-        if (!parseColumnAndDelimiterData()) {
+        if (!parseColumnAndDelimiterData() || !columnDelimiterData.isValid()) {
             return;
         }
+        noteCsvText();
 
-        // Check current highlight status (global or per-tab)
-        const auto currentBufferID = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
-        const bool highlightActive = (isColumnHighlighted != FALSE) ||
-            highlightedTabs.isHighlighted(currentBufferID);
+        // The highlight is colored again only if its settings changed or the text changed past the change log
+        const bool structureChanged = columnDelimiterData.delimiterChanged || columnDelimiterData.quoteCharChanged;
+        const bool textChanged = _delimiterPositionsStale || !columnDataFitsText();
 
-        // Trigger scan only if necessary
-        if (columnDelimiterData.isValid() &&
-            (columnDelimiterData.delimiterChanged ||
-                columnDelimiterData.quoteCharChanged ||
-                _delimiterPositionsStale ||
-                lineDelimiterPositions.empty()))
-        {
+        if (structureChanged || textChanged || lineDelimiterPositions.empty()) {
             findAllDelimitersInDocument();
-
-            // Re-apply highlight when structure changed and highlight is active
-            if (highlightActive) {
-                handleHighlightColumnsInDocument();
-            }
         }
-
-        // Re-apply highlight when only the selected column changed (no rescan required)
-        if (columnDelimiterData.isValid() &&
-            columnDelimiterData.columnChanged &&
-            highlightActive)
-        {
+        if (isColumnHighlighted && (structureChanged || textChanged || columnDelimiterData.columnChanged)) {
             handleHighlightColumnsInDocument();
         }
     }
     else if (operation == DelimiterOperation::Update) {
-        // Ensure the columns and delimiter data is present before processing updates
-        if (columnDelimiterData.isValid()) {
-            processLogForDelimiters();
-        }
+        processLogForDelimiters();
     }
 }
 
 void MultiReplace::handleClearDelimiterState() {
     resetDelimiterState();
     clearFlowTabsIfAny();
+    m_csvDocs.csvEnded();   // in the other documents the highlight goes when they become active
 }
 
 // Column positions, highlighting and the change log start over; the text stays as it is
@@ -14544,6 +14430,100 @@ void MultiReplace::resetDelimiterState() {
         handleClearColumnMarks();
     }
     isCaretPositionEnabled = false;
+}
+
+// The panel's CSV view goes back to its document; the column data is read again when needed
+void MultiReplace::parkCsvView() {
+    if (m_csvBuffer != 0) {
+        m_csvDocs.park(m_csvBuffer, { std::move(originalLineOrder), static_cast<int>(currentSortState), isSortedColumn });
+    }
+    m_csvBuffer = 0;
+    m_csvDocument = 0;
+    originalLineOrder.clear();
+    currentSortState = SortDirection::Unsorted;
+    isSortedColumn = false;
+    isColumnHighlighted = false;
+    isCaretPositionEnabled = false;
+    lineDelimiterPositions.clear();
+    invalidateCsvRowCache();
+    logChanges.clear();
+    isLoggingEnabled = false;
+    textModified = false;
+    _delimiterPositionsStale = false;
+}
+
+// The CSV view a document kept: style colors set again, sort state back; colors of a text changed elsewhere go
+void MultiReplace::resumeCsvView(UINT_PTR buffer) {
+    pointerToScintilla();
+    if (!_hScintilla) return;
+    m_csvBuffer = buffer;
+    m_csvDocument = static_cast<std::intptr_t>(send(SCI_GETDOCPOINTER, 0, 0));
+
+    CsvDocState::View view = m_csvDocs.resume(buffer, csvSnapshot());
+    if (view.stale) {
+        clearColumnStyles();
+    }
+    if (view.highlighted) {
+        // Edits color lines with the settings the document was colored with; a CSV action compares against them
+        columnDelimiterData.inputColumns.assign(view.coloring.columns.begin(), view.coloring.columns.end());
+        columnDelimiterData.columns = view.coloring.columns;
+        columnDelimiterData.extendedDelimiter = view.coloring.delimiter;
+        columnDelimiterData.delimiterLength = view.coloring.delimiter.length();
+        columnDelimiterData.quoteChar = view.coloring.quote;
+        columnDelimiterData.delimiterChanged = false;
+        columnDelimiterData.quoteCharChanged = false;
+        columnDelimiterData.columnChanged = false;
+        isColumnHighlighted = true;
+        applyColumnStyleColors();
+        // Padding taken out on leaving changed the text as well: same workaround as after typing
+        fixHighlightAtDocumentEnd();
+    }
+    originalLineOrder = std::move(view.sorting.originalLineOrder);
+    currentSortState = static_cast<SortDirection>(view.sorting.direction);
+    isSortedColumn = view.sorting.tracking;
+    UpdateSortButtonSymbols();
+
+    // Edits keep the colors up to date until the column data is read again
+    isLoggingEnabled = isColumnHighlighted && IsDlgButtonChecked(_hSelf, IDC_COLUMN_MODE_RADIO) == BST_CHECKED;
+}
+
+// The active document's text as last seen, while it shows a CSV view
+void MultiReplace::noteCsvText() {
+    const bool csvView = isColumnHighlighted || isSortedColumn || currentSortState != SortDirection::Unsorted;
+    if (!csvView || m_csvBuffer == 0
+        || static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)) != m_csvBuffer) return;
+    const CsvDocState::Snapshot now = csvSnapshot();
+    if (m_csvDocs.reloaded(m_csvBuffer, now)) {
+        dropCsvView();
+        return;
+    }
+    m_csvDocs.seen(m_csvBuffer, now);
+}
+
+// Notepad++ reloaded the document without a change notification: highlight and sort state no longer fit
+void MultiReplace::dropCsvView() {
+    handleClearColumnMarks();
+    endSortState();
+    _delimiterPositionsStale = true;
+}
+
+// The column data, if read, still describes the text: as many lines, as long in total
+bool MultiReplace::columnDataFitsText() const {
+    if (lineDelimiterPositions.empty()) return true;
+    if (static_cast<LRESULT>(lineDelimiterPositions.size()) != send(SCI_GETLINECOUNT, 0, 0)) return false;
+    LRESULT length = 0;
+    for (const LineInfo& line : lineDelimiterPositions) length += line.lineLength;
+    return length == send(SCI_GETLENGTH, 0, 0);
+}
+
+// The active document is colored with the current column data
+void MultiReplace::noteHighlight() {
+    m_csvDocs.highlight(static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)),
+        { columnDelimiterData.columns, columnDelimiterData.extendedDelimiter, columnDelimiterData.quoteChar }, csvSnapshot());
+}
+
+CsvDocState::Snapshot MultiReplace::csvSnapshot() const {
+    return { send(SCI_GETLENGTH), send(SCI_GETLINECOUNT), send(SCI_GETUNDOACTIONS), send(SCI_GETUNDOCURRENT) };
 }
 
 // For testing purposes - uncomment to debug log changes
@@ -20100,6 +20080,7 @@ void MultiReplace::applyConfigSettingsOnly()
 #pragma region Event Handling -- triggered in beNotified() in MultiReplace.cpp
 
 void MultiReplace::processTextChange(SCNotification* notifyCode) {
+    if (instance) instance->followLineOrder(notifyCode);
     if (!isLoggingEnabled) {
         return;
     }
@@ -20322,11 +20303,18 @@ void MultiReplace::onFileSaved(UINT_PTR bufferId) {
 }
 
 void MultiReplace::onFileBeforeClose(UINT_PTR bufferId) {
-    // Notepad++ may hand the id of a closed document to the next one it opens
-    _duplicateBookmarkBuffers.erase(bufferId);
     MultiReplace* self = instance;
     if (!self) return;
-    self->highlightedTabs.clear(bufferId);
+    // Closing one of two views (clone, move to the other view) leaves the document open with padding and CSV view
+    const LRESULT inMain = ::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, bufferId, MAIN_VIEW);
+    const LRESULT inSub = ::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, bufferId, SUB_VIEW);
+    if (inMain != -1 && (inMain >> 30) != (inSub >> 30)) return;
+    // Notepad++ may hand the id of a closed document to the next one it opens
+    self->m_csvDocs.forget(bufferId);
+    if (bufferId == self->m_csvBuffer) {   // the panel's CSV view closes with it
+        self->m_csvBuffer = 0;
+        self->m_csvDocument = 0;
+    }
     const auto it = self->m_flowTabsDocs.find(bufferId);
     if (it == self->m_flowTabsDocs.end()) return;
     self->m_flowTabs.forget(it->second);
@@ -20386,13 +20374,17 @@ static bool GetViewIndexFromBufferId(BufferId bufId, int& viewOut, int& indexOut
 }
 
 // Post (not Send) an activation to avoid reentrancy freezes inside onDocumentSwitched().
-// Returns false if the buffer no longer exists (e.g. was closed).
+// Returns false if the buffer no longer shows in a visible view: for a hidden one Notepad++ would activate that index here.
 static bool PostActivateBufferId(BufferId bufId)
 {
-    int view, index;
-    if (!GetViewIndexFromBufferId(bufId, view, index)) return false;
-    ::PostMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, static_cast<WPARAM>(view), static_cast<LPARAM>(index));
-    return true;
+    for (const int view : { MAIN_VIEW, SUB_VIEW }) {
+        const HWND sci = (view == MAIN_VIEW) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        const int pos = static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETPOSFROMBUFFERID, (WPARAM)bufId, view));
+        if (pos < 0 || ((pos >> 30) & 0x3) != view || !::IsWindowVisible(sci)) continue;
+        ::PostMessage(nppData._nppHandle, NPPM_ACTIVATEDOC, static_cast<WPARAM>(view), static_cast<LPARAM>(pos & 0x3FFFFFFF));
+        return true;
+    }
+    return false;
 }
 
 void MultiReplace::onDocumentSwitched()
@@ -20433,12 +20425,15 @@ void MultiReplace::onDocumentSwitched()
             self->m_flowTabs.switchOff(directSend(hSci), &ranges);
         }
         self->afterFlowTabsChange(ranges, false, false);
+        self->noteCsvText();   // the text this document is left with
 
-        // Now go back to the originally requested target buffer, asynchronously.
+        // Now go back to the originally requested target buffer, asynchronously (not into a hidden view).
         const BufferId backId = g_returnBufId;
         g_pendingCleanId = 0;
         g_cleanInProgress = false;
-        PostActivateBufferId(backId);
+        // No way back (closed, or in a view that closed): this document stays, without its padding
+        if (!PostActivateBufferId(backId))
+            self->showStatusMessage(LM.get(L"status_tabs_removed"), MessageStatus::Info);
         return; // stop here; arrival on target continues in the next call
     }
 
@@ -20460,7 +20455,7 @@ void MultiReplace::onDocumentSwitched()
         g_cleanInProgress = true;
         if (!PostActivateBufferId(g_prevBufId))
         {
-            // Buffer was closed before we could hop back - abandon cleanup.
+            // Buffer was closed or shows only in a hidden view - abandon cleanup.
             g_pendingCleanId = 0;
             g_cleanInProgress = false;
             // Fall through to normal arrival housekeeping below.
@@ -20480,29 +20475,18 @@ void MultiReplace::onDocumentSwitched()
     }
     self->syncFlowTabsState();
 
-    const int currentBufferID =
-        static_cast<int>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
-
-    if (currentBufferID == self->scannedDelimiterBufferID) {
+    if (currBufId == self->m_csvBuffer) {
         g_prevBufId = currBufId; // remember for next natural switch
         return;
     }
 
-    self->documentSwitched = true;
-    self->isCaretPositionEnabled = false;
-    self->scannedDelimiterBufferID = currentBufferID;
-
-    self->handleClearColumnMarks();
-    self->isColumnHighlighted = false;
+    // The CSV view stays with its document: the one left keeps it, the one arrived at shows its own
+    self->parkCsvView();
+    self->resumeCsvView(currBufId);
 
     self->showStatusMessage(L"", MessageStatus::Info);
 
     self->m_selectionScope.clear();
-
-    self->originalLineOrder.clear();
-    self->currentSortState = SortDirection::Unsorted;
-    self->isSortedColumn = false;
-    self->UpdateSortButtonSymbols();
 
     // This buffer is now the "previous" for the *next* user switch
     g_prevBufId = currBufId;
@@ -20592,6 +20576,13 @@ void MultiReplace::onSelectionChanged()
 
 void MultiReplace::onTextChanged() {
     textModified = true;
+}
+
+// The text a document with a CSV view shows, as MultiReplace last saw it
+void MultiReplace::onViewUpdated(HWND view) {
+    MultiReplace* self = instance;
+    if (!self || !isWindowOpen || DocCycleGuard::active() || view != self->_hScintilla) return;
+    self->noteCsvText();
 }
 
 void MultiReplace::onCaretPositionChanged()
