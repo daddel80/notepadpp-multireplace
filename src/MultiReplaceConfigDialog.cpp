@@ -905,8 +905,8 @@ void MultiReplaceConfigDialog::createCsvOptionsPanelControls() {
         lb.AddCheckbox(IDC_CFG_FLOWTABS_NUMERIC_ALIGN, LM.getLPCW(L"config_chk_numeric_align"));
         lb.AddCheckbox(IDC_CFG_FLOWTABS_INTRO_DONTSHOW, LM.getLPCW(L"config_chk_flowtabs_intro_dontshow"));
         lb.AddCheckbox(IDC_CFG_DUPLICATE_BOOKMARKS, LM.getLPCW(L"config_chk_duplicate_bookmarks"));
-        lb.AddLabel(IDC_CFG_CSV_SORT_LABEL, LM.getLPCW(L"config_lbl_csv_sort"), 240);
-        lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 250, -2, 45, 22);
+        lb.AddLabel(IDC_CFG_CSV_SORT_LABEL, LM.getLPCW(L"config_lbl_csv_sort"), 280);
+        lb.AddNumberEdit(IDC_CFG_HEADERLINES_EDIT, 290, -2, 45, 22);
     }
 
     if (_hCategoryFont) applyFonts();

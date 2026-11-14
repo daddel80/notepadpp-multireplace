@@ -434,7 +434,7 @@ Settings specific to the CSV column manipulation and alignment features.
 
 - **Flow Tabs: Right-align numeric columns** — When using the **Flow Tabs** feature (Column Alignment), numeric values will be right-aligned within their columns for better readability. Text remains left-aligned.
 - **Flow Tabs: Don't show intro message** — Suppresses the informational dialog that appears when activating Flow Tabs for the first time.
-- **CSV Sort: Header rows to exclude** — Number of header rows protected from sort and duplicate detection. Set to `0` to disable.
+- **Header rows (Sort, Find Duplicates)** — Number of header rows protected from sort and duplicate detection. Set to `0` to disable.
 - **Mark duplicate rows with bookmarks** — Places Notepad++ bookmarks on duplicate lines for navigation (F2 / Shift+F2). Clears existing bookmarks when active.
 
 ### 5. Copy Report

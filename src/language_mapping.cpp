@@ -306,7 +306,7 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_button_cancel", L"Cancel" },
 { L"msgbox_title_delete_duplicates", L"Delete Duplicates" },
 { L"msgbox_duplicates_question", L"Delete duplicate rows?" },
-{ L"msgbox_duplicates_stats", L"$REPLACE_STRING1 duplicates in $REPLACE_STRING2 groups" },
+{ L"msgbox_duplicates_stats", L"Duplicates: $REPLACE_STRING1, groups: $REPLACE_STRING2" },
 { L"msgbox_duplicates_mode", L"Mode: $REPLACE_STRING" },
 { L"msgbox_duplicates_exact", L"Exact Match" },
 { L"msgbox_duplicates_ignoring", L"Ignoring Case" },
@@ -424,7 +424,7 @@ const LangKV kEnglishPairs[] = {
 { L"config_chk_numeric_align", L"Flow Tabs: Right-align numeric columns" },
 { L"config_chk_flowtabs_intro_dontshow", L"Flow Tabs: Don't show intro message" },
 { L"config_chk_duplicate_bookmarks", L"Mark duplicate rows with bookmarks" },
-{ L"config_lbl_csv_sort", L"CSV Sort: Header rows to exclude:" },
+{ L"config_lbl_csv_sort", L"Header rows (Sort, Find Duplicates):" },
 
 // Export
 { L"config_grp_report", L"Copy Report" },
