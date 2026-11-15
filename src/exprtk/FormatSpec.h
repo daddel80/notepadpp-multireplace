@@ -88,7 +88,7 @@ namespace FormatSpec {
     };
 
     enum class NumericType {
-        Default,    // type omitted entirely - shortest round-trip (std::to_chars)
+        Default,    // type omitted entirely - formatDefault()
         Fixed,      // f
         Scientific, // e
         General,    // g
@@ -174,6 +174,12 @@ namespace FormatSpec {
     // malformed grammar.
     Spec parse(const std::wstring& specText);
 
+    // Default number output, used without a spec and for a spec without
+    // type letter and precision. Up to 15 significant digits, so binary
+    // noise stays out (42*0.9 gives 37.8, not 37.800000000000004); whole
+    // numbers exactly, without exponent below 2^53; -0 as 0. C-locale digits.
+    std::string formatDefault(double value);
+
     // Render a numeric value through spec. Valid for kinds Numeric,
     // Duration, Date. For Text-kind specs this returns an empty string;
     // callers must route those through the string overload instead.
@@ -218,7 +224,7 @@ namespace FormatSpec {
     //
     // No '~' present -> the whole input goes into .first, .second
     // stays empty. That's the back-compat path: ExprTk evaluates the
-    // formula and formats with the default shortest round-trip.
+    // formula and formats with the default number output.
     struct Split {
         std::string formula;
         std::string spec;

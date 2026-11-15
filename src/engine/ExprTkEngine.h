@@ -27,7 +27,7 @@
 //     (CNT/LCNT/LINE/LPOS/APOS/COL mirror the FormulaVars counter set;
 //      HIT is the full match parsed as a number, equivalent to num(0).)
 //
-//   Variables (string, read-only - usable inside return [...] only):
+//   Variables (string, read-only):
 //     FPATH  FNAME
 //
 //   Functions:
@@ -35,12 +35,12 @@
 //                * num(0) = the full match (same as HIT)
 //                * num(1) = first capture group
 //                * num(N) = N-th capture group
-//                String-to-double uses std::from_chars (locale-
-//                independent: only "." is a decimal separator).
+//                Text is read by parseNumber (NumberParse.h): '.' or
+//                ',' as decimal separator, leading spaces and a sign.
 //                A capture that does not parse as a number yields NaN;
 //                NaN propagates through arithmetic and is surfaced as
 //                an explicit error rather than silently coerced to 0.
-//     txt(N)  -> capture group N as raw string (for return [...])
+//     txt(N)  -> capture group N as raw string
 //     skip()  -> mark the current match to be left untouched
 //     seq([start, [inc]])
 //             -> sequence value start + (CNT-1)*inc.
@@ -54,8 +54,7 @@
 //                non-numeric content. Requires CSV mode to be active.
 //     txtcol(N) / txtcol('name')
 //             -> CSV column on the current row, as raw string. Same
-//                addressing rules as numcol; only useful inside a
-//                return [...] list.
+//                addressing rules as numcol.
 //     loadlib(p) -> load a library of user-defined functions from path p
 //                (typically used in an empty-Find init slot)
 //
@@ -65,15 +64,16 @@
 //
 // Lifecycle:
 //   1. Construct via EngineFactory::create(EngineType::ExprTk, host).
-//      The host pointer is accepted for symmetry with LuaEngine but
-//      currently unused; ExprTk needs no UI callbacks.
-//   2. initialize() registers variables and functions in the symbol
-//      table.
+//      The host shows errors and dialogs, escapes regex output and
+//      reads CSV columns.
+//   2. initialize() registers variables and functions in two symbol
+//      tables: match-bound ones and the built-ins usable everywhere.
 //   3. compile(template) splits the template into segments and pre-
-//      compiles every (?=expr) block.
+//      compiles every (?=expr) block; compiled templates are kept per
+//      script for the run.
 //   4. execute(template, vars, ...) updates the per-match variables
 //      and evaluates each compiled expression in document order.
-//   5. shutdown() releases the compiled expressions and symbol table.
+//   5. shutdown() releases the compiled templates and the library.
 //
 // Threading:
 //   Not thread-safe. Each tab owns its own engine instance.
@@ -92,8 +92,10 @@
 // only. Other code paths see ExprTkEngine through IFormulaEngine.
 #include "../exprtk/third_party/exprtk.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <random>
 #include <string>
 #include <vector>
@@ -102,10 +104,6 @@ namespace MultiReplaceEngine {
 
     class ExprTkEngine final : public IFormulaEngine {
     public:
-        // The host pointer is accepted for symmetry with LuaEngine; the
-        // ExprTk path currently makes no callbacks back into the host. It
-        // is stored for future use (e.g. an "evaluation log" hook) but
-        // never dereferenced by the current implementation.
         explicit ExprTkEngine(ILuaEngineHost* host);
         ~ExprTkEngine() override;
 
@@ -126,7 +124,7 @@ namespace MultiReplaceEngine {
         FormulaResult execute(
             const std::string& scriptUtf8,
             const FormulaVars& vars,
-            bool isRegexMatch,
+            ReplaceMode mode,
             int  documentCodepage
         ) override;
 
@@ -163,29 +161,21 @@ namespace MultiReplaceEngine {
         // separator.
         static double parseCaptureToDouble(const std::string& s);
 
-        // Format a double back into a string for insertion into the
-        // replace output. Uses the shortest round-trip representation
-        // available via std::to_chars, falling back to a fixed-precision
-        // format for extreme magnitudes.
+        // Format a double for the replace output: FormatSpec::formatDefault,
+        // empty for NaN and Inf.
         static std::string formatDouble(double value);
 
-        // Append the elements of an ExprTk return-value list onto the
-        // output string. Used when the user invokes 'return [...]' inside
-        // an (?= ...) expression - that lets a single expression emit
-        // mixed string and numeric output, which is the only way to get
-        // a string-typed variable (FNAME, FPATH) into the result.
-        // Errors during element traversal are tolerated rather than
-        // aborted; an unknown element type is silently skipped so a
-        // future ExprTk extension cannot break a running replace.
+        // Append the elements of an ExprTk return-value list ('return
+        // [...]') onto out, unescaped. Unknown element types are skipped
+        // so a future ExprTk extension cannot break a running replace.
         // A NaN or Inf scalar element sets _outputHadInvalid so the
-        // caller can skip the match (consistent with the numeric-path
-        // invalid-result handling).
-        // When escapeForRegex is true, any \ or $ produced by the
-        // expression is escaped so the output is safe to feed to a
-        // regex replacement engine; literal text segments outside of
-        // (?=...) blocks are not affected.
-        void appendExprtkResults(const expression_t& expr, std::string& out,
-            bool escapeForRegex);
+        // caller can skip the match like on the numeric path.
+        void appendExprtkResults(const expression_t& expr, std::string& out);
+
+        // Append formula output so the host's replace step keeps it
+        // literal: regex specials or extended-mode backslashes are escaped.
+        // Literal template text bypasses this and keeps its meaning.
+        void appendOutput(std::string& out, const std::string& text, ReplaceMode mode);
 
         // ExprTk-callable wrapper: implements num(N). Reads from the
         // _captures vector populated at the start of execute().
@@ -828,10 +818,10 @@ namespace MultiReplaceEngine {
                 parameter_list_t parameters) override;
         };
 
-        // totxt(n) -> n as a string (shortest round-trip, same as the
-        // default number output). totxt(n, fmt) -> n formatted with the
-        // '~ fmt' grammar. fmt is parsed per call; an invalid fmt, or a
-        // text spec (t:...) applied to a number, yields "".
+        // totxt(n) -> n as a string, same as the default number output.
+        // totxt(n, fmt) -> n formatted with the '~ fmt' grammar; the last
+        // parsed fmt is kept. An invalid fmt, or a text spec (t:...)
+        // applied to a number, yields "".
         class TotxtFunction : public exprtk::igeneric_function<double> {
         public:
             using igenfunct_t = exprtk::igeneric_function<double>;
@@ -845,6 +835,40 @@ namespace MultiReplaceEngine {
             double operator()(const std::size_t& psi,
                 std::string& result,
                 parameter_list_t parameters) override;
+
+        private:
+            std::string      _lastFmt;
+            FormatSpec::Spec _lastSpec;
+        };
+
+        // Runaway protection for templates and library bodies. ExprTk's
+        // loop and vector-index checks report here and library calls test
+        // the stack; a trip ends the evaluation, execute() stops the run.
+        class RuntimeGuard final : public exprtk::loop_runtime_check,
+                                   public exprtk::vector_access_runtime_check {
+        public:
+            RuntimeGuard();
+
+            // Register the loop and vector checks with a parser (before compiling).
+            void attach(parser_t& parser);
+
+            // Per evaluation: clears the loop budget and any trip.
+            void reset();
+
+            void trip(const std::string& message);
+            bool tripped() const { return !_message.empty(); }
+            const std::string& message() const { return _message; }
+
+            // True when a library call must not nest one level deeper.
+            bool stackLow() const;
+
+            bool check() override;
+            void handle_runtime_violation(const loop_runtime_check::violation_context&) override;
+            bool handle_runtime_violation(vector_access_runtime_check::violation_context&) override;
+
+        private:
+            std::uint64_t _iterations = 0;
+            std::string   _message;
         };
 
         // ----- ecmd library plumbing ---------------------------------------
@@ -873,13 +897,13 @@ namespace MultiReplaceEngine {
             using generic_t = typename igenfunct_t::generic_type;
             using parameter_list_t = typename igenfunct_t::parameter_list_t;
 
-            EcmdFunctionInstance(const EcmdParser::FunctionDef& def);
+            EcmdFunctionInstance(const EcmdParser::FunctionDef& def, RuntimeGuard& guard);
 
-            // Register both the per-instance inner symbol table (for the
-            // bound argument slots) and the shared library symbol table
-            // (so cross-calls to other ecmd functions resolve). Must be
-            // called before compileBody().
-            void prepareSymbolTables(symbol_table_t& libTable);
+            // Register the per-instance inner symbol table (for the bound
+            // argument slots), the shared library symbol table (so cross-
+            // calls to other ecmd functions resolve) and the engine's
+            // built-ins. Must be called before compileBody().
+            void prepareSymbolTables(symbol_table_t& libTable, symbol_table_t& builtins);
 
             // Compile the user-authored body string. Must run after
             // prepareSymbolTables(), and after every function in the
@@ -905,6 +929,10 @@ namespace MultiReplaceEngine {
             static igenfunct_t::return_type makeReturnType(
                 EcmdParser::ValueType rt);
 
+            // False when the guard tripped or the stack is nearly used up;
+            // the call then returns NaN or "" without running the body.
+            bool mayRun();
+
             // Snapshot of all argument slots before a call, kept so the
             // restore step can put them back exactly as they were. Holds
             // values, not references, so it survives even when the slot
@@ -924,6 +952,7 @@ namespace MultiReplaceEngine {
 
             std::string                                 _name;
             std::string                                 _body;
+            RuntimeGuard&                               _guard;
 
             symbol_table_t                              _innerSymbols;
             expression_t                                _innerExpr;
@@ -947,12 +976,14 @@ namespace MultiReplaceEngine {
         // Owns all ecmd functions loaded during the current run. Lifetime
         // is one Replace-All: re-created in beginRun(). The library's own
         // symbol_table is what holds the function registrations; the
-        // outer engine expression registers this table alongside its main
-        // symbol_table so user-written (?=...) blocks can call any loaded
-        // function.
+        // outer engine expression registers this table alongside the
+        // engine's tables so user-written (?=...) blocks can call any
+        // loaded function. Bodies see the built-ins, not the match-bound
+        // symbols: the history analysis only sees templates.
         class EcmdLibrary {
         public:
-            EcmdLibrary() = default;
+            EcmdLibrary(symbol_table_t& matchSymbols, symbol_table_t& builtins,
+                RuntimeGuard& guard);
 
             // Returns the library's symbol_table. The engine registers
             // this against every compiled (?=...) expression so calls to
@@ -973,8 +1004,16 @@ namespace MultiReplaceEngine {
             bool empty() const { return _instances.empty(); }
 
         private:
+            // True when table already knows name as a variable or function.
+            static bool hasName(const symbol_table_t& table, const std::string& name);
+
+            symbol_table_t&                                      _matchSymbols;
+            symbol_table_t&                                      _builtins;
+            RuntimeGuard&                                        _guard;
             symbol_table_t                                       _libTable;
             std::vector<std::unique_ptr<EcmdFunctionInstance>>   _instances;
+            // Contents loaded in this run; the same library again is a no-op.
+            std::unordered_set<std::string>                      _loaded;
             // Parser is owned by the library so its diagnostic state
             // doesn't leak across loads from different files.
             parser_t                                             _parser;
@@ -1018,24 +1057,18 @@ namespace MultiReplaceEngine {
 
         // ----- state -------------------------------------------------------
 
-        ILuaEngineHost* _host;            // accepted, currently unused
+        ILuaEngineHost* _host;
 
-        // Pre-parsed segments of the most recently compiled template.
-        // Kept alongside the expressions so execute() can iterate both in
-        // lockstep without re-parsing.
-        ExprTkPatternParser::ParseResult _parsedTemplate;
-
-        // Compile cache: when compile() is called twice with the same
-        // template, we skip re-parsing and re-compiling.
-        std::string _lastCompiledScript;
-        bool        _haveCompiled = false;
-
-        // ExprTk plumbing
-        symbol_table_t              _symbolTable;
+        // ExprTk plumbing. _matchSymbols holds what depends on the current
+        // match (CNT, num, txt, history readers, skip, loadlib, ...);
+        // _builtinSymbols the functions usable everywhere, library
+        // bodies included (string pack, conversions, rnd, now, ...).
+        RuntimeGuard                _guard;
+        symbol_table_t              _matchSymbols;
+        symbol_table_t              _builtinSymbols;
         parser_t                    _parser;
-        std::vector<expression_t>   _compiledExpressions;
 
-        // Per-segment output spec, in lockstep with _compiledExpressions.
+        // Per-segment output spec, in lockstep with the expressions.
         // hasSpec=false means no "~ spec" suffix; engine uses formatDouble().
         // isString=true means the root node is string-producing (e.g.
         // (?=num2rom(num(1))) or (?='abc')); the engine reads the string
@@ -1045,7 +1078,28 @@ namespace MultiReplaceEngine {
             bool isString = false;
             FormatSpec::Spec spec;
         };
-        std::vector<SegmentSpec>    _segmentSpecs;
+
+        // One compiled template: its segments, the compiled block
+        // expressions and specs (in lockstep, by segment index) and the
+        // history dimensions from the analyzer.
+        struct CompiledTemplate {
+            ExprTkPatternParser::ParseResult parsed;
+            std::vector<expression_t>        expressions;
+            std::vector<SegmentSpec>         specs;
+            std::size_t histLookback = 0;
+            std::size_t histCaps = 0;
+            std::size_t histBlocks = 0;
+        };
+
+        // Parse and compile scriptUtf8 into out. Errors are reported to
+        // the host; returns false then.
+        bool compileTemplate(const std::string& scriptUtf8, CompiledTemplate& out);
+
+        // Compiled templates of this run, keyed by script, so rules that
+        // take turns (one-pass) compile once. Cleared in beginRun(): the
+        // library functions they call change between runs.
+        std::unordered_map<std::string, CompiledTemplate> _templates;
+        CompiledTemplate* _active = nullptr;
 
         // Variables registered with the symbol table. Held as members
         // (not locals) because ExprTk binds them by reference - they must
@@ -1204,9 +1258,6 @@ namespace MultiReplaceEngine {
         struct ShelvedHistory { std::string script; MatchHistory ring; std::size_t capCap = 0; };
         std::unordered_map<std::size_t, ShelvedHistory> _historyShelf;
         std::size_t _activeHistRule = kNoRule;
-        std::size_t _slotHistLookback = 0;   // dims of the slot's compiled script
-        std::size_t _slotHistCaps = 0;
-        std::size_t _slotHistBlocks = 0;
         std::vector<BlockOutput>    _currentBlockOutputs;
         std::size_t                 _currentBlockIndex = 0;
 

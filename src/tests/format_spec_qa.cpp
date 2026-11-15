@@ -75,6 +75,37 @@ void checkText(const std::wstring& specText, const std::string& value,
     ++passed;
 }
 
+void checkDefault(double value, const std::string& expected, const char* label)
+{
+    const std::string got = FormatSpec::formatDefault(value);
+    if (got != expected) {
+        std::wcout << L"FAIL [" << label << L"] expected=\""
+                   << std::wstring(expected.begin(), expected.end())
+                   << L"\" got=\"" << std::wstring(got.begin(), got.end()) << L"\"\n";
+        ++failed;
+        return;
+    }
+    ++passed;
+}
+
+// apply() packs UTF-8 one byte per wchar_t; compare those bytes.
+void checkUtf8(const std::wstring& specText, double value,
+               const std::string& expectedUtf8, const char* label)
+{
+    auto spec = FormatSpec::parse(specText);
+    std::string got;
+    if (spec.valid) {
+        for (wchar_t wc : FormatSpec::apply(spec, value)) got.push_back(static_cast<char>(wc));
+    }
+    if (!spec.valid || got != expectedUtf8) {
+        std::wcout << L"FAIL [" << label << L"] "
+                   << (spec.valid ? L"output differs" : L"parse error") << L"\n";
+        ++failed;
+        return;
+    }
+    ++passed;
+}
+
 void checkParseError(const std::wstring& specText, const char* label)
 {
     auto spec = FormatSpec::parse(specText);
@@ -431,6 +462,28 @@ int main(int argc, char** argv) {
         if (sp.valid && !sp.dateUtc && sp.dateFormat == L"%H:%M:%S") ++passed;
         else { std::wcout << L"FAIL [colon pattern no marker]\n"; ++failed; }
     }
+
+    // ---- Default number output (no type letter, no precision) ----
+    checkDefault(42 * 0.9,           "37.8",              "binary noise hidden");
+    checkDefault(0.1 + 0.2,          "0.3",               "0.1 + 0.2");
+    checkDefault(1.0 / 3.0,          "0.333333333333333", "15 significant digits");
+    checkDefault(9007199254740992.0, "9007199254740992",  "2^53 in full");
+    checkDefault(100000.0,           "100000",            "round whole number");
+    checkDefault(1.5e10,             "15000000000",       "whole number below 2^53");
+    checkDefault(-5e6,               "-5000000",          "negative whole number");
+    checkDefault(1e20,               "1e+20",             "large whole number");
+    checkDefault(-0.0,               "0",                 "negative zero");
+    checkDefault(-2.5,               "-2.5",              "negative");
+    check(L"8",     42 * 0.9,        L"    37.8",         "frame on default type");
+    check(L"+",     0.1 + 0.2,       L"+0.3",             "sign on default type");
+
+    // ---- Non-ASCII fill and date text, spec given as UTF-16 ----
+    checkUtf8(L"\u00B7>8.2f", 3.14159,
+              "\xC2\xB7\xC2\xB7\xC2\xB7\xC2\xB7" "3.14", "fill U+00B7");
+    checkUtf8(L"\U0001F600>6.1f", 3.14159,
+              "\xF0\x9F\x98\x80\xF0\x9F\x98\x80\xF0\x9F\x98\x80" "3.1", "fill above U+FFFF");
+    checkUtf8(L"d:utc:%d. M\u00E4rz %Y", 1678000000.0,
+              "05. M\xC3\xA4rz 2023", "date literal text");
 
     // ---- Result summary ----
     std::wcout << L"\n========================================\n";

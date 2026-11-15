@@ -201,9 +201,11 @@ namespace MultiReplaceEngine {
     FormulaResult LuaEngine::execute(
         const std::string& scriptUtf8,
         const FormulaVars& vars,
-        bool isRegexMatch,
+        ReplaceMode mode,
         int /*documentCodepage*/)
     {
+        // Lua output goes through the host's extended step unescaped, as it always did
+        const bool isRegexMatch = (mode == ReplaceMode::Regex);
         FormulaResult result;
         result.output = scriptUtf8;  // default: pass-through if anything fails
         result.outputIsRegexSafe = false;

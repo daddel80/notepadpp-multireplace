@@ -59,7 +59,7 @@ std::string readIdentifier(Cursor& c) {
 }
 
 // Token-aware byte advance over the body looking for the closing `end`
-// keyword. Handles ExprTk string literals ('...' with '' as escape),
+// keyword. Handles ExprTk string literals ('...' with \ as escape),
 // /* */ and // comments, and skips identifiers atomically so `end`
 // inside `extended` doesn't trigger a false match. Returns the offset
 // of the `end` keyword on success, or SIZE_MAX on a structural failure
@@ -89,18 +89,16 @@ bool skipBlockComment(Cursor& c, std::size_t& errPosOut) noexcept {
 }
 
 // Skip an ExprTk single-quoted string (we're at the opening quote).
-// Doubled '' inside is the accepted escape per ExprTk docs section 13.
+// A backslash escapes the next character: \' embeds a quote, \\ a backslash.
 // Returns false on unterminated; errPosOut then holds the start offset.
 bool skipStringLiteral(Cursor& c, std::size_t& errPosOut) noexcept {
     const std::size_t start = c.pos;
     ++c.pos;
     while (!c.atEnd()) {
-        if (c.peek() == '\'') {
-            if (c.peek(1) == '\'') { c.pos += 2; continue; }
-            ++c.pos;
-            return true;
-        }
+        const char ch = c.peek();
         ++c.pos;
+        if (ch == '\'') return true;
+        if (ch == '\\' && !c.atEnd()) ++c.pos;
     }
     errPosOut = start;
     return false;

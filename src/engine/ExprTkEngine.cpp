@@ -41,6 +41,10 @@
 #include "../exprtk/MatchHistoryAnalysis.h"
 #include "../exprtk/NumberParse.h"
 #include "../Encoding.h"
+
+#if !defined(_WIN32)
+#include <pthread.h>    // stack bounds for RuntimeGuard; Windows uses VirtualQuery
+#endif
 namespace SU = StringUtils;
 
 namespace MultiReplaceEngine {
@@ -206,6 +210,15 @@ namespace MultiReplaceEngine {
             }
         }
 
+        // FormatSpec::apply packs UTF-8 one byte per wchar_t; take the low bytes back.
+        inline std::string unpackSpecOutput(const std::wstring& w)
+        {
+            std::string s;
+            s.reserve(w.size());
+            for (const wchar_t wc : w) s.push_back(static_cast<char>(wc));
+            return s;
+        }
+
     } // anonymous namespace
 
     // ---------------------------------------------------------------------
@@ -264,46 +277,33 @@ namespace MultiReplaceEngine {
 
     bool ExprTkEngine::initialize()
     {
-        // Register the numeric variables. ExprTk binds them by reference,
-        // so the underlying members must live as long as any compiled
-        // expression that uses them - which is fine, they are members of
-        // the engine itself.
-        // Each variable is registered under both upper- and lowercase
-        // so users may write whichever style they prefer.
-        _symbolTable.add_variable("CNT", _varCNT);
-        _symbolTable.add_variable("cnt", _varCNT);
-        _symbolTable.add_variable("LCNT", _varLCNT);
-        _symbolTable.add_variable("lcnt", _varLCNT);
-        _symbolTable.add_variable("LINE", _varLINE);
-        _symbolTable.add_variable("line", _varLINE);
-        _symbolTable.add_variable("LPOS", _varLPOS);
-        _symbolTable.add_variable("lpos", _varLPOS);
-        _symbolTable.add_variable("APOS", _varAPOS);
-        _symbolTable.add_variable("apos", _varAPOS);
-        _symbolTable.add_variable("COL", _varCOL);
-        _symbolTable.add_variable("col", _varCOL);
-        _symbolTable.add_variable("HIT", _varHIT);
-        _symbolTable.add_variable("hit", _varHIT);
+        // Match-bound symbols. ExprTk binds variables by reference, so the
+        // underlying members must live as long as any compiled expression
+        // that uses them - which is fine, they are members of the engine
+        // itself. Lookup is case-insensitive: CNT, cnt and Cnt all work.
+        _matchSymbols.add_variable("CNT", _varCNT);
+        _matchSymbols.add_variable("LCNT", _varLCNT);
+        _matchSymbols.add_variable("LINE", _varLINE);
+        _matchSymbols.add_variable("LPOS", _varLPOS);
+        _matchSymbols.add_variable("APOS", _varAPOS);
+        _matchSymbols.add_variable("COL", _varCOL);
+        _matchSymbols.add_variable("HIT", _varHIT);
 
-        _symbolTable.add_stringvar("FPATH", _strFPATH);
-        _symbolTable.add_stringvar("fpath", _strFPATH);
-        _symbolTable.add_stringvar("FNAME", _strFNAME);
-        _symbolTable.add_stringvar("fname", _strFNAME);
+        _matchSymbols.add_stringvar("FPATH", _strFPATH);
+        _matchSymbols.add_stringvar("FNAME", _strFNAME);
 
         // Register the num(N) function. The wrapper holds a back-pointer
         // to the engine, so it can read from _captures during eval.
-        _symbolTable.add_function("num", _numFunction);
+        _matchSymbols.add_function("num", _numFunction);
 
         // Register skip() so users can express conditional replacement
         // in a numeric expression (e.g. inside if/else). The function
         // returns 0.0 and signals via _wantSkip; execute() picks that
-        // up after eval and propagates it through FormulaResult::skip.
-        _symbolTable.add_function("skip", _skipFunction);
+        // up after the block and leaves the match untouched.
+        _matchSymbols.add_function("skip", _skipFunction);
 
-        // Register txt(N) for string-typed capture access. Only useful
-        // inside an ExprTk return list, where its string output is
-        // concatenated into the replace text.
-        _symbolTable.add_function("txt", _txtFunction);
+        // Register txt(N) for string-typed capture access.
+        _matchSymbols.add_function("txt", _txtFunction);
 
         // Register seq([start, [inc]]) as a sequence generator. Reads
         // _varCNT directly so the value tracks the current match index;
@@ -311,91 +311,93 @@ namespace MultiReplaceEngine {
         // 1,2,3,... seq(start) yields start, start+1, ... and seq(start,
         // inc) is fully parametrised. Built on ivararg_function so the
         // optional-argument count is checked at call time.
-        _symbolTable.add_function("seq", _seqFunction);
+        _matchSymbols.add_function("seq", _seqFunction);
 
         // Match history readers. numout(N[, P[, V]]) and txtout(N[, P[, V]])
         // read block N's emission P matches ago; numprev / txtprev are the
         // same-block shorthand. Buffer is sized at compile time from the
         // analyzer's findings - zero-cost when the template uses none of
         // these.
-        _symbolTable.add_function("numout", _numOutFunction);
-        _symbolTable.add_function("txtout", _txtOutFunction);
-        _symbolTable.add_function("numprev", _numPrevFunction);
-        _symbolTable.add_function("txtprev", _txtPrevFunction);
+        _matchSymbols.add_function("numout", _numOutFunction);
+        _matchSymbols.add_function("txtout", _txtOutFunction);
+        _matchSymbols.add_function("numprev", _numPrevFunction);
+        _matchSymbols.add_function("txtprev", _txtPrevFunction);
 
         // CSV column accessors. Both delegate to the host, which knows
         // about the active CSV settings, the line of the current match,
         // and caches the row's column array for repeated lookups.
-        _symbolTable.add_function("numcol", _numColFunction);
-        _symbolTable.add_function("txtcol", _txtColFunction);
+        _matchSymbols.add_function("numcol", _numColFunction);
+        _matchSymbols.add_function("txtcol", _txtColFunction);
 
+        // Register loadlib("path") - the library loader. Functions loaded
+        // through it land in _ecmdLibrary's own symbol_table, which is
+        // registered against every compiled expression.
+        _matchSymbols.add_function("loadlib", _ecmdLoaderFunction);
+
+        // Built-ins without match context: library bodies get them too.
         // isnum(x) - finite-number predicate, accepts scalar or string.
-        _symbolTable.add_function("isnum", _isNumFunction);
+        _builtinSymbols.add_function("isnum", _isNumFunction);
 
         // Pseudo-random number generator (mt19937_64, properly seeded).
-        _symbolTable.add_function("rnd", _rndFunction);
-        _symbolTable.add_function("rndseed", _rndSeedFunction);
-        _symbolTable.add_function("rndnorm", _rndNormFunction);
+        _builtinSymbols.add_function("rnd", _rndFunction);
+        _builtinSymbols.add_function("rndseed", _rndSeedFunction);
+        _builtinSymbols.add_function("rndnorm", _rndNormFunction);
 
         // now() / today() - current time built-ins.
-        _symbolTable.add_function("now", _nowFunction);
-        _symbolTable.add_function("today", _todayFunction);
+        _builtinSymbols.add_function("now", _nowFunction);
+        _builtinSymbols.add_function("today", _todayFunction);
 
         // Register todate(str, fmt) - the inverse of d:fmt output.
         // Returns Unix timestamp on success, NaN on parse failure.
-        _symbolTable.add_function("todate", _todateFunction);
+        _builtinSymbols.add_function("todate", _todateFunction);
 
         // Base parsing: hex/bin/oct string -> numeric as built-ins. X2num
         // accepts the input case-insensitively, with or without the
         // matching prefix, NaN on invalid characters. The reverse
         // direction (numeric -> base string) is covered by the format
         // spec '~ x' / '~ b' / '~ o'.
-        _symbolTable.add_function("hex2num", _hex2numFunction);
-        _symbolTable.add_function("bin2num", _bin2numFunction);
-        _symbolTable.add_function("oct2num", _oct2numFunction);
+        _builtinSymbols.add_function("hex2num", _hex2numFunction);
+        _builtinSymbols.add_function("bin2num", _bin2numFunction);
+        _builtinSymbols.add_function("oct2num", _oct2numFunction);
 
         // Roman numerals: standard 1..3999 range. num2rom emits canonical
         // subtractive form; rom2num is lenient about non-canonical input.
-        _symbolTable.add_function("num2rom", _num2romFunction);
-        _symbolTable.add_function("rom2num", _rom2numFunction);
+        _builtinSymbols.add_function("num2rom", _num2romFunction);
+        _builtinSymbols.add_function("rom2num", _rom2numFunction);
 
         // String pack: codepoint-based, 1-based indices.
-        _symbolTable.add_function("len", _lenFunction);
-        _symbolTable.add_function("find", _findFunction);
-        _symbolTable.add_function("slice", _sliceFunction);
-        _symbolTable.add_function("split", _splitFunction);
-        _symbolTable.add_function("trim", _trimFunction);
-        _symbolTable.add_function("ltrim", _ltrimFunction);
-        _symbolTable.add_function("rtrim", _rtrimFunction);
-        _symbolTable.add_function("replace", _replaceFunction);
-        _symbolTable.add_function("reptxt", _reptxtFunction);
-        _symbolTable.add_function("tonum", _tonumFunction);
-        _symbolTable.add_function("chr2num", _chr2numFunction);
-        _symbolTable.add_function("num2chr", _num2chrFunction);
-        _symbolTable.add_function("totxt", _totxtFunction);
+        _builtinSymbols.add_function("len", _lenFunction);
+        _builtinSymbols.add_function("find", _findFunction);
+        _builtinSymbols.add_function("slice", _sliceFunction);
+        _builtinSymbols.add_function("split", _splitFunction);
+        _builtinSymbols.add_function("trim", _trimFunction);
+        _builtinSymbols.add_function("ltrim", _ltrimFunction);
+        _builtinSymbols.add_function("rtrim", _rtrimFunction);
+        _builtinSymbols.add_function("replace", _replaceFunction);
+        _builtinSymbols.add_function("reptxt", _reptxtFunction);
+        _builtinSymbols.add_function("tonum", _tonumFunction);
+        _builtinSymbols.add_function("chr2num", _chr2numFunction);
+        _builtinSymbols.add_function("num2chr", _num2chrFunction);
+        _builtinSymbols.add_function("totxt", _totxtFunction);
 
-        // Register loadlib("path") - the library loader. Functions loaded
-        // through it land in _ecmdLibrary's own symbol_table, which we
-        // register against every compiled expression in compile().
-        _symbolTable.add_function("loadlib", _ecmdLoaderFunction);
-        _ecmdLibrary = std::make_unique<EcmdLibrary>();
+        // ExprTk's math constants (pi, epsilon, inf) for templates. Library
+        // bodies have their own, which give way to a parameter of that name.
+        _matchSymbols.add_constants();
 
-        // ExprTk's standard math constants (pi, epsilon, infinity).
-        _symbolTable.add_constants();
+        // Loop and vector-index checks go into everything compiled from here.
+        _guard.attach(_parser);
+        _ecmdLibrary = std::make_unique<EcmdLibrary>(_matchSymbols, _builtinSymbols, _guard);
 
         return true;
     }
 
     void ExprTkEngine::shutdown()
     {
-        _compiledExpressions.clear();
-        _segmentSpecs.clear();
-        _parsedTemplate = ExprTkPatternParser::ParseResult();
-        _lastCompiledScript.clear();
-        _haveCompiled = false;
+        _templates.clear();
+        _active = nullptr;
         _ecmdLibrary.reset();
 
-        // We deliberately do NOT clear the symbol table here - if the
+        // We deliberately do NOT clear the symbol tables here - if the
         // engine gets compile()'d again later, the same variable bindings
         // are still valid. Symbol-table teardown happens implicitly when
         // the engine itself is destroyed.
@@ -409,23 +411,16 @@ namespace MultiReplaceEngine {
     {
         IFormulaEngine::beginRun();
 
-        // Drop the previous run's ecmd library and start fresh. This is
-        // what makes loadlib("path") re-read the file on every Replace-All
-        // (user edits to the .elib take effect on the next run) and what
-        // makes removing the loadlib() init slot also remove its functions.
-        //
-        // Side effect: the compile cache is invalidated because the
-        // library symbol_table now refers to a different object, so any
-        // previously compiled expression that called an ecmd function
-        // would point at freed registrations.
-        _ecmdLibrary = std::make_unique<EcmdLibrary>();
-        _compiledExpressions.clear();
-        _segmentSpecs.clear();
+        // Compiled templates go first: they call into the library that is
+        // replaced next. A fresh library is what makes loadlib("path")
+        // re-read the file on every Replace-All (user edits to the .elib
+        // take effect on the next run) and what makes removing the
+        // loadlib() init slot also remove its functions.
+        _templates.clear();
+        _active = nullptr;
+        _ecmdLibrary = std::make_unique<EcmdLibrary>(_matchSymbols, _builtinSymbols, _guard);
         _loadlibFailed = false;
         _loadlibError.clear();
-        _parsedTemplate = ExprTkPatternParser::ParseResult();
-        _lastCompiledScript.clear();
-        _haveCompiled = false;
 
         // Discard match history from any previous run. Each Replace-All
         // starts with an empty ring; the first match in the run sees
@@ -434,9 +429,6 @@ namespace MultiReplaceEngine {
         _history.clear();
         _historyShelf.clear();
         _activeHistRule = kNoRule;
-        _slotHistLookback = 0;
-        _slotHistCaps = 0;
-        _slotHistBlocks = 0;
         _currentBlockIndex = 0;
         // _currentBlockOutputs and _captureSlotsForHistory keep their
         // capacity; their content is overwritten on the next match.
@@ -491,47 +483,37 @@ namespace MultiReplaceEngine {
             _activeHistRule = ruleIndex;
         }
 
-        // Cache hit: the same template was compiled last time, nothing to
-        // do. Mirrors the behaviour of LuaEngine::ensureCompiled. A ring
-        // restored fresh for a rule sharing the slot's script is sized
-        // from the stored dims so its history works too.
-        if (_haveCompiled && scriptUtf8 == _lastCompiledScript) {
-            if (_history.depth() == 0 && _slotHistLookback > 0) {
-                _history = MatchHistory(_slotHistLookback, _slotHistCaps, _slotHistBlocks);
-                _historyCaptureCap = _slotHistCaps;
+        // Each script compiles once per run; rules sharing a script share
+        // the compiled template, while history stays per rule.
+        auto it = _templates.find(scriptUtf8);
+        if (it == _templates.end()) {
+            CompiledTemplate compiled;
+            if (!compileTemplate(scriptUtf8, compiled)) {
+                _active = nullptr;
+                return false;
             }
-            _historyShelf[_activeHistRule].script = scriptUtf8;
-            return true;
+            it = _templates.emplace(scriptUtf8, std::move(compiled)).first;
+        }
+        _active = &it->second;
+
+        // The rule's ring follows its script: a new rule or a changed
+        // script starts a fresh ring sized for that script.
+        ShelvedHistory& shelf = _historyShelf[_activeHistRule];
+        if (shelf.script != scriptUtf8 || _history.depth() != _active->histLookback) {
+            _history = MatchHistory(_active->histLookback, _active->histCaps, _active->histBlocks);
+            _historyCaptureCap = _active->histCaps;
+            shelf.script = scriptUtf8;
         }
 
-        // Keep the restored ring when this rule's script is unchanged;
-        // same text means identical analyzer dimensions.
-        const bool keepRing = (_history.depth() > 0) &&
-            (_historyShelf.count(_activeHistRule) != 0) &&
-            (_historyShelf[_activeHistRule].script == scriptUtf8);
-
-        // Drop any previous state before we attempt a new compile, so a
-        // failed compile leaves the engine in a clean "no compile yet"
-        // state rather than half-populated leftovers. This includes the
-        // history-related members: if compile() succeeds the Step-2.5
-        // block reassigns them with the new dimensions, and if compile()
-        // fails partway through we'd otherwise leak a stale ring buffer
-        // from the previous successful compile into the next attempt.
-        // (Functionally tolerated because `_haveCompiled = false` keeps
-        // execute() from running, but cleaner state simplifies reasoning
-        // and aligns with the other members reset here.)
-        _compiledExpressions.clear();
-        _segmentSpecs.clear();
-        _parsedTemplate = ExprTkPatternParser::ParseResult();
-        _lastCompiledScript.clear();
-        _haveCompiled = false;
-        if (!keepRing) {
-            _history = MatchHistory{};
-            _historyCaptureCap = 0;
+        // One output slot per (?=...) block; each match overwrites them.
+        if (_currentBlockOutputs.size() != _active->histBlocks) {
+            _currentBlockOutputs.assign(_active->histBlocks, BlockOutput{});
         }
-        _currentBlockOutputs.clear();
-        _captureSlotsForHistory.clear();
+        return true;
+    }
 
+    bool ExprTkEngine::compileTemplate(const std::string& scriptUtf8, CompiledTemplate& out)
+    {
         // Step 1: split the template into literal/expression segments.
         auto parseRes = ExprTkPatternParser::parse(scriptUtf8);
         if (!parseRes.success) {
@@ -548,8 +530,8 @@ namespace MultiReplaceEngine {
 
         // Step 2: pre-compile every Expression segment. We allocate one
         // expression per segment; literals are not compiled.
-        _compiledExpressions.resize(parseRes.segments.size());
-        _segmentSpecs.assign(parseRes.segments.size(), SegmentSpec{});
+        out.expressions.resize(parseRes.segments.size());
+        out.specs.assign(parseRes.segments.size(), SegmentSpec{});
         for (std::size_t i = 0; i < parseRes.segments.size(); ++i) {
             const auto& seg = parseRes.segments[i];
             if (seg.type != ExprTkPatternParser::SegmentType::Expression) {
@@ -562,28 +544,27 @@ namespace MultiReplaceEngine {
             auto split = FormatSpec::splitFormulaSpec(seg.text);
 
             if (split.hasSpec) {
-                FormatSpec::Spec parsed = FormatSpec::parse(
-                    std::wstring(split.spec.begin(), split.spec.end()));
+                // The spec is UTF-8 like the template; FormatSpec reads UTF-16.
+                FormatSpec::Spec parsed = FormatSpec::parse(Encoding::utf8ToWString(split.spec));
                 if (!parsed.valid) {
                     std::string msg = "Invalid format spec \"";
                     msg += split.spec;
                     msg += "\": ";
                     msg += parsed.errorMessage;
                     reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
-                    _compiledExpressions.clear();
-                    _segmentSpecs.clear();
                     return false;
                 }
-                _segmentSpecs[i].hasSpec = true;
-                _segmentSpecs[i].spec = std::move(parsed);
+                out.specs[i].hasSpec = true;
+                out.specs[i].spec = std::move(parsed);
             }
 
             expression_t expr;
-            expr.register_symbol_table(_symbolTable);
+            expr.register_symbol_table(_matchSymbols);
+            expr.register_symbol_table(_builtinSymbols);
             if (_ecmdLibrary) {
                 // Calls into ecmd-loaded functions resolve against the
                 // library's own symbol table. Registering it here lets
-                // user expressions like (?=num2rom(num(1))) compile
+                // user expressions like (?=padleft(txt(1), 5, '0')) compile
                 // against whatever the current Replace-All run has loaded.
                 expr.register_symbol_table(_ecmdLibrary->symbolTable());
             }
@@ -597,9 +578,6 @@ namespace MultiReplaceEngine {
                 msg += "\": ";
                 msg += _parser.error();
                 reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
-
-                _compiledExpressions.clear();
-                _segmentSpecs.clear();
                 return false;
             }
 
@@ -607,9 +585,8 @@ namespace MultiReplaceEngine {
             // (?='abc'), (?=fpath + '.bak')). These are read via
             // expression_helper::get_string() at eval time, bypassing the
             // 'return [...]' detour. Cached at compile to avoid per-eval
-            // type checks. The existing 'return [...]' path is unchanged
-            // and remains available.
-            _segmentSpecs[i].isString =
+            // type checks.
+            out.specs[i].isString =
                 exprtk::expression_helper<double>::is_string(expr);
 
             // Type-match the spec against the expression's result type.
@@ -618,34 +595,30 @@ namespace MultiReplaceEngine {
             // need a numeric one. Anything else is a mismatch we surface
             // at compile time, same diagnostic style as the return-
             // statement counterpart in the eval path.
-            if (_segmentSpecs[i].hasSpec) {
+            if (out.specs[i].hasSpec) {
                 const bool specIsText =
-                    (_segmentSpecs[i].spec.kind == FormatSpec::Kind::Text);
-                if (specIsText && !_segmentSpecs[i].isString) {
+                    (out.specs[i].spec.kind == FormatSpec::Kind::Text);
+                if (specIsText && !out.specs[i].isString) {
                     std::string msg = "Text format spec (t:...) requires a string-returning formula: \"";
                     msg += seg.text;
                     msg += "\"";
                     reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
-                    _compiledExpressions.clear();
-                    _segmentSpecs.clear();
                     return false;
                 }
-                if (!specIsText && _segmentSpecs[i].isString
-                    && !FormatSpec::isPureFrame(_segmentSpecs[i].spec)) {
+                if (!specIsText && out.specs[i].isString
+                    && !FormatSpec::isPureFrame(out.specs[i].spec)) {
                     std::string msg = "Numeric/date/duration format spec cannot be combined with a string-returning formula: \"";
                     msg += seg.text;
                     msg += "\"";
                     reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
-                    _compiledExpressions.clear();
-                    _segmentSpecs.clear();
                     return false;
                 }
             }
 
-            _compiledExpressions[i] = std::move(expr);
+            out.expressions[i] = std::move(expr);
         }
 
-        // Step 2.5: Match-history analysis.
+        // Step 3: Match-history analysis.
         // Walk the parsed template, find every num/txt arity-2/3 and
         // every numout/txtout/numprev/txtprev call, and read out:
         //   - the maximum lookback depth (sizes the ring buffer)
@@ -653,54 +626,21 @@ namespace MultiReplaceEngine {
         //   - any literal-argument errors (negative p, hard-cap overflow,
         //     negative n in num/txt arity-2/3)
         //
-        // Errors abort compile via reportError() with the analyzer's
-        // diagnostic message verbatim; success only resizes the ring,
-        // it does not allocate per-entry storage (that happens lazily
-        // on the first push from execute()).
-        {
-            std::string historyErr;
-            HistoryAnalysis ha = analyzeHistory(parseRes, historyErr);
-            if (!historyErr.empty()) {
-                reportError(ILuaEngineHost::ErrorCategory::CompileError,
-                    historyErr);
-                _compiledExpressions.clear();
-                _segmentSpecs.clear();
-                return false;
-            }
-
-            // Size the ring buffer. depth=0 path keeps pushSwap as a
-            // no-op so templates without history pay no runtime cost.
-            //
-            // Block indexing convention: internally block N is the N-th
-            // Expression segment in the template (0-based, in source order);
-            // Literal segments don't count. The user-facing index is 1-based
-            // (numout/txtout translate at the boundary): `numout(1, 1)` reads
-            // the FIRST (?=...) block's previous output, regardless of how
-            // much literal text precedes or follows it. ha.blockCount comes
-            // from analyzeHistory which counts only Expression segments.
-            const std::size_t blockCount = ha.blockCount;
-            const std::size_t captureSlots = ha.maxCaptureIndex + 1;
-            _slotHistLookback = ha.maxLookback;
-            _slotHistCaps = captureSlots;
-            _slotHistBlocks = blockCount;
-            if (!keepRing) {
-                _history = MatchHistory(ha.maxLookback, captureSlots, blockCount);
-                _historyCaptureCap = captureSlots;
-            }
-
-            // Size the per-match block-output vector to match the
-            // expression count - one slot per (?=...) in the template.
-            // The execute() loop maps from segment-index to expression-
-            // index via a running counter. (Empty staging vectors at
-            // this point - they were cleared at the top of compile().)
-            _currentBlockOutputs.assign(blockCount, BlockOutput{});
+        // Block indexing: internally block N is the N-th Expression
+        // segment (0-based, source order, literals don't count); numout
+        // and txtout translate the user's 1-based index at the boundary.
+        std::string historyErr;
+        HistoryAnalysis ha = analyzeHistory(parseRes, historyErr);
+        if (!historyErr.empty()) {
+            reportError(ILuaEngineHost::ErrorCategory::CompileError,
+                historyErr);
+            return false;
         }
+        out.histLookback = ha.maxLookback;
+        out.histCaps = ha.maxCaptureIndex + 1;
+        out.histBlocks = ha.blockCount;
 
-        // Step 3: cache for re-use.
-        _parsedTemplate = std::move(parseRes);
-        _lastCompiledScript = scriptUtf8;
-        _haveCompiled = true;
-        _historyShelf[_activeHistRule].script = scriptUtf8;
+        out.parsed = std::move(parseRes);
         return true;
     }
 
@@ -711,31 +651,22 @@ namespace MultiReplaceEngine {
     FormulaResult ExprTkEngine::execute(
         const std::string& scriptUtf8,
         const FormulaVars& vars,
-        bool isRegexMatch,
+        ReplaceMode mode,
         int  /*documentCodepage*/)
     {
         FormulaResult result;
-
-        // When the caller is in regex mode the rendered output will be
-        // routed through a regex replacement engine. Expression results
-        // (formula output) need to be escaped so any literal \ or $ from
-        // the formula stays literal and is not misread as a backreference.
-        // Literal segments outside (?=...) blocks are left unescaped on
-        // purpose - that is what lets the user write \1 / $1 verbatim in
-        // the replace template and have them expand normally.
-        const bool escapeOutput = isRegexMatch;
+        const bool isRegexMatch = (mode == ReplaceMode::Regex);
 
         // compile() is a cheap cache hit when unchanged and also owns
         // the per-rule history switch, so route every call through it.
-        {
-            if (!compile(scriptUtf8, vars.RULE)) {
-                result.success = false;
-                // Internal diagnostic only - the user-visible dialog was
-                // already raised by compile() via reportError().
-                result.errorMessage = "compile failed";
-                return result;
-            }
+        if (!compile(scriptUtf8, vars.RULE)) {
+            result.success = false;
+            // Internal diagnostic only - the user-visible dialog was
+            // already raised by compile() via reportError().
+            result.errorMessage = "compile failed";
+            return result;
         }
+        const CompiledTemplate& tmpl = *_active;
 
         // Update per-match numeric variables. ExprTk reads them by
         // reference at eval time, so writing here is enough.
@@ -753,6 +684,7 @@ namespace MultiReplaceEngine {
         _wantSkip = false;
         _wantStop = false;
         _outputHadInvalid = false;
+        _guard.reset();
 
         _captures.clear();
         _captures.reserve(vars.captures.size() + 1);
@@ -822,10 +754,9 @@ namespace MultiReplaceEngine {
         }
 
         // Walk segments in order, accumulating the output. Literals copy
-        // straight through; expressions get evaluated and either formatted
-        // as a number or unpacked from an ExprTk return statement, which
-        // lets users emit mixed string/number output (the only way to
-        // surface a string variable like FNAME / FPATH).
+        // straight through, so \1, $1 or \n there keep their meaning in
+        // the host's replace step; formula output goes through
+        // appendOutput(), which escapes it for that step.
         std::string out;
         out.reserve(scriptUtf8.size());
 
@@ -850,23 +781,16 @@ namespace MultiReplaceEngine {
         // Reset per-match history state. _currentBlockIndex tracks which
         // expression-block is evaluating so numprev / txtprev can resolve
         // their implicit n. _currentBlockOutputs is already sized to the
-        // expression count from compile(); each slot is overwritten as
-        // the matching block evaluates. Skip-cases leave the slot with
-        // stale data from the previous match - that's fine because
-        // skipped matches don't push to history.
+        // expression count by compile(); each slot is overwritten as the
+        // matching block evaluates.
         _currentBlockIndex = 0;
 
         // Maps segment-index to expression-index: only Expression segments
-        // increment this. This internal block index is 0-based; the
-        // user-facing index is 1-based (numout/txtout translate at the
-        // boundary). For a template like
-        //   foo (?=A) bar (?=B)
-        // A is internal block 0 (numout(1) for the user) and B is internal
-        // block 1 (numout(2)), with the "foo " and " bar " literals
-        // contributing nothing.
+        // increment this (internal 0-based block index; numout/txtout take
+        // the user's 1-based index and translate at the boundary).
         std::size_t expressionIdx = 0;
 
-        const auto& segs = _parsedTemplate.segments;
+        const auto& segs = tmpl.parsed.segments;
         for (std::size_t i = 0; i < segs.size(); ++i) {
             const auto& seg = segs[i];
 
@@ -879,15 +803,10 @@ namespace MultiReplaceEngine {
             // inside this expression know their implicit n. The
             // within-match guard in lookupBlockOutputAt uses this value
             // to block reads of the running block or any later one.
-            // expressionIdx counts only Expression segments and is the
-            // internal 0-based block index.
             _currentBlockIndex = expressionIdx;
 
-            // Eval. ExprTk's return statement turns into a side-channel
-            // result list - we must check return_invoked() to decide
-            // which output path applies, because value() is 0.0 in that
-            // case and would otherwise look like a normal numeric eval.
-            auto& expr = _compiledExpressions[i];
+            const expression_t& expr = tmpl.expressions[i];
+            const SegmentSpec& spec = tmpl.specs[i];
 
             // Defensive guard: only evaluate a properly compiled expression.
             // A default-constructed or half-initialised expression would
@@ -904,37 +823,53 @@ namespace MultiReplaceEngine {
                 return result;
             }
 
-            // Direct-string path: when the root node is string-producing
-            // (e.g. (?=num2rom(num(1))), (?='abc'), (?=fpath + '.bak')),
-            // read the string straight from the root node via the
-            // expression_helper::get_string() extension. This avoids the
-            // user having to wrap every string result in 'return [...]',
-            // while leaving the explicit return-list path untouched.
-            //
-            // The isString flag was cached at compile time; here we only
-            // pay the cost of get_string() which internally triggers
-            // value() exactly once. NaN/Inf cannot occur in this branch
-            // because a string-producing root node does not carry a
-            // numeric result through value() (it returns T but the
-            // semantic payload is the string).
-            if (_segmentSpecs[i].isString) {
-                std::string strOut;
-                if (!exprtk::expression_helper<double>::get_string(expr, strOut)) {
+            // Eval. A string-producing root (e.g. (?=num2rom(num(1))),
+            // (?='abc'), (?=fpath + '.bak')) is read via the get_string()
+            // extension, so no 'return [...]' is needed; it evaluates the
+            // expression exactly once, like value().
+            std::string strOut;
+            bool strOk = true;
+            double value = 0.0;
+            if (spec.isString) {
+                strOk = exprtk::expression_helper<double>::get_string(expr, strOut);
+            }
+            else {
+                value = expr.value();
+            }
+
+            // A failed loadlib() or a tripped runaway guard is structural:
+            // the run stops with one diagnostic rather than letting
+            // dependent expressions raise follow-up errors.
+            if (_loadlibFailed) {
+                reportError(ILuaEngineHost::ErrorCategory::CompileError,
+                    _loadlibError);
+                result.success = false;
+                result.errorMessage = _loadlibError;
+                return result;
+            }
+            if (_guard.tripped()) {
+                std::string msg = _guard.message() + ": \"" + seg.text + "\"";
+                reportError(ILuaEngineHost::ErrorCategory::ExecutionError, msg);
+                result.success = false;
+                result.errorMessage = std::move(msg);
+                return result;
+            }
+
+            // skip() ends the match: later blocks are not evaluated and
+            // the text stays as it is.
+            if (_wantSkip) {
+                result.success = true;
+                result.skip = true;
+                result.outputIsRegexSafe = isRegexMatch;
+                return result;
+            }
+
+            if (spec.isString) {
+                if (!strOk) {
                     // is_string() was true at compile but get_string()
                     // failed at eval. Should not happen for any node type
-                    // we know of, but report as a soft skip so a
-                    // pathological case never crashes the run.
+                    // we know of; a soft skip keeps the run alive.
                     onInvalid(result, seg.text);
-                    return result;
-                }
-                // get_string() evaluates the whole expression, so a
-                // loadlib() called inside a string-producing segment can
-                // latch here too. Same structural abort as the numeric path.
-                if (_loadlibFailed) {
-                    reportError(ILuaEngineHost::ErrorCategory::CompileError,
-                        _loadlibError);
-                    result.success = false;
-                    result.errorMessage = _loadlibError;
                     return result;
                 }
                 // Record for history. txtout/txtprev readers will see
@@ -943,47 +878,18 @@ namespace MultiReplaceEngine {
                 if (expressionIdx < _currentBlockOutputs.size()) {
                     _currentBlockOutputs[expressionIdx].setString(strOut);
                 }
-                // Apply text format spec if present. The compile-time
-                // check upstream guaranteed that any spec attached here
-                // is of Kind::Text, so the string overload is safe.
-                std::string formatted;
-                if (_segmentSpecs[i].hasSpec) {
-                    std::wstring w = FormatSpec::apply(_segmentSpecs[i].spec, strOut);
-                    formatted.reserve(w.size());
-                    for (wchar_t wc : w) {
-                        formatted.push_back(static_cast<char>(wc));
-                    }
-                }
-                else {
-                    formatted = strOut;
-                }
-                if (escapeOutput && _host) {
-                    out.append(_host->escapeForRegex(formatted));
-                }
-                else {
-                    out.append(formatted);
-                }
+                // The compile-time check guaranteed a text spec (or a
+                // pure frame) here, so the string overload is safe.
+                appendOutput(out, spec.hasSpec
+                    ? unpackSpecOutput(FormatSpec::apply(spec.spec, strOut))
+                    : strOut, mode);
                 ++expressionIdx;
                 continue;
             }
 
-            const double value = expr.value();
-
-            // A failed loadlib() latches here. It is a structural failure
-            // (the library and everything depending on it is unavailable),
-            // so we abort the whole run with one diagnostic rather than
-            // letting dependent expressions raise follow-up errors.
-            if (_loadlibFailed) {
-                reportError(ILuaEngineHost::ErrorCategory::CompileError,
-                    _loadlibError);
-                result.success = false;
-                result.errorMessage = _loadlibError;
-                return result;
-            }
-
             if (expr.return_invoked()) {
                 // return-lists emit strings; numeric spec makes no sense.
-                if (_segmentSpecs[i].hasSpec) {
+                if (spec.hasSpec) {
                     std::string msg = "Format spec cannot be combined with return statement: \"";
                     msg += seg.text;
                     msg += "\"";
@@ -992,27 +898,16 @@ namespace MultiReplaceEngine {
                     result.errorMessage = std::move(msg);
                     return result;
                 }
-                // Capture the assembled return-list string into the
-                // block-output slot for history. appendExprtkResults
-                // writes to `out` directly, so we snapshot the portion
-                // it just wrote by tracking the size delta. This is a
-                // narrow path (only fires for the legacy 'return [...]'
-                // style) but the steady-state cost is one substring.
-                const std::size_t outSizeBefore = out.size();
-                appendExprtkResults(expr, out, escapeOutput);
+                std::string listOut;
+                appendExprtkResults(expr, listOut);
                 if (_outputHadInvalid) {
                     onInvalid(result, seg.text);
                     return result;
                 }
                 if (expressionIdx < _currentBlockOutputs.size()) {
-                    // Use the unescaped pre-append snapshot if available;
-                    // for simplicity record the appended bytes, which is
-                    // what the user-visible output saw. History readers
-                    // see the same string the document received.
-                    _currentBlockOutputs[expressionIdx].setString(
-                        std::string_view(out.data() + outSizeBefore,
-                            out.size() - outSizeBefore));
+                    _currentBlockOutputs[expressionIdx].setString(listOut);
                 }
+                appendOutput(out, listOut, mode);
                 ++expressionIdx;
                 continue;
             }
@@ -1034,33 +929,21 @@ namespace MultiReplaceEngine {
             }
             ++expressionIdx;
 
-            // Format through spec, or fall back to shortest round-trip.
-            // apply() returns UTF-8 packed one byte per wchar (applyFrame's
-            // wstring(out.begin(),out.end())), so extracting the low byte of
-            // each wchar reconstructs the UTF-8 - including localized date
-            // names. Text specs never reach this path - they are string-typed
-            // and handled in the isString branch above.
-            if (_segmentSpecs[i].hasSpec) {
-                std::wstring formatted = FormatSpec::apply(_segmentSpecs[i].spec, value);
-                out.reserve(out.size() + formatted.size());
-                for (wchar_t wc : formatted) {
-                    out.push_back(static_cast<char>(wc));
-                }
-            }
-            else {
-                out.append(formatDouble(value));
-            }
+            // Spec output can carry fill characters or date text, so it is
+            // escaped like any other formula output.
+            appendOutput(out, spec.hasSpec
+                ? unpackSpecOutput(FormatSpec::apply(spec.spec, value))
+                : formatDouble(value), mode);
         }
 
         result.output = std::move(out);
         result.success = true;
-        result.skip = _wantSkip;
         result.outputIsRegexSafe = isRegexMatch;
 
         // Match-history push: only successful, non-skipped matches make
-        // it into the ring. Skipped matches are invisible to subsequent
-        // numprev/numout lookups, which is exactly what users with skip-
-        // based filtering want.
+        // it into the ring (a skip returned above). Skipped matches are
+        // invisible to subsequent numprev/numout lookups, which is exactly
+        // what users with skip-based filtering want.
         //
         // The push is a no-op when the ring depth is 0 (no template uses
         // history) - so templates that don't touch history pay nothing.
@@ -1070,7 +953,7 @@ namespace MultiReplaceEngine {
         // capture groups into slots 1..N. pushSwap then swaps the entire
         // vector into the ring so its string buffers rotate with the
         // entry that was just evicted.
-        if (!_wantSkip && _history.depth() > 0) {
+        if (_history.depth() > 0) {
             // Build the snapshot. The vector is held as a member so its
             // capacity is preserved across matches. Slot 0 = full match;
             // 1..N = capture groups.
@@ -1127,8 +1010,7 @@ namespace MultiReplaceEngine {
     // ---------------------------------------------------------------------
 
     void ExprTkEngine::appendExprtkResults(const expression_t& expr,
-        std::string& out,
-        bool escapeForRegex)
+        std::string& out)
     {
         // ExprTk's return statement (Section 20 of the docs) turns the
         // expression into one that produces an ordered, typed result list
@@ -1162,20 +1044,10 @@ namespace MultiReplaceEngine {
             }
 
             case type_store_t::e_string: {
-                // String element - append verbatim. ExprTk strings
-                // are 8-bit char sequences (UTF-8 in our pipeline).
-                // When the host will route this through a regex
-                // replace, escape \ and $ so any literal backslash or
-                // dollar from the formula stays literal and is not
-                // misread as a backreference (\1, $1, $&, ...).
+                // String element - verbatim. ExprTk strings are 8-bit char
+                // sequences (UTF-8 in our pipeline).
                 const string_view_t sv(ts);
-                if (escapeForRegex && _host) {
-                    std::string raw(&sv[0], sv.size());
-                    out.append(_host->escapeForRegex(raw));
-                }
-                else {
-                    out.append(&sv[0], sv.size());
-                }
+                out.append(sv.begin(), sv.size());
                 break;
             }
 
@@ -1196,6 +1068,23 @@ namespace MultiReplaceEngine {
         }
     }
 
+    void ExprTkEngine::appendOutput(std::string& out, const std::string& text, ReplaceMode mode)
+    {
+        if (mode == ReplaceMode::Regex && _host) {
+            out.append(_host->escapeForRegex(text));
+        }
+        else if (mode == ReplaceMode::Extended) {
+            // The host resolves \n, \t, \\ next; a backslash from a formula stays one
+            for (const char c : text) {
+                if (c == '\\') out.push_back('\\');
+                out.push_back(c);
+            }
+        }
+        else {
+            out.append(text);
+        }
+    }
+
     // ---------------------------------------------------------------------
     // String <-> double helpers
     // ---------------------------------------------------------------------
@@ -1210,22 +1099,13 @@ namespace MultiReplaceEngine {
 
     std::string ExprTkEngine::formatDouble(double value)
     {
-        // Callers are expected to filter NaN and Inf before reaching
-        // here (see the isnan/isinf checks in execute() and
-        // appendExprtkResults()). If one slips through anyway, return
-        // an empty string instead of letting the literal "inf" / "nan"
-        // bleed into the user's text - that would defeat the whole
-        // recoverable-error story.
+        // Callers filter NaN and Inf before reaching here (execute() and
+        // appendExprtkResults()); should one slip through, emit nothing
+        // rather than "inf" / "nan" in the user's text.
         if (std::isnan(value) || std::isinf(value)) {
             return std::string{};
         }
-
-        std::array<char, 64> buf{};
-        auto res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
-        if (res.ec != std::errc{}) {
-            return std::string{};
-        }
-        return std::string(buf.data(), res.ptr);
+        return FormatSpec::formatDefault(value);
     }
 
     // ---------------------------------------------------------------------
@@ -1415,9 +1295,10 @@ namespace MultiReplaceEngine {
             fmt.erase(0, 4);
         }
 
-        // Run the parser. tm starts zeroed so unset fields contribute
-        // 0/Jan/1/midnight - sensible defaults.
+        // Run the parser. Unset fields default to January 1, midnight;
+        // a zero tm_mday would roll back to the previous month's last day.
         std::tm tm{};
+        tm.tm_mday = 1;
         tm.tm_isdst = -1;  // let mktime figure out DST for local time
         const bool ok = MultiReplace::parseDateTime(input, fmt, tm);
         if (!ok) {
@@ -1925,29 +1806,105 @@ namespace MultiReplaceEngine {
         const double v = scalar_t(parameters[0])();
         if (!std::isfinite(v)) return 0.0;  // Inf/NaN -> "" (both paths)
 
-        // totxt(n): shortest round-trip, same as default number output.
+        // totxt(n): same as the default number output.
         if (arity == 1) {
             result = formatDouble(v);
             return 0.0;
         }
 
-        // totxt(n, fmt): parse fmt per call and apply. Widen byte-per-wchar
-        // to match the main spec-parse path; FormatSpec works in this packed
-        // form throughout. Invalid fmt or a text spec on a number yields ""
-        // (FormatSpec::apply returns empty for those).
+        // totxt(n, fmt): fmt is UTF-8 like the template and mostly a
+        // constant, so the last parsed spec is kept. An invalid fmt or a
+        // text spec on a number yields "" (FormatSpec::apply returns empty).
         const string_t fv(parameters[1]);
         const std::string fmt = exprtk::to_str(fv);
-        const std::wstring wfmt(fmt.begin(), fmt.end());
+        if (fmt.empty() || fmt != _lastFmt) {
+            _lastSpec = FormatSpec::parse(Encoding::utf8ToWString(fmt));
+            _lastFmt = fmt;
+        }
+        if (!_lastSpec.valid) return 0.0;
 
-        const FormatSpec::Spec spec = FormatSpec::parse(wfmt);
-        if (!spec.valid) return 0.0;
-
-        // apply() returns UTF-8 packed one byte per wchar; extract the low
-        // byte of each to rebuild the UTF-8 result.
-        const std::wstring out = FormatSpec::apply(spec, v);
-        result.reserve(out.size());
-        for (wchar_t wc : out) result.push_back(static_cast<char>(wc));
+        result = unpackSpecOutput(FormatSpec::apply(_lastSpec, v));
         return 0.0;
+    }
+
+    // ---------------------------------------------------------------------
+    // RuntimeGuard
+    // ---------------------------------------------------------------------
+
+    namespace {
+
+        // Loop iterations allowed per evaluation (one match), all loops together.
+        constexpr std::uint64_t kMaxLoopIterations = 10000000;
+
+        // Lowest address of the calling thread's stack (it grows down), 0 if unknown.
+        std::uintptr_t stackLimit()
+        {
+#if defined(_WIN32)
+            MEMORY_BASIC_INFORMATION mbi{};
+            if (VirtualQuery(&mbi, &mbi, sizeof(mbi)) == 0) return 0;
+            return reinterpret_cast<std::uintptr_t>(mbi.AllocationBase);
+#else
+            pthread_attr_t attr;
+            if (pthread_getattr_np(pthread_self(), &attr) != 0) return 0;
+            void* addr = nullptr;
+            std::size_t size = 0;
+            pthread_attr_getstack(&attr, &addr, &size);
+            pthread_attr_destroy(&attr);
+            return reinterpret_cast<std::uintptr_t>(addr);
+#endif
+        }
+
+    } // anonymous namespace
+
+    ExprTkEngine::RuntimeGuard::RuntimeGuard()
+    {
+        loop_set = loop_runtime_check::e_all_loops;
+        max_loop_iterations = kMaxLoopIterations;
+    }
+
+    void ExprTkEngine::RuntimeGuard::attach(parser_t& parser)
+    {
+        parser.register_loop_runtime_check(*this);
+        parser.register_vector_access_runtime_check(*this);
+    }
+
+    void ExprTkEngine::RuntimeGuard::reset()
+    {
+        _iterations = 0;
+        _message.clear();
+    }
+
+    void ExprTkEngine::RuntimeGuard::trip(const std::string& message)
+    {
+        if (_message.empty()) _message = message;  // the first cause counts
+    }
+
+    bool ExprTkEngine::RuntimeGuard::stackLow() const
+    {
+        // Room for the unwinding and for what runs between two checks
+        constexpr std::uintptr_t kReserve = 128 * 1024;
+        static thread_local const std::uintptr_t limit = stackLimit();
+        volatile char probe = 0;  // a real stack slot marks the current depth
+        return limit != 0 && reinterpret_cast<std::uintptr_t>(&probe) < limit + kReserve;
+    }
+
+    bool ExprTkEngine::RuntimeGuard::check()
+    {
+        // Every loop iteration lands here; after a trip all loops end at once
+        return !tripped() && ++_iterations <= kMaxLoopIterations;
+    }
+
+    void ExprTkEngine::RuntimeGuard::handle_runtime_violation(
+        const loop_runtime_check::violation_context&)
+    {
+        trip("Loops stopped after " + std::to_string(kMaxLoopIterations) + " iterations");
+    }
+
+    bool ExprTkEngine::RuntimeGuard::handle_runtime_violation(
+        vector_access_runtime_check::violation_context&)
+    {
+        trip("Vector index out of range");
+        return false;  // ExprTk then reads the first element, never outside
     }
 
     // ---------------------------------------------------------------------
@@ -1974,10 +1931,11 @@ namespace MultiReplaceEngine {
     }
 
     ExprTkEngine::EcmdFunctionInstance::EcmdFunctionInstance(
-        const EcmdParser::FunctionDef& def)
+        const EcmdParser::FunctionDef& def, RuntimeGuard& guard)
         : igenfunct_t(makeParamSequence(def.params), makeReturnType(def.returnType))
         , _name(def.name)
         , _body(def.body)
+        , _guard(guard)
     {
         // Build the routing table and the per-kind slot vectors. Each
         // parameter gets one slot (unique_ptr for stable addresses) bound
@@ -2008,14 +1966,16 @@ namespace MultiReplaceEngine {
     }
 
     void ExprTkEngine::EcmdFunctionInstance::prepareSymbolTables(
-        symbol_table_t& libTable)
+        symbol_table_t& libTable, symbol_table_t& builtins)
     {
         _innerExpr.register_symbol_table(_innerSymbols);
         // Sharing the library table here is what enables cross-calls and
         // recursion: when this function's body parses a name like
-        // 'num2rom', the parser looks it up in libTable and binds the
+        // 'padleft', the parser looks it up in libTable and binds the
         // call to the EcmdFunctionInstance registered there.
         _innerExpr.register_symbol_table(libTable);
+        // The built-ins (string pack, conversions, ...) work in bodies too.
+        _innerExpr.register_symbol_table(builtins);
     }
 
     bool ExprTkEngine::EcmdFunctionInstance::compileBody(
@@ -2070,9 +2030,21 @@ namespace MultiReplaceEngine {
         }
     }
 
+    bool ExprTkEngine::EcmdFunctionInstance::mayRun()
+    {
+        if (_guard.tripped()) return false;
+        if (_guard.stackLow()) {
+            _guard.trip("Library function '" + _name + "' nested too deep");
+            return false;
+        }
+        return true;
+    }
+
     double ExprTkEngine::EcmdFunctionInstance::operator()(
         parameter_list_t parameters)
     {
+        if (!mayRun()) return std::numeric_limits<double>::quiet_NaN();
+
         ArgSnapshot snapshot;
         marshalArgs(parameters, snapshot);
 
@@ -2099,6 +2071,7 @@ namespace MultiReplaceEngine {
         std::string& result, parameter_list_t parameters)
     {
         result.clear();
+        if (!mayRun()) return 0.0;
 
         ArgSnapshot snapshot;
         marshalArgs(parameters, snapshot);
@@ -2116,10 +2089,32 @@ namespace MultiReplaceEngine {
     // EcmdLibrary
     // ---------------------------------------------------------------------
 
+    ExprTkEngine::EcmdLibrary::EcmdLibrary(symbol_table_t& matchSymbols,
+        symbol_table_t& builtins, RuntimeGuard& guard)
+        : _matchSymbols(matchSymbols)
+        , _builtins(builtins)
+        , _guard(guard)
+    {
+        _guard.attach(_parser);
+    }
+
+    bool ExprTkEngine::EcmdLibrary::hasName(const symbol_table_t& table, const std::string& name)
+    {
+        // symbol_exists() misses generic functions, and adding one twice
+        // keeps the first registration while still reporting success.
+        return table.symbol_exists(name) || table.get_generic_function(name)
+            || table.get_string_function(name) || table.get_vararg_function(name);
+    }
+
     bool ExprTkEngine::EcmdLibrary::load(const std::string& fileContent,
         const std::string& sourceLabel,
         std::string& errorOut)
     {
+        // The same library loaded again in this run: its functions are already there
+        if (_loaded.count(fileContent) != 0) {
+            return true;
+        }
+
         auto parsed = EcmdParser::parse(fileContent);
         if (!parsed.success) {
             errorOut = sourceLabel + " (offset " + std::to_string(parsed.errorPos)
@@ -2135,10 +2130,15 @@ namespace MultiReplaceEngine {
         pending.reserve(parsed.functions.size());
 
         for (auto& def : parsed.functions) {
-            auto inst = std::make_unique<EcmdFunctionInstance>(def);
-            if (!_libTable.add_function(inst->name(), *inst)) {
+            auto inst = std::make_unique<EcmdFunctionInstance>(def, _guard);
+            // Templates would call the built-in, and a name loaded before
+            // would keep its first function.
+            const bool builtin = hasName(_matchSymbols, inst->name()) || hasName(_builtins, inst->name());
+            if (builtin || hasName(_libTable, inst->name())
+                || !_libTable.add_function(inst->name(), *inst)) {
                 errorOut = sourceLabel + ": function '" + inst->name()
-                    + "' clashes with an existing name";
+                    + (builtin ? "' has the name of a built-in function"
+                               : "' clashes with an existing name");
                 // Roll back: remove anything we already added so the
                 // library stays in a consistent state. add_function
                 // returned true only for entries we own; iterate them.
@@ -2154,7 +2154,7 @@ namespace MultiReplaceEngine {
         // because all names from this load (plus any previously loaded)
         // are visible in _libTable.
         for (auto& inst : pending) {
-            inst->prepareSymbolTables(_libTable);
+            inst->prepareSymbolTables(_libTable, _builtins);
             std::string err;
             if (!inst->compileBody(_parser, err)) {
                 errorOut = sourceLabel + ": " + err;
@@ -2169,6 +2169,7 @@ namespace MultiReplaceEngine {
         for (auto& inst : pending) {
             _instances.push_back(std::move(inst));
         }
+        _loaded.insert(fileContent);
         return true;
     }
 

@@ -438,7 +438,8 @@ namespace MultiReplaceEngine {
                 return { /*hasN*/ true, /*pIndex*/ 1, /*defaultP*/ 0 };
             case FuncKind::NumOutF:
             case FuncKind::TxtOutF:
-                return { /*hasN*/ true, /*pIndex*/ 1, /*defaultP*/ 1 };
+                // numout(N) reads the current match, like the runtime default
+                return { /*hasN*/ true, /*pIndex*/ 1, /*defaultP*/ 0 };
             case FuncKind::NumPrevF:
             case FuncKind::TxtPrevF:
                 return { /*hasN*/ false, /*pIndex*/ 0, /*defaultP*/ 1 };

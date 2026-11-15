@@ -136,20 +136,16 @@ namespace MultiReplaceEngine {
                 // expression we deliberately do NOT honour escape
                 // sequences - the formula engine sees the raw text. A
                 // single-quoted string literal is skipped whole so its
-                // parentheses are not counted (ExprTk uses '' for an
-                // embedded quote).
+                // parentheses are not counted (ExprTk escapes with a
+                // backslash: \' is an embedded quote, \\ a backslash).
                 int depth = 1;
                 while (i < n && depth > 0) {
                     const char c = templ[i];
                     if (c == '\'') {
                         ++i;
-                        while (i < n) {
-                            if (templ[i] == '\'') {
-                                if (i + 1 < n && templ[i + 1] == '\'') {
-                                    i += 2;   // escaped quote, stay in string
-                                    continue;
-                                }
-                                break;        // closing quote
+                        while (i < n && templ[i] != '\'') {
+                            if (templ[i] == '\\' && i + 1 < n) {
+                                ++i;          // escaped char, stay in string
                             }
                             ++i;
                         }

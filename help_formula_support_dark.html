@@ -1632,14 +1632,14 @@ return {
       </tr>
       <tr>
         <td><code>\\</code></td>
-        <td>Literal backslash. In regex mode write <code>\\\\</code>.</td>
+        <td>Literal backslash. In regex and extended mode write <code>\\\\</code>.</td>
       </tr>
       <tr>
         <td><em>any other text</em></td>
         <td>Literal output, including UTF-8 byte sequences.</td>
       </tr>
     </table>
-    <p>In regex mode the literal text is a Notepad++ replace string: <code>$1</code> and <code>\1</code> insert groups, and <code>\</code>, <code>$</code>, <code>(</code>, <code>)</code> and <code>?</code> must be escaped with <code>\</code> to appear as is. Outside regex mode, literal text is copied unchanged.</p>
+    <p>In regex mode the literal text is a Notepad++ replace string: <code>$1</code> and <code>\1</code> insert groups, and <code>\</code>, <code>$</code>, <code>(</code>, <code>)</code> and <code>?</code> must be escaped with <code>\</code> to appear as is. In extended mode <code>\n</code>, <code>\t</code> and the other escapes work in the literal text. Otherwise literal text is copied unchanged. Formula results are inserted as they are in every mode.</p>
     <p>The closing <code>)</code> is matched by depth-counting, so balanced parentheses inside the expression &mdash; like <code>min(num(1), num(2))</code> &mdash; work naturally without extra escaping.</p>
   </section>
 
@@ -1782,6 +1782,16 @@ return {
         <td><code>"3,14abc"</code></td>
         <td><code>3.14</code></td>
         <td>trailing characters tolerated</td>
+      </tr>
+      <tr>
+        <td><code>" 42"</code>, <code>"+42"</code></td>
+        <td><code>42</code></td>
+        <td>leading spaces and sign accepted</td>
+      </tr>
+      <tr>
+        <td><code>"1.5, rest"</code></td>
+        <td><code>1.5</code></td>
+        <td>a separator in the trailing text does not count</td>
       </tr>
       <tr>
         <td><code>"1,234,567"</code>, <code>"1.000.000"</code> (thousands)</td>
@@ -2402,7 +2412,7 @@ function padleft(s: S, n, fill: S) : S   // S, T, S -&gt; S
 end
 </code></pre>
     <p><strong>Calling library functions:</strong> Used directly in <code>(?=...)</code> blocks just like built-ins &mdash; <code>(?=padleft(txt(1), 5, '0'))</code>, <code>(?=double_it(num(1)))</code>. The output type matches what the function returns.</p>
-    <p><strong>Cross-calls and recursion:</strong> Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter:</p>
+    <p><strong>Cross-calls and recursion:</strong> Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter. Recursion that would run out of stack stops the run with a message instead of crashing Notepad++:</p>
     <pre><code>function isEven(n)
     if (n == 0) { return 1; };
     return isOdd(n - 1);
@@ -2414,10 +2424,11 @@ function isOdd(n)
 end
 </code></pre>
     <p><strong>Comments:</strong> Both <code>/* ... */</code> and <code>// ...</code> work, anywhere in the file or inside function bodies.</p>
-    <p><strong>Errors:</strong> Parser, name-collision and compile errors abort the load with a dialog that names the function and offset, and the run stops; no replacement is made.</p>
+    <p><strong>Errors:</strong> Parser, name-collision and compile errors abort the load with a dialog that names the function and offset, and the run stops; no replacement is made. A library function cannot take the name of a built-in function or of a function that is already loaded. Loading the same library again in the same run does nothing.</p>
 
     <h3>Writing function bodies</h3>
     <p>Function bodies use a small statement language layered on top of ExprTk's expression syntax. The pieces below cover what's needed for almost any helper.</p>
+    <p>Bodies can call the other library functions and every built-in that does not depend on the current match: the <a href="#exprtk-stringpack">String Pack</a>, <code>totxt</code>, <code>tonum</code>, <code>isnum</code>, <code>todate</code>, <code>now</code>, <code>today</code>, <code>rnd</code>, <code>rndseed</code>, <code>rndnorm</code>, <code>hex2num</code>, <code>bin2num</code>, <code>oct2num</code>, <code>num2rom</code>, <code>rom2num</code>. Match readers (<code>num</code>, <code>txt</code>, <code>numout</code>, <code>txtout</code>, <code>numprev</code>, <code>txtprev</code>, <code>numcol</code>, <code>txtcol</code>, <code>seq</code>, <code>skip</code>, <code>CNT</code> and the other variables) and <code>loadlib</code> are not available there; pass the values in as parameters.</p>
     <table class="optionsTable">
       <tr>
         <th>Construct</th>
@@ -2452,7 +2463,7 @@ end
       <tr>
         <td>While loop</td>
         <td><code>while (cond) { body; };</code></td>
-        <td>Same trailing <code>;</code>.</td>
+        <td>Same trailing <code>;</code>. Loops stop after 10 million iterations per match, with a message.</td>
       </tr>
       <tr>
         <td>Return scalar</td>
@@ -2600,7 +2611,7 @@ end
 
   <section id="exprtk-format">
     <h2>Output Formatting</h2>
-    <p>By default an ExprTk expression renders its result with the shortest round-trip representation: <code>3.14</code>, <code>42</code>, <code>1.5e+10</code> for numbers, the raw string for text. For controlled output &mdash; padding, alignment, precision, fixed decimals, hex, time durations, dates &mdash; append a <strong>format spec</strong> to the expression with <code>~</code>:</p>
+    <p>By default an ExprTk expression renders numbers with up to 15 significant digits, so binary rounding noise stays out (<code>42*0.9</code> gives <code>37.8</code>, not <code>37.800000000000004</code>), and whole numbers exactly, without exponent below 2^53 (<code>100000</code>, not <code>1e+05</code>; beyond that <code>1e+20</code>). Text is inserted as it is. Match history keeps the full value, so later reads compute exactly; <code>~ .17g</code> shows all digits. For controlled output &mdash; padding, alignment, precision, fixed decimals, hex, time durations, dates &mdash; append a <strong>format spec</strong> to the expression with <code>~</code>:</p>
     <p><code>(?= formula ~ spec )</code></p>
     <p>The <code>~</code> separator splits the block into the formula (left) and the spec (right). Whitespace around <code>~</code> is optional. The spec is validated when the rule is compiled, so an invalid spec surfaces immediately as a compile-time error rather than producing garbage at runtime.</p>
 
@@ -2631,7 +2642,7 @@ end
       <tr><td><code>width</code></td><td>Minimum total field width.</td></tr>
       <tr><td><code>.prec</code></td><td>Number of decimal digits (for <code>f</code>/<code>e</code>); significant digits for the default type and <code>g</code>.</td></tr>
       <tr><td><code>.min-max</code></td><td>Range form: at least <code>min</code>, at most <code>max</code> decimals. Trailing zeros beyond <code>min</code> are stripped.</td></tr>
-      <tr><td><code>type</code></td><td>One letter choosing the representation (see the table below). Omit for default (shortest round-trip).</td></tr>
+      <tr><td><code>type</code></td><td>One letter choosing the representation (see the table below). Omit for the default output.</td></tr>
     </table>
     <p>The <code>type</code> letter picks how the number is rendered:</p>
     <table class="optionsTable">
@@ -2676,7 +2687,7 @@ end
     </table>
 
     <h4>Default type with precision behaves like <code>g</code></h4>
-    <p>Without a type letter and without precision, the number renders shortest round-trip (<code>3.14</code>, <code>42</code>). <strong>Add a precision and the default type behaves like <code>g</code></strong> &mdash; <code>.N</code> means <em>significant digits</em>, switching to scientific notation when the magnitude warrants it. This matches Python and Rust, where the no-type float format is defined as "the same as <code>g</code>".</p>
+    <p>Without a type letter and without precision, the number renders like the default output (<code>3.14</code>, <code>42</code>, <code>37.8</code>). <strong>Add a precision and the default type behaves like <code>g</code></strong> &mdash; <code>.N</code> means <em>significant digits</em>, switching to scientific notation when the magnitude warrants it. This matches Python and Rust, where the no-type float format is defined as "the same as <code>g</code>".</p>
     <table class="optionsTable">
       <tr><th>Spec</th><th>Value</th><th>Output</th><th>Why</th></tr>
       <tr><td><code>.3</code></td><td><code>3.14159</code></td><td><code>3.14</code></td><td>3 significant digits</td></tr>
@@ -2860,7 +2871,7 @@ todate(text, fmt)  -&gt;  Unix timestamp (parses a date string)</code></pre>
       <li>without <code>utc:</code> keyword &rarr; input is interpreted as <strong>local time</strong></li>
       <li>with <code>utc:</code> keyword &rarr; input is interpreted as <strong>UTC</strong></li>
     </ul>
-    <p>On parse failure (malformed input, out-of-range fields, format mismatch) the function returns <code>NaN</code>, which flows through the standard recoverable-error dialog &mdash; the match stays untouched on Skip.</p>
+    <p>A month or day missing from the format defaults to the first (<code>todate('05/2023', '%m/%Y')</code> is May 1), missing time fields to midnight. On parse failure (malformed input, out-of-range fields such as <code>2023-02-30</code>, format mismatch) the function returns <code>NaN</code>, which flows through the standard recoverable-error dialog &mdash; the match stays untouched on Skip.</p>
 
     <h3>Format specifiers for parsing (todate)</h3>
     <p><code>todate</code> accepts a deliberately small subset of strftime &mdash; everything you need for the common date formats, nothing locale-dependent:</p>

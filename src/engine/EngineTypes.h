@@ -35,6 +35,15 @@ namespace MultiReplaceEngine {
         ExprTk
     };
 
+    // The rule's search mode, which decides how the host treats the
+    // engine output afterwards: Extended resolves backslash escapes,
+    // Regex the replacement syntax ($1, \1).
+    enum class ReplaceMode {
+        Normal,
+        Extended,
+        Regex
+    };
+
     // Per-match input variables that every engine receives. Mirrors the
     // surface that user scripts see: numeric counters, file metadata, the
     // matched text, and any regex captures.

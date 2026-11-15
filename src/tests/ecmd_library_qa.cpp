@@ -20,6 +20,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using MultiReplaceEngine::EcmdParser;
@@ -70,9 +71,10 @@ public:
         }
     }
 
-    void prepareTables(sym_t& lib) {
+    void prepareTables(sym_t& lib, sym_t& builtins) {
         _expr.register_symbol_table(_syms);
         _expr.register_symbol_table(lib);
+        _expr.register_symbol_table(builtins);
     }
     bool compile(parser_t& p, std::string& err) {
         if (p.compile(_body, _expr)) return true;
@@ -154,11 +156,23 @@ private:
     std::vector<Route>                          _routes;
 };
 
+// Stand-in for a built-in without match context (the engine's len()).
+class StrLen : public exprtk::igeneric_function<T> {
+public:
+    StrLen() : exprtk::igeneric_function<T>("S") {}
+    T operator()(parameter_list_t params) override {
+        const typename generic_type::string_view sv(params[0]);
+        return static_cast<T>(sv.size());
+    }
+};
+
 class TestLibrary {
 public:
+    TestLibrary() { _builtins.add_function("len", _len); }
     sym_t& symbolTable() { return _lib; }
 
     bool load(const std::string& src, std::string& err) {
+        if (_loaded.count(src) != 0) return true;   // same library again: no-op
         auto parsed = EcmdParser::parse(src);
         if (!parsed.success) {
             err = parsed.errorMessage;
@@ -167,15 +181,20 @@ public:
         std::vector<std::unique_ptr<TestInstance>> pending;
         for (auto& def : parsed.functions) {
             auto inst = std::make_unique<TestInstance>(def);
-            if (!_lib.add_function(inst->name(), *inst)) {
-                err = "name clash: " + inst->name();
+            const bool builtin = _builtins.symbol_exists(inst->name())
+                || _builtins.get_generic_function(inst->name());
+            // add_function reports success for a generic name already there
+            const bool taken = _lib.get_generic_function(inst->name())
+                || _lib.get_string_function(inst->name());
+            if (builtin || taken || !_lib.add_function(inst->name(), *inst)) {
+                err = (builtin ? "built-in name: " : "name clash: ") + inst->name();
                 for (auto& p : pending) _lib.remove_function(p->name());
                 return false;
             }
             pending.push_back(std::move(inst));
         }
         for (auto& inst : pending) {
-            inst->prepareTables(_lib);
+            inst->prepareTables(_lib, _builtins);
             std::string e;
             if (!inst->compile(_parser, e)) {
                 err = e;
@@ -184,11 +203,15 @@ public:
             }
         }
         for (auto& inst : pending) _instances.push_back(std::move(inst));
+        _loaded.insert(src);
         return true;
     }
 private:
+    StrLen                                         _len;
+    sym_t                                          _builtins;
     sym_t                                          _lib;
     std::vector<std::unique_ptr<TestInstance>>     _instances;
+    std::unordered_set<std::string>                _loaded;
     parser_t                                       _parser;
 };
 
@@ -521,6 +544,41 @@ int main(int argc, char** argv) {
     expectLoadFail("body_undefined_var",
                    "function f(n) return undefined_var; end\n",
                    "In function 'f'");
+
+    // ---- Built-ins in bodies, built-in names taken ----
+    expectScalar("builtin_in_body",
+                 "function L(s: S) return len(s); end\n",
+                 "L('abc');", 3.0);
+    expectLoadFail("builtin_name_taken",
+                   "function len(s: S) return 0; end\n",
+                   "built-in name: len");
+    expectLoadFail("builtin_name_any_case",
+                   "function LEN(s: S) return 0; end\n",
+                   "built-in name: LEN");
+
+    // ---- A name loaded before stays taken ----
+    {
+        TestLibrary L;
+        std::string err;
+        const bool first = L.load("function twice(n) return 2 * n; end\n", err);
+        const bool second = L.load("function TWICE(n) return 3 * n; end\n", err);
+        if (first && !second && err.find("name clash: TWICE") != std::string::npos) {
+            ++passed; if (verbose) std::printf("PASS  [name_taken_across_loads]\n");
+        } else { std::printf("FAIL [name_taken_across_loads] %s\n", err.c_str()); ++failed; }
+    }
+
+    // The same library loaded twice (two init rows) is a no-op, not a clash
+    {
+        TestLibrary L;
+        std::string err;
+        const std::string lib = "function twice(n) return 2 * n; end\n";
+        const bool first = L.load(lib, err);
+        const bool second = L.load(lib, err);
+        auto r = evalAgainst(L, "twice(21);");
+        if (first && second && r.ok && r.scalar == 42.0) {
+            ++passed; if (verbose) std::printf("PASS  [same_library_twice]\n");
+        } else { std::printf("FAIL [same_library_twice] %s\n", err.c_str()); ++failed; }
+    }
 
     // NOTE: A scalar-declared function whose body returns a string
     // ('function f(n) return [\\'x\\']; end') currently loads without a

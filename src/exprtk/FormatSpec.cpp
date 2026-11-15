@@ -137,23 +137,12 @@ namespace FormatSpec {
         // text and numeric parsers so the fill/align rules live in ONE place.
         // Fill takes the leading codepoint only when an align letter follows
         // it ('*<' -> fill '*'; '<5' -> no fill, align left; '<<' -> fill '<').
+        // A fill above U+FFFF arrives as a UTF-16 surrogate pair.
         void parseFrame(const std::wstring& s, size_t& i, Spec& out) {
-            if (i + 1 < s.size() && isAlignChar(s[i + 1])) {
-                const wchar_t fillCp = s[i];
-                out.textFill.clear();
-                if (fillCp < 0x80) {
-                    out.textFill.push_back(static_cast<char>(fillCp));
-                }
-                else if (fillCp < 0x800) {
-                    out.textFill.push_back(static_cast<char>(0xC0 | (fillCp >> 6)));
-                    out.textFill.push_back(static_cast<char>(0x80 | (fillCp & 0x3F)));
-                }
-                else {
-                    out.textFill.push_back(static_cast<char>(0xE0 | (fillCp >> 12)));
-                    out.textFill.push_back(static_cast<char>(0x80 | ((fillCp >> 6) & 0x3F)));
-                    out.textFill.push_back(static_cast<char>(0x80 | (fillCp & 0x3F)));
-                }
-                ++i;  // s[i] is now the align letter (guaranteed by lookahead)
+            const size_t fillLen = (i + 1 < s.size() && s[i] >= 0xD800 && s[i] <= 0xDBFF) ? 2 : 1;
+            if (i + fillLen < s.size() && isAlignChar(s[i + fillLen])) {
+                out.textFill = Encoding::wstringToUtf8(s.substr(i, fillLen));
+                i += fillLen;  // s[i] is now the align letter (guaranteed by lookahead)
             }
 
             if (i < s.size() && isAlignChar(s[i])) {
@@ -281,7 +270,7 @@ namespace FormatSpec {
             }
 
             // Type letter, optional. If missing, NumericType::Default
-            // (= shortest round-trip via std::to_chars).
+            // (= formatDefault).
             if (i < s.size()) {
                 if (i + 1 != s.size()) {
                     return makeError("Unexpected trailing characters in numeric spec");
@@ -382,8 +371,8 @@ namespace FormatSpec {
         std::wstring formatNumericBody(const Spec& spec, double value) {
             // Default type WITH a precision behaves like 'g' (significant
             // digits), matching Python/Rust where the no-type float format is
-            // "same as g". Without a precision the default stays a shortest
-            // round-trip (handled in the Default branch below).
+            // "same as g". Without a precision the default number output
+            // applies (handled in the Default branch below).
             if (spec.numericType == NumericType::Default && spec.precisionMin >= 0) {
                 Spec g = spec;
                 g.numericType = NumericType::General;
@@ -421,12 +410,10 @@ namespace FormatSpec {
                 // Handled separately below.
                 break;
             case NumericType::Default:
-                // No type letter: shortest round-trip via to_chars,
-                // then pad/sign manually if requested.
+                // No type letter: the default number output, then
+                // pad/sign manually if requested.
             {
-                std::array<char, 64> buf{};
-                auto res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
-                std::string body(buf.data(), res.ptr);
+                std::string body = formatDefault(value);
                 if (spec.forceSign && !body.empty() && body[0] != '-' && body[0] != '+') {
                     body.insert(body.begin(), '+');
                 }
@@ -852,6 +839,25 @@ namespace FormatSpec {
         // the original string to parseNumeric so it reads its own frame - this
         // keeps the marker-less path byte-identical to the previous behaviour.
         return parseNumeric(s);
+    }
+
+    std::string formatDefault(double value) {
+        if (value == 0.0) value = 0.0;  // -0 prints as 0
+        // Whole numbers below 2^53 are exact: all digits, no exponent (100000, not 1e+05)
+        constexpr double kExactWhole = 9007199254740992.0;
+        std::array<char, 64> buf{};
+        std::to_chars_result res;
+        if (std::trunc(value) != value) {
+            res = std::to_chars(buf.data(), buf.data() + buf.size(), value, std::chars_format::general, 15);
+        }
+        else if (std::fabs(value) < kExactWhole) {
+            res = std::to_chars(buf.data(), buf.data() + buf.size(), value, std::chars_format::fixed);
+        }
+        else {
+            res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
+        }
+        if (res.ec != std::errc{}) return std::string{};
+        return std::string(buf.data(), res.ptr);
     }
 
     std::wstring apply(const Spec& spec, double value) {

@@ -46,10 +46,10 @@ namespace MultiReplace {
     // caller should zero-init the struct first if a fully-populated
     // value is wanted.
     //
-    // Returns true on full success: the entire format was consumed and
-    // every field landed inside its valid range. Returns false on any
-    // mismatch or out-of-range value; tm contents are undefined after
-    // a failed parse.
+    // Returns true on full success: the entire format was consumed,
+    // every field landed inside its valid range and the day exists in
+    // its month. Returns false on any mismatch or out-of-range value;
+    // tm contents are undefined after a failed parse.
     bool parseDateTime(std::string_view input,
         std::string_view format,
         std::tm& tm);

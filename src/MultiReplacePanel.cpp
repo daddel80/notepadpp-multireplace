@@ -8404,6 +8404,13 @@ void MultiReplace::handleReplaceButton() {
     WaitForDebugWindowClose(true);
 }
 
+// Tells the engine which replace step follows, so it escapes its output for it
+static MultiReplaceEngine::ReplaceMode replaceModeOf(const ReplaceItemData& item)
+{
+    if (item.regex) return MultiReplaceEngine::ReplaceMode::Regex;
+    return item.extended ? MultiReplaceEngine::ReplaceMode::Extended : MultiReplaceEngine::ReplaceMode::Normal;
+}
+
 bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt, int lcnt, Sci_Position verifyFrom)
 {
     // Get the document's codepage once at the beginning.
@@ -8448,7 +8455,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 _currentRuleIndex = itemIndex;
                 _currentMatchPos = searchResult.pos;
                 MultiReplaceEngine::FormulaResult res = engine->execute(
-                    scriptUtf8, vars, itemData.regex, documentCodepage);
+                    scriptUtf8, vars, replaceModeOf(itemData), documentCodepage);
                 _currentRuleIndex = SIZE_MAX;
                 _currentMatchPos = -1;
 
@@ -8611,7 +8618,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
                     _currentRuleIndex = itemIndex;
                     _currentMatchPos = searchResult.pos;
                     MultiReplaceEngine::FormulaResult res = engine->execute(
-                        luaTemplateUtf8, vars, itemData.regex, documentCodepage);
+                        luaTemplateUtf8, vars, replaceModeOf(itemData), documentCodepage);
                     _currentRuleIndex = SIZE_MAX;
                     _currentMatchPos = -1;
 
@@ -8758,7 +8765,7 @@ bool MultiReplace::preProcessListForReplace(bool highlight) {
                     vars.RULE = i;
 
                     MultiReplaceEngine::FormulaResult res = engine->execute(
-                        localReplaceTextUtf8, vars, replaceListData[i].regex, -1);
+                        localReplaceTextUtf8, vars, replaceModeOf(replaceListData[i]), -1);
                     _currentRuleIndex = SIZE_MAX;
                     if (!res.success) {
                         return false;

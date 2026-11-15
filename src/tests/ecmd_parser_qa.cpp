@@ -262,20 +262,22 @@ int main(int argc, char** argv) {
         "function b(n) return n*2; end\n",
         "comments_between_functions");
 
-    // ---- Doubled '' inside a string ----
+    // ---- Escaped quote inside a string ----
     {
-        // ExprTk's escape for a single quote inside a string is ''.
-        // The scanner must treat 'it''s' as a single string token.
+        // ExprTk escapes a quote inside a string with a backslash. The
+        // scanner must keep 'it\'s the end' as one string, so the `end`
+        // in it does not close the function.
         const std::string src =
             "function f(n) : S\n"
-            "    var s := 'it''s ok';\n"
+            "    var s := 'it\\'s the end';\n"
             "    return [s];\n"
-            "end\n";
+            "end\n"
+            "function g(n) return n; end\n";
         auto r = EcmdParser::parse(src);
-        if (r.success && r.functions.size() == 1) {
-            ++passed; if (verbose) std::printf("PASS  [doubled_quote_escape]\n");
+        if (r.success && r.functions.size() == 2) {
+            ++passed; if (verbose) std::printf("PASS  [escaped_quote]\n");
         } else {
-            std::printf("FAIL [doubled_quote_escape] %s\n", r.errorMessage.c_str());
+            std::printf("FAIL [escaped_quote] %s\n", r.errorMessage.c_str());
             ++failed;
         }
     }

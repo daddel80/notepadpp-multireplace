@@ -135,7 +135,17 @@ int main(int argc, char** argv) {
     checkFields("2023-11-14 trailing junk", "%Y-%m-%d",
                 2023, 10, 14, 0, 0, 0, "trailing input ignored");
 
+    // ---- Day within its month ----
+    checkFields("2024-02-29", "%Y-%m-%d",       2024, 1, 29, 0, 0, 0, "leap day");
+    checkFields("2000-02-29", "%Y-%m-%d",       2000, 1, 29, 0, 0, 0, "leap day 2000");
+    checkFields("2023-04-30", "%Y-%m-%d",       2023, 3, 30, 0, 0, 0, "Apr 30");
+
     // ---- Failures ----
+    checkFail("2023-02-30", "%Y-%m-%d",     "Feb 30");
+    checkFail("2023-02-29", "%Y-%m-%d",     "Feb 29 outside a leap year");
+    checkFail("2100-02-29", "%Y-%m-%d",     "Feb 29 in 2100");
+    checkFail("2023-04-31", "%Y-%m-%d",     "Apr 31");
+    checkFail("31.06.2023", "%d.%m.%Y",     "day before month, Jun 31");
     checkFail("not-a-date", "%Y-%m-%d",     "complete garbage");
     checkFail("2023-13-14", "%Y-%m-%d",     "month 13");
     checkFail("2023-00-14", "%Y-%m-%d",     "month 0");

@@ -15,14 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // NumberParse.cpp
-// Implementation lifted verbatim from the engine's original
-// parseCaptureToDouble so existing behaviour is preserved bit-for-bit.
-// ExprTkEngine::parseCaptureToDouble now forwards here; this is the
-// single source of truth.
+// ExprTkEngine::parseCaptureToDouble and the match history forward
+// here; this is the single source of truth for reading numbers.
 
 #include "NumberParse.h"
 
-#include <algorithm>
 #include <charconv>
 #include <limits>
 #include <system_error>
@@ -31,46 +28,58 @@ namespace MultiReplaceEngine {
 
     double parseNumber(const std::string& s)
     {
-        if (s.empty()) {
-            return std::numeric_limits<double>::quiet_NaN();
-        }
+        constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+        const auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
 
-        // Exactly one decimal separator is allowed. Anything with more
-        // than one separator - mixed ('.' and ',') or repeated ('1.000.000',
-        // '1,000,000') - is a thousands-grouped or otherwise ambiguous form
-        // that cannot be read as a single number, so it yields NaN rather
-        // than a misleading partial value. Thousands separators are not
-        // supported - strip them in the regex first.
-        const long long sepCount =
-            std::count(s.begin(), s.end(), '.') +
-            std::count(s.begin(), s.end(), ',');
-        if (sepCount > 1) {
-            return std::numeric_limits<double>::quiet_NaN();
-        }
+        std::size_t i = 0;
+        while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) ++i;
 
-        // Rewrite a lone ',' to '.' for the comma-decimal path; a working
-        // buffer is built solely for that case. Plain '.' numerics and
-        // integers parse directly from the input - no allocation.
+        // Sign and mantissa go into buf with '.' as the decimal point.
+        // Exactly one decimal separator is allowed, and only one followed
+        // by a digit counts: in "1.5, rest" the comma belongs to the rest.
+        // More - mixed ("1.234,56") or repeated ("1.000.000") - is a
+        // thousands-grouped or ambiguous form, so it yields NaN rather
+        // than a misleading partial value.
         std::string buf;
-        const char* first = s.data();
-        const char* last = s.data() + s.size();
+        if (i < s.size() && (s[i] == '+' || s[i] == '-')) {
+            if (s[i] == '-') buf.push_back('-');
+            ++i;
+        }
+        bool digits = false;
+        int separators = 0;
+        for (; i < s.size(); ++i) {
+            const char c = s[i];
+            if (isDigit(c)) {
+                buf.push_back(c);
+                digits = true;
+            }
+            else if ((c == '.' || c == ',') && i + 1 < s.size() && isDigit(s[i + 1])) {
+                buf.push_back('.');
+                ++separators;
+            }
+            else {
+                break;
+            }
+        }
+        if (!digits || separators > 1) {
+            return nan;
+        }
 
-        if (s.find(',') != std::string::npos) {
-            buf.assign(s);
-            std::replace(buf.begin(), buf.end(), ',', '.');
-            first = buf.data();
-            last = buf.data() + buf.size();
+        // Optional exponent; anything after the number is ignored ("1.5abc" -> 1.5)
+        if (i < s.size() && (s[i] == 'e' || s[i] == 'E')) {
+            std::size_t j = i + 1;
+            if (j < s.size() && (s[j] == '+' || s[j] == '-')) ++j;
+            if (j < s.size() && isDigit(s[j])) {
+                while (j < s.size() && isDigit(s[j])) ++j;
+                buf.append(s, i, j - i);
+            }
         }
 
         double value = 0.0;
-        auto res = std::from_chars(first, last, value);
-        if (res.ec != std::errc{}) {
-            return std::numeric_limits<double>::quiet_NaN();
+        const auto res = std::from_chars(buf.data(), buf.data() + buf.size(), value);
+        if (res.ec != std::errc{} || res.ptr != buf.data() + buf.size()) {
+            return nan;
         }
-
-        // Trailing junk after a valid numeric prefix is consumed silently.
-        // "1.5abc" -> 1.5. This matches how most programming languages
-        // treat a number embedded in a larger string.
         return value;
     }
 

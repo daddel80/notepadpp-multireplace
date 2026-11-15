@@ -488,10 +488,10 @@ Every ExprTk expression in a replace string is wrapped in `(?=` and `)`.
 |------------------|-----------------------------------------------------------------------|
 | `(?=expr)`       | Evaluate the expression and insert its result at this position.       |
 | `\(?=`           | Literal `(?=` — backslash escapes the marker. In regex mode write `\(\?=`. |
-| `\\`             | Literal backslash. In regex mode write `\\\\`.                      |
+| `\\`             | Literal backslash. In regex and extended mode write `\\\\`.         |
 | any other text   | Literal output, including UTF-8 byte sequences.                       |
 
-In regex mode the literal text is a Notepad++ replace string: `$1` and `\1` insert groups, and `\`, `$`, `(`, `)` and `?` must be escaped with `\` to appear as is. Outside regex mode, literal text is copied unchanged.
+In regex mode the literal text is a Notepad++ replace string: `$1` and `\1` insert groups, and `\`, `$`, `(`, `)` and `?` must be escaped with `\` to appear as is. In extended mode `\n`, `\t` and the other escapes work in the literal text. Otherwise literal text is copied unchanged. Formula results are inserted as they are in every mode.
 
 The closing `)` is matched by depth-counting, so balanced parentheses inside the expression — like `min(num(1), num(2))` — work naturally without extra escaping.
 
@@ -544,7 +544,7 @@ To access the matched text as a string, use `txt(0)`. To reference the match in 
 
 **Number parsing notes:**
 
-`num(N)` parses captures with a single `.` or `,` accepted as the decimal separator (more than one separator - mixed or repeated, as in thousands grouping - yields `NaN`, since the intended value is ambiguous), tolerates trailing non-numeric characters, and yields `NaN` when the input has no leading digits. When an expression evaluates to `NaN` (for example `0/0`, `log(-1)`, `sqrt(-1)`) or to `±Infinity` (for example `1/0`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. With **Show formula error dialogs** turned off, such matches are skipped without a dialog and counted in the summary at the end of the run. Skipped matches are left untouched, so no original data is lost.
+`num(N)` parses captures with a single `.` or `,` accepted as the decimal separator (more than one separator - mixed or repeated, as in thousands grouping - yields `NaN`, since the intended value is ambiguous), skips leading spaces and tabs, accepts a leading `+` or `-`, tolerates trailing non-numeric characters, and yields `NaN` when no digits follow. When an expression evaluates to `NaN` (for example `0/0`, `log(-1)`, `sqrt(-1)`) or to `±Infinity` (for example `1/0`), MultiReplace shows a dialog with three choices: skip just this match, skip every NaN for the rest of the run, or stop the run. With **Show formula error dialogs** turned off, such matches are skipped without a dialog and counted in the summary at the end of the run. Skipped matches are left untouched, so no original data is lost.
 
 | Capture text                         | `num(N)`            | Note                                            |
 |--------------------------------------|---------------------|-------------------------------------------------|
@@ -555,6 +555,8 @@ To access the matched text as a string, use `txt(0)`. To reference the match in 
 | `""`, `"abc"`                        | `NaN`               | unparseable                                     |
 | `"$100"`                             | `NaN`               | leading non-digit                               |
 | `"3,14abc"`                          | `3.14`              | trailing characters tolerated                   |
+| `" 42"`, `"+42"`                     | `42`                | leading spaces and sign accepted                |
+| `"1.5, rest"`                        | `1.5`               | a separator in the trailing text does not count |
 | `"1,234,567"`, `"1.000.000"` (thousands) | `NaN`           | more than one separator is rejected — remove the grouping first (see below) |
 | `"1.234,56"` or `"1,234.56"`         | `NaN`               | mixing `.` and `,` is rejected — capture a single separator type |
 
@@ -1079,7 +1081,7 @@ end
 
 **Calling library functions:** Used directly in `(?=...)` blocks just like built-ins — `(?=padleft(txt(1), 5, '0'))`, `(?=double_it(num(1)))`. The output type matches what the function returns.
 
-**Cross-calls and recursion:** Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter:
+**Cross-calls and recursion:** Functions in the same file can call each other and themselves. The loader compiles in two passes, so call order doesn't matter. Recursion that would run out of stack stops the run with a message instead of crashing Notepad++:
 
 ```
 function isEven(n)
@@ -1095,13 +1097,15 @@ end
 
 **Comments:** Both `/* ... */` and `// ...` work, anywhere in the file or inside function bodies.
 
-**Errors:** Parser, name-collision and compile errors abort the load with a dialog that names the function and offset, and the run stops; no replacement is made.
+**Errors:** Parser, name-collision and compile errors abort the load with a dialog that names the function and offset, and the run stops; no replacement is made. A library function cannot take the name of a built-in function or of a function that is already loaded. Loading the same library again in the same run does nothing.
 
 <br>
 
 #### Writing function bodies
 
 Function bodies use a small statement language layered on top of ExprTk's expression syntax. The pieces below cover what's needed for almost any helper.
+
+Bodies can call the other library functions and every built-in that does not depend on the current match: the [String Pack](#string-pack), `totxt`, `tonum`, `isnum`, `todate`, `now`, `today`, `rnd`, `rndseed`, `rndnorm`, `hex2num`, `bin2num`, `oct2num`, `num2rom`, `rom2num`. Match readers (`num`, `txt`, `numout`, `txtout`, `numprev`, `txtprev`, `numcol`, `txtcol`, `seq`, `skip`, `CNT` and the other variables) and `loadlib` are not available there; pass the values in as parameters.
 
 | Construct | Form | Notes |
 |---|---|---|
@@ -1110,7 +1114,7 @@ Function bodies use a small statement language layered on top of ExprTk's expres
 | Block | `{ s1; s2; ... }` | Statement separator is `;`. Trailing `;` before `}` is fine. |
 | If / else | `if (cond) { ... } else { ... };` | Trailing `;` after the closing `}` is required when the if-form is a statement. |
 | Else-if chain | `if (c1) { ... } else if (c2) { ... } else { ... };` | Standard. |
-| While loop | `while (cond) { body; };` | Same trailing `;`. |
+| While loop | `while (cond) { body; };` | Same trailing `;`. Loops stop after 10 million iterations per match, with a message. |
 | Return scalar | `return expr;` | Body returns a number. |
 | Return string | `return expr;` | Body must declare `: S` and the expression must produce a string. |
 
@@ -1206,7 +1210,7 @@ For built-in formatting needs (zero padding, fixed width, hex, etc.) consider th
 
 ### Output Formatting
 
-By default an ExprTk expression renders its result with the shortest round-trip representation: `3.14`, `42`, `1.5e+10` for numbers, the raw string for text. For controlled output — padding, alignment, precision, fixed decimals, hex, time durations, dates — append a **format spec** to the expression with `~`:
+By default an ExprTk expression renders numbers with up to 15 significant digits, so binary rounding noise stays out (`42*0.9` gives `37.8`, not `37.800000000000004`), and whole numbers exactly, without exponent below 2^53 (`100000`, not `1e+05`; beyond that `1e+20`). Text is inserted as it is. Match history keeps the full value, so later reads compute exactly; `~ .17g` shows all digits. For controlled output — padding, alignment, precision, fixed decimals, hex, time durations, dates — append a **format spec** to the expression with `~`:
 
 ```
 (?= formula ~ spec )
@@ -1255,7 +1259,7 @@ The optional `n:` marker sits after the frame's fill/align and before the numeri
 | `width`   | Minimum total field width.                                                                       |
 | `.prec`   | Number of decimal digits (for `f`/`e`); significant digits for the default type and `g`.         |
 | `.min-max`| Range form: at least `min`, at most `max` decimals. Trailing zeros beyond `min` are stripped.    |
-| `type`    | One letter choosing the representation (see the table below). Omit for default (shortest round-trip). |
+| `type`    | One letter choosing the representation (see the table below). Omit for the default output.        |
 
 The `type` letter picks how the number is rendered:
 
@@ -1305,7 +1309,7 @@ The optional `n:` marker (see [Type markers](#type-markers-n-and-t)) makes "this
 
 ##### Default type with precision behaves like `g`
 
-Without a type letter and without precision, the number renders shortest round-trip (`3.14`, `42`). **Add a precision and the default type behaves like `g`** — `.N` means *significant digits*, switching to scientific notation when the magnitude warrants it. This matches Python and Rust, where the no-type float format is defined as "the same as `g`".
+Without a type letter and without precision, the number renders like the default output (`3.14`, `42`, `37.8`). **Add a precision and the default type behaves like `g`** — `.N` means *significant digits*, switching to scientific notation when the magnitude warrants it. This matches Python and Rust, where the no-type float format is defined as "the same as `g`".
 
 | Spec   | Value       | Output      | Why                              |
 |--------|-------------|-------------|----------------------------------|
@@ -1544,7 +1548,7 @@ Parses `text` against the strftime-style `fmt` pattern and returns the resulting
 - without `utc:` keyword → input is interpreted as **local time**
 - with `utc:` keyword → input is interpreted as **UTC**
 
-On parse failure (malformed input, out-of-range fields, format mismatch) the function returns `NaN`, which flows through the standard recoverable-error dialog — the match stays untouched on Skip.
+A month or day missing from the format defaults to the first (`todate('05/2023', '%m/%Y')` is May 1), missing time fields to midnight. On parse failure (malformed input, out-of-range fields such as `2023-02-30`, format mismatch) the function returns `NaN`, which flows through the standard recoverable-error dialog — the match stays untouched on Skip.
 
 <br>
 

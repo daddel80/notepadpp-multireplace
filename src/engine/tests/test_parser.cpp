@@ -335,6 +335,20 @@ int main()
           "\\(?=a)\\\\(?=reg(1))",
           { L("(?=a)\\"), E("reg(1)") });
 
+    // A18-A20. A string literal is skipped whole, so its parentheses do
+    // not count; a backslash escapes the next character (\' and \\).
+    check("A18_paren_in_string",
+          "x(?='a)b')y",
+          { L("x"), E("'a)b'"), L("y") });
+
+    check("A19_escaped_quote_in_string",
+          "(?=replace(txt(1), '\\'', '\"'))",
+          { E("replace(txt(1), '\\'', '\"')") });
+
+    check("A20_backslash_before_closing_quote",
+          "(?='C:\\\\temp\\\\' + txt(1))!",
+          { E("'C:\\\\temp\\\\' + txt(1)"), L("!") });
+
     // ---------- hasExpressions() pre-check ----------
 
     if (ExprTkPatternParser::hasExpressions("Hello World")) {

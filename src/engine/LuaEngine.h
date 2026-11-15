@@ -64,7 +64,7 @@ namespace MultiReplaceEngine {
         FormulaResult execute(
             const std::string& scriptUtf8,
             const FormulaVars& vars,
-            bool isRegexMatch,
+            ReplaceMode mode,
             int documentCodepage
         ) override;
 

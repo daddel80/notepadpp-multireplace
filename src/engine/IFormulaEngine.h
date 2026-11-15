@@ -112,8 +112,8 @@ namespace MultiReplaceEngine {
         // Parameters:
         //   scriptUtf8        The user's replace text (UTF-8)
         //   vars              CAP1..n, MATCH, FPATH, FNAME, counters, ...
-        //   isRegexMatch      Whether the surrounding rule uses regex
-        //                     (controls escaping of the result)
+        //   mode              The rule's search mode (controls escaping
+        //                     of the result)
         //   documentCodepage  Scintilla codepage of the active document
         //                     (-1 means "ask Scintilla yourself")
         //
@@ -121,7 +121,7 @@ namespace MultiReplaceEngine {
         virtual FormulaResult execute(
             const std::string& scriptUtf8,
             const FormulaVars& vars,
-            bool isRegexMatch,
+            ReplaceMode mode,
             int documentCodepage
         ) = 0;
 

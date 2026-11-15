@@ -93,6 +93,15 @@ namespace MultiReplace {
             return true;
         }
 
+        // Days of month month0 (0..11) in year, Gregorian leap years.
+        int daysInMonth(int year, int month0) noexcept
+        {
+            static constexpr int kDays[] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+            if (month0 < 0 || month0 > 11) return 31;
+            const bool leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+            return (month0 == 1 && leap) ? 29 : kDays[month0];
+        }
+
         // Result of a single specifier dispatch. Lets handleSpecifier
         // signal "I rewrote the format" (for %F / %T) without using
         // exceptions or out-params for flow control.
@@ -270,6 +279,10 @@ namespace MultiReplace {
         std::size_t i = 0;
         std::size_t f = 0;
         if (!parseImpl(input, i, format, f, tm)) {
+            return false;
+        }
+        // %d alone allows 31; the month decides (2023-02-30 is no date)
+        if (tm.tm_mday > daysInMonth(tm.tm_year + 1900, tm.tm_mon)) {
             return false;
         }
         // POSIX strptime allows trailing input. We do the same: the

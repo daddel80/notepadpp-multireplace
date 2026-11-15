@@ -21,8 +21,8 @@
 // same num() reads at non-zero lookback). Lives in its own header so
 // neither caller has to depend on the other.
 //
-// The parser is permissive in the same way the existing engine has
-// always been: it accepts both '.' and ',' as the decimal separator,
+// The parser is permissive: it skips leading spaces and tabs, accepts a
+// '+' or '-' sign and both '.' and ',' as the decimal separator,
 // tolerates trailing junk after a leading number, and never throws -
 // non-numeric input becomes NaN so the formula author can either
 // propagate it or guard with an isfinite() check.
@@ -35,12 +35,14 @@ namespace MultiReplaceEngine {
 
     // Parse `s` as a double. Returns:
     //   - NaN for empty input.
-    //   - NaN if the leading characters do not form a number.
-    //   - NaN if the input has more than one separator ('.' or ','),
+    //   - NaN if no digits follow the leading spaces and the sign.
+    //   - NaN if the number has more than one separator ('.' or ','),
     //     whether mixed ("1.234,56") or repeated ("1.000.000"): the
     //     intended value is ambiguous (thousands grouping vs. decimal).
+    //     A separator counts only when a digit follows it.
     //   - The parsed value otherwise (trailing junk after a valid
-    //     numeric prefix is silently dropped: "1.5abc" -> 1.5).
+    //     numeric prefix is silently dropped: "1.5abc" -> 1.5,
+    //     "1.5, rest" -> 1.5).
     //
     // Decimal separator: a single separator type is accepted. '.' is
     // the decimal point; if only ',' is present it is treated as the
