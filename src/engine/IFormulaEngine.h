@@ -52,7 +52,7 @@ namespace MultiReplaceEngine {
         // ----- Lifecycle ---------------------------------------------------
 
         // Bring the engine into a ready state. Returns false on a hard
-        // failure (e.g. luaL_newstate returned null). After a false
+        // failure (e.g. lua_newstate returned null). After a false
         // return, the engine must be discarded.
         virtual bool initialize() = 0;
 
@@ -137,11 +137,6 @@ namespace MultiReplaceEngine {
         // the convention that engine names are proper nouns.
         virtual std::wstring shortName() const = 0;
         virtual std::wstring shortLetter() const = 0;
-
-        // URL for the help button to open when this engine is active.
-        // May be a local file:// path or a remote https:// URL; the
-        // panel doesn't care.
-        virtual std::wstring helpUrl() const = 0;
     protected:
         // ----- Shared recoverable-error skip state ------------------------
         //

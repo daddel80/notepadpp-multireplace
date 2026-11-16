@@ -995,17 +995,6 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
-    // Help URL
-    // ---------------------------------------------------------------------
-
-    std::wstring ExprTkEngine::helpUrl() const
-    {
-        // Points at the user-facing documentation section. Resolved at
-        // call time so we don't bake an outdated URL into a binary.
-        return L"https://github.com/daddel80/notepadpp-multireplace#exprtk-engine";
-    }
-
-    // ---------------------------------------------------------------------
     // ExprTk return-statement unpacking
     // ---------------------------------------------------------------------
 

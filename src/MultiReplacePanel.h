@@ -1436,6 +1436,7 @@ private:
     bool         isFormulaErrorDialogEnabled() const override;
     bool         isLuaSafeModeEnabled()    const override;
     bool         isDebugModeEnabled()      const override;
+    bool         isDebugRunSilenced()      const override;
     bool         readCurrentRowColumnByIndex(int colIndex1Based,
         std::string& out) const override;
     bool         readCurrentRowColumnByName(const std::string& headerName,

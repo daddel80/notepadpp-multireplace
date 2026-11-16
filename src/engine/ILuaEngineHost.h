@@ -26,10 +26,10 @@
 
 namespace MultiReplaceEngine {
 
-    // Callback hooks the engine needs back into the host. Lua scripts can
-    // trigger UI (the debug window, error message boxes), and the result of
-    // set() may need to be regex-escaped before going back into a regex
-    // replacement; both pieces of logic live in MultiReplace, not in the
+    // Callback hooks the engines need back into the host. Formulas can
+    // trigger UI (the debug window, error message boxes), and ExprTk output
+    // is regex-escaped before going back into a regex replacement; both
+    // pieces of logic live in MultiReplace, not in the
     // engine. Passing them as a small interface keeps the engine free of
     // MR types and trivially mockable in tests.
     //
@@ -39,9 +39,8 @@ namespace MultiReplaceEngine {
         virtual ~ILuaEngineHost() = default;
 
         // Escape characters that have meaning in a regex replacement so
-        // user-produced text from Lua doesn't accidentally introduce
-        // backreferences or escape sequences. Pure string transformation,
-        // no I/O or UI.
+        // formula output doesn't accidentally introduce backreferences or
+        // escape sequences. Pure string transformation, no I/O or UI.
         virtual std::string escapeForRegex(const std::string& input) = 0;
 
         // Show the Lua debug window with the captured CAP/global dump.
@@ -81,6 +80,8 @@ namespace MultiReplaceEngine {
         virtual bool isFormulaErrorDialogEnabled() const = 0;
         virtual bool isLuaSafeModeEnabled()    const = 0;
         virtual bool isDebugModeEnabled()      const = 0;
+        // True after "Run to End" in the debug window until the next run.
+        virtual bool isDebugRunSilenced()      const = 0;
 
         // CSV column access for the line containing the current match.
         // Index is 1-based; addressing by name uses the document's first

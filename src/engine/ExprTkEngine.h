@@ -131,7 +131,6 @@ namespace MultiReplaceEngine {
         EngineType   type()        const override { return EngineType::ExprTk; }
         std::wstring shortName()   const override { return L"ExprTk"; }
         std::wstring shortLetter() const override { return L"E"; }
-        std::wstring helpUrl()     const override;
 
     private:
         // Type aliases for ExprTk's templated machinery. Restricting the

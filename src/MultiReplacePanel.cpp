@@ -67,9 +67,6 @@
 #include <unordered_set>
 #include <vector>
 
-// Third-party
-#include <lua.hpp>
-
 // Windows
 #include <sdkddkver.h>
 #include <windows.h>
@@ -7779,6 +7776,9 @@ void MultiReplace::replaceAllInOpenedDocs()
         return;
     }
 
+    // Run to End in the debug window holds for all documents of this run
+    _debugSkipForRun = false;
+
     // Reset the UI counters before starting
     resetCountColumns();
     std::vector<int> listFindTotals(replaceListData.size(), 0);
@@ -8004,9 +8004,9 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
     if (auto* engine = getActiveEngine()) {
         engine->beginRun();
     }
-    // "Run to End" only suppresses the dialog for the current run; clear
-    // the flag so the next run honours the persistent debug toggle again.
-    _debugSkipForRun = false;
+    // "Run to End" silences the debug dialog until the run ends; a run over
+    // several documents clears the flag once, at its start.
+    if (scope == RunScope::Editor) _debugSkipForRun = false;
 
     // Selection mode with no selection: different behavior for single-doc vs. multi-doc.
     // Use hasAnyNonEmptySelection() so rectangular selections (where some
@@ -9029,6 +9029,11 @@ bool MultiReplace::isDebugModeEnabled() const
     return _debugModeEnabled && !_debugSkipForRun;
 }
 
+bool MultiReplace::isDebugRunSilenced() const
+{
+    return _debugSkipForRun;
+}
+
 bool MultiReplace::readCurrentRowColumnByIndex(int colIndex1Based,
     std::string& out) const
 {
@@ -9191,73 +9196,6 @@ void MultiReplace::updateFilePathCache(const std::filesystem::path* explicitPath
         cachedFilePath = Encoding::wstringToUtf8(std::wstring(filePathBuffer));
         cachedFileName = Encoding::wstringToUtf8(std::wstring(fileNameBuffer));
     }
-}
-
-// External entry point for LuaEngine. Free function so the engine TU can
-// link against it without including the panel header.
-int luaSafeLoadFileSandbox_impl(lua_State* L)
-{
-    const char* path = luaL_checkstring(L, 1);
-
-    // Read file (UTF-8/ANSI logic)
-    std::wstring wpath = Encoding::utf8ToWString(path);
-    std::ifstream in(std::filesystem::path(wpath), std::ios::binary);
-    if (!in) {
-        lua_pushboolean(L, false);
-        lua_pushfstring(L, "Cannot open file: %s", path);
-        return 2;
-    }
-    std::string raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    in.close();
-
-    bool rawIsUtf8 = Encoding::isValidUtf8(raw.data(), raw.size());
-    std::string utf8_buf;
-    if (rawIsUtf8) {
-        utf8_buf = std::move(raw);
-    }
-    else {
-        int wlen = MultiByteToWideChar(CP_ACP, 0, raw.data(), static_cast<int>(raw.size()), nullptr, 0);
-        std::wstring wide(wlen, L'\0');
-        MultiByteToWideChar(CP_ACP, 0, raw.data(), static_cast<int>(raw.size()), &wide[0], wlen);
-
-        int u8len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, nullptr, 0, nullptr, nullptr);
-        utf8_buf.resize(u8len);
-        WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, &utf8_buf[0], u8len, nullptr, nullptr);
-    }
-
-    // Strip UTF-8 BOM if present
-    if (utf8_buf.size() >= 3 &&
-        (unsigned char)utf8_buf[0] == 0xEF &&
-        (unsigned char)utf8_buf[1] == 0xBB &&
-        (unsigned char)utf8_buf[2] == 0xBF)
-    {
-        utf8_buf.erase(0, 3);
-    }
-
-    // Load as text chunk only (avoid binary precompiled chunks)
-#if LUA_VERSION_NUM >= 503
-    if (luaL_loadbufferx(L, utf8_buf.data(), utf8_buf.size(), path, "t") != LUA_OK)
-#else
-    if (luaL_loadbuffer(L, utf8_buf.data(), utf8_buf.size(), path) != LUA_OK)
-#endif
-    {
-        lua_pushboolean(L, false);
-        lua_pushstring(L, lua_tostring(L, -2)); // copy error
-        lua_remove(L, -3); // remove original error under the two pushes
-        return 2;
-    }
-
-    if (lua_pcall(L, 0, 1, 0) != LUA_OK) {
-        lua_pushboolean(L, false);
-        lua_pushstring(L, lua_tostring(L, -2));
-        lua_remove(L, -3);
-        return 2;
-    }
-
-    // Success: stack has [ table ]
-    lua_pushboolean(L, true);
-    lua_insert(L, -2); // [ true, table ]
-    return 2;
 }
 
 #pragma endregion
@@ -9749,6 +9687,9 @@ void MultiReplace::handleReplaceInFiles() {
     std::wstring message = LM.get(L"msgbox_confirm_replace_in_files", { std::to_wstring(files.size()), shortenedDirectory, wFilter });
     if (MessageBox(_hSelf, message.c_str(), LM.getW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
         return;
+
+    // Run to End in the debug window holds for all files of this run
+    _debugSkipForRun = false;
 
     if (useListEnabled) {
         resetCountColumns();

@@ -640,11 +640,8 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             CopyListViewToClipboard(hListView);
         }
         else if (LOWORD(wParam) == 5) {  // Run to End: silence dialog for the rest of this run
-            // Flip the per-run skip flag on the panel and tear the window
-            // down. The next debug-write call will see isDebugModeEnabled()
-            // return false and proceed without showing the dialog. The
-            // flag is cleared at the start of the next run, so the
-            // persistent Debug-Mode toggle is unaffected.
+            // The engines read the flag through isDebugRunSilenced(), also over
+            // DEBUG=true in a script; the next run clears it, the toggle stays.
             if (instance) {
                 instance->_debugSkipForRun = true;
             }

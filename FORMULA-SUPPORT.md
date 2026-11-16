@@ -73,8 +73,6 @@ Two engines are available, selected via the `(L)` / `(E)` indicator next to the 
 
 All variables below are registered under both upper- and lowercase. Pick whichever style reads better — `CNT` and `cnt` refer to the same value, as do `match` and `MATCH`, `cap1` and `CAP1`, and so on.
 
-**Function names are also case-insensitive.** `num(1)`, `Num(1)`, and `NUM(1)` all call the same function; the same applies to `numprev` / `NumPrev` / `NUMPREV`, `txt` / `TXT`, and every other built-in. This is enforced consistently from the parser through to the match-history analyzer.
-
 | Variable        | Description |
 |-----------------|-------------|
 | `CNT` / `cnt`   | Count of the detected string. |
@@ -91,6 +89,8 @@ All variables below are registered under both upper- and lowercase. Pick whichev
 **Notes:**
 - `FNAME` and `FPATH` are updated for each file processed by `Replace All in Open Documents` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
 - **String Variables:** `MATCH` and `CAP` variables are always strings. For calculations, use `tonum(CAP1)`. Both dot (.) and comma (,) are recognized as decimal separators. Thousands separators are not supported.
+- **Result as it is:** The result of `set()`, `cond()` and `lkp()` is inserted as it is in every search mode, so a path like `C:\new\test.txt` stays intact and `$1` is not replaced. Write line breaks and tabs in the Lua string itself, as `"\n"` and `"\t"`.
+- **Runaway formulas:** A formula that runs longer than 10 seconds or takes more than 1 GB of memory for one match, such as an endless `while` loop, stops the run with a message.
 
 <br>
 
@@ -390,7 +390,7 @@ Use init entries (empty Find) to preload variables or helper functions before an
 ### If-Then Logic
 If-then logic is integral for dynamic replacements, allowing users to set custom variables based on specific conditions. This enhances the versatility of find-and-replace operations.
 
-**Note**: Do not embed `cond()`, `set()`, or `vars()` within if statements; `if statements` are exclusively for adjusting custom variables.
+**Note**: A match for which neither `set()` nor `cond()` runs stays unchanged, so both can also be used inside `if` statements. Keep `vars()` outside, so the variables exist from the first match on.
 
 **Syntax Combinations:**
 - `if condition then ... end`
@@ -500,6 +500,8 @@ The closing `)` is matched by depth-counting, so balanced parentheses inside the
 ### Variables and Captures
 
 ExprTk receives the same per-match context as Lua, but exposed differently because ExprTk is numeric-first. All variables below are registered under both upper- and lowercase — pick the style you prefer.
+
+**Function names are also case-insensitive.** `num(1)`, `Num(1)`, and `NUM(1)` all call the same function; the same applies to `numprev` / `NumPrev` / `NUMPREV`, `txt` / `TXT`, and every other built-in. This is enforced consistently from the parser through to the match-history analyzer.
 
 #### Numeric variables (read-only)
 

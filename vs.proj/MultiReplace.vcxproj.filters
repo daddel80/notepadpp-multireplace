@@ -89,12 +89,6 @@
     <ClCompile Include="..\src\lua\ltm.c">
       <Filter>Lua</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\lua\lua.c">
-      <Filter>Lua</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\lua\luac.c">
-      <Filter>Lua</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\lua\lundump.c">
       <Filter>Lua</Filter>
     </ClCompile>

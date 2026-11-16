@@ -31,21 +31,17 @@ function cond(condition, trueVal, falseVal)
     error('cond: trueVal cannot be nil')
   end
 
-  -- Resolve thunks: if trueVal/falseVal is a function, call it for the value.
-  if type(trueVal) == 'function' then
-    trueVal = trueVal()
-  end
-  if type(falseVal) == 'function' then
-    falseVal = falseVal()
-  end
-
-  -- Pick the active branch. Cannot use "a and b or c" here: it would
-  -- collapse legitimate falsy picks (false, '', 0 are fine values too).
+  -- Pick the active branch; "a and b or c" would take c for a false b.
   local picked
   if condition then
     picked = trueVal
   else
     picked = falseVal
+  end
+
+  -- A function as value is called only for the branch that is picked.
+  if type(picked) == 'function' then
+    picked = picked()
   end
 
   local res
@@ -55,8 +51,10 @@ function cond(condition, trueVal, falseVal)
   elseif picked == nil then
     -- Falsy condition without a falseVal: skip the replacement entirely.
     res = { result = '', skip = true }
-  else
+  elseif type(picked) == 'string' or type(picked) == 'number' then
     res = { result = picked, skip = false }
+  else
+    error('cond: Expected string or number')
   end
 
   resultTable = res
@@ -132,11 +130,6 @@ function vars(args)
       end
       if value == nil then
         error('vars: Value missing for variable \"' .. tostring(name) .. '\"')
-      end
-      -- In regex replacement mode, escape backslashes so user values
-      -- substituted into the regex stay literal.
-      if type(value) == 'string' and REGEX then
-        value = value:gsub('\\\\', '\\\\\\\\')
       end
       _G[name] = value
     end
@@ -253,9 +246,6 @@ function lvars(filePath)
     if value == nil then
       error('lvars: Value missing for variable \"' .. tostring(name) .. '\"')
     end
-    if REGEX and type(value) == 'string' then
-      value = value:gsub('\\\\', '\\\\\\\\')
-    end
     _G[name] = value
   end
 
@@ -282,12 +272,13 @@ function padL(s, w, c)
   w = tonumber(w) or 0
   c = tostring(c or " ")
   if #c == 0 then c = " " end
-  
-  if #s >= w then 
-    return s 
+  local len = utf8.len(s) or #s  -- characters; bytes for invalid UTF-8
+
+  if len >= w then
+    return s
   end
-  
-  return string.rep(c, w - #s) .. s
+
+  return string.rep(c, w - len) .. s
 end
 
 -- Pads string 's' on the RIGHT with char 'c' until width 'w' is reached
@@ -297,12 +288,13 @@ function padR(s, w, c)
   w = tonumber(w) or 0
   c = tostring(c or " ")
   if #c == 0 then c = " " end
-  
-  if #s >= w then 
-    return s 
+  local len = utf8.len(s) or #s  -- characters; bytes for invalid UTF-8
+
+  if len >= w then
+    return s
   end
-  
-  return s .. string.rep(c, w - #s)
+
+  return s .. string.rep(c, w - len)
 end
 
 -- Converts string to number, accepting both dot (.) and comma (,) as decimal separator
@@ -367,6 +359,5 @@ function lcmd(path)
 end
 
 )";
-static const size_t luaSourceSize = sizeof(luaSourceCode);
 
 #endif // LUA_EMBEDDED_H
