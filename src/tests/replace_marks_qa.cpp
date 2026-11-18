@@ -860,7 +860,10 @@ int main() {
       m.forget(reinterpret_cast<std::intptr_t>(doc.d)); }
 
     // The calltip text
-    using ReplaceMarks::tipText;
+    const auto tipText = [](std::string_view label, std::string_view empty, std::string_view space, std::string_view original,
+        bool utf8, std::string_view place = {}, std::string_view entry = {}, std::string_view find = {}) {
+        return ReplaceMarks::tipText(label, empty, space, original, utf8, place, entry, find).text;
+    };
     check("tip: one line", tipText("Before:", "(empty)", "_", "two", true) == "Before: two");
     check("tip: empty original", tipText("Before:", "(empty)", "_", "", true) == "Before: (empty)");
     check("tip: spaces at the edges made visible", tipText("B:", "-", "_", "  a b  ", true) == "B: __a b__"
@@ -903,6 +906,18 @@ int main() {
         const std::string tip = tipText("B:", "-", "_", twelve, true, {}, "E:", "x");
         const std::string end = "\n...\nE: \"x\"";
         check("tip: the entry follows the cut original", tip.size() > end.size() && tip.compare(tip.size() - end.size(), end.size(), end) == 0);
+    }
+
+    // What the calltip highlights: the original alone, all its lines, never a placeholder
+    const auto highlighted = [](const ReplaceMarks::Tip& tip) { return tip.text.substr(tip.start, tip.end - tip.start); };
+    check("tip highlight: the original only, after a jump and before the entry",
+        highlighted(ReplaceMarks::tipText("Before:", "(empty)", "_", "two", true, "3 of 12", "E:", "two")) == "two");
+    check("tip highlight: an original over lines, cut and with visible spaces",
+        highlighted(ReplaceMarks::tipText("B:", "-", "_", " a\nb" + std::string(120, 'x'), true, {}, "E:", "x"))
+        == "_a\\n\nb" + std::string(99, 'x') + "...");
+    {
+        const ReplaceMarks::Tip empty = ReplaceMarks::tipText("Before:", "(empty)", "_", "", true, {}, "E:", "x");
+        check("tip highlight: none on the placeholder of an empty original", empty.start == empty.end && empty.text.find("(empty)") != std::string::npos);
     }
 
     std::printf("%d/%d checks passed\n", checks - fails, checks);

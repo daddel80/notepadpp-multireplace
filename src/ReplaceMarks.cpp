@@ -760,7 +760,7 @@ namespace ReplaceMarks {
         if (capture_.doc == document) capture_ = {};
     }
 
-    std::string tipText(std::string_view label, std::string_view empty, std::string_view space, std::string_view original,
+    Tip tipText(std::string_view label, std::string_view empty, std::string_view space, std::string_view original,
         bool utf8, std::string_view place, std::string_view entry, std::string_view find)
     {
         std::string tip;
@@ -768,6 +768,7 @@ namespace ReplaceMarks {
         tip.append(label);
         tip += ' ';
         if (original.empty()) tip.append(empty);
+        const std::size_t start = tip.size();
 
         // Spaces at the edges would not show
         const std::size_t lead = original.find_first_not_of(' ');
@@ -799,7 +800,8 @@ namespace ReplaceMarks {
                 cut = false;
             }
         }
-        if (entry.empty()) return tip;
+        const std::size_t end = tip.size();
+        if (entry.empty()) return { std::move(tip), start, end };
 
         // The list entry on a line of its own, its find text on one line in quotes
         tip.append("\n").append(entry).append(" \"");
@@ -814,6 +816,7 @@ namespace ReplaceMarks {
             appendVisible(tip, c);
             if (starts) ++columns;
         }
-        return tip.append("\"");
+        tip += '"';
+        return { std::move(tip), start, end };
     }
 }

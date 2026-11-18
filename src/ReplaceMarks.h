@@ -231,9 +231,12 @@ namespace ReplaceMarks {
         bool busy_ = false;                                    // reverting: its own changes are no edits
     };
 
+    // A calltip's text; [start, end) holds the original, drawn in the calltip's highlight color
+    struct Tip { std::string text; std::size_t start = 0; std::size_t end = 0; };
+
     // The calltip: label and the original with control characters, line breaks and the spaces at its edges (as space)
     // made visible, cut to a few lines (utf8 counts characters); after a jump, place ("3 of 12") between arrows leads;
     // a line with the list entry (its label) and its find text in quotes follows
-    std::string tipText(std::string_view label, std::string_view empty, std::string_view space, std::string_view original,
+    Tip tipText(std::string_view label, std::string_view empty, std::string_view space, std::string_view original,
         bool utf8, std::string_view place = {}, std::string_view entry = {}, std::string_view find = {});
 }

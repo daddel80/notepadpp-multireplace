@@ -11830,11 +11830,12 @@ void MultiReplace::showReplaceMarkTip(HWND view, ReplaceMarks::Span mark, const 
         ? Encoding::wstringToBytes(LM.get(L"tooltip_replaced_by", { std::to_wstring(source.entry) }), codepage) : std::string();
     const std::string find = source.entry
         ? Encoding::wstringToBytes(Encoding::utf8ToWString(std::string(source.find)), codepage) : std::string();
-    const std::string tip = ReplaceMarks::tipText(
+    const ReplaceMarks::Tip tip = ReplaceMarks::tipText(
         Encoding::wstringToBytes(LM.get(L"tooltip_replaced_before"), codepage),
         Encoding::wstringToBytes(LM.get(L"tooltip_replaced_empty"), codepage),
         visibleSpace(codepage), m_replaceMarks.originalOf(viewSend(view), mark), codepage == CP_UTF8, place, entry, find);
-    ::SendMessage(view, SCI_CALLTIPSHOW, static_cast<WPARAM>(mark.start), reinterpret_cast<LPARAM>(tip.c_str()));
+    ::SendMessage(view, SCI_CALLTIPSHOW, static_cast<WPARAM>(mark.start), reinterpret_cast<LPARAM>(tip.text.c_str()));
+    ::SendMessage(view, SCI_CALLTIPSETHLT, static_cast<WPARAM>(tip.start), static_cast<LPARAM>(tip.end));   // the original stands out
     m_replaceTipView = view;
     m_replaceTipJump = stop != nullptr;
 }
