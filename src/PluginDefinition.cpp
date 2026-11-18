@@ -75,39 +75,38 @@ void commandMenuInit()
     //            ShortcutKey *shortcut,          // optional. Define a shortcut to trigger this command
     //            bool check0nInit                // optional. Make this menu item be checked visually
     //            );
-    setCommand(0, const_cast<TCHAR*>(LM.getLPCW(L"menu_open")), multiReplace, NULL, false);
-    setCommand(1, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
-    setCommand(2, const_cast<TCHAR*>(LM.getLPCW(L"menu_settings")), multiReplaceConfig, NULL, false);
-    setCommand(3, const_cast<TCHAR*>(LM.getLPCW(L"menu_documentation")), openHelpLink, NULL, false);
-    setCommand(4, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
+    setCommand(MenuPos::Open, const_cast<TCHAR*>(LM.getLPCW(L"menu_open")), multiReplace, NULL, false);
+    setCommand(MenuPos::Separator1, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
+    setCommand(MenuPos::Settings, const_cast<TCHAR*>(LM.getLPCW(L"menu_settings")), multiReplaceConfig, NULL, false);
+    setCommand(MenuPos::Documentation, const_cast<TCHAR*>(LM.getLPCW(L"menu_documentation")), openHelpLink, NULL, false);
+    setCommand(MenuPos::Separator2, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
 
     // ResultDock navigation commands (assignable via Settings > Shortcut Mapper > Plugin Commands)
-    setCommand(5, const_cast<TCHAR*>(LM.getLPCW(L"cmd_focus_results")), focusResultDock, NULL, false);
-    setCommand(6, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_result")), gotoNextFound, NULL, false);
-    setCommand(7, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_result")), gotoPrevFound, NULL, false);
-    setCommand(8, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
+    setCommand(MenuPos::FocusResults, const_cast<TCHAR*>(LM.getLPCW(L"cmd_focus_results")), focusResultDock, NULL, false);
+    setCommand(MenuPos::NextResult, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_result")), gotoNextFound, NULL, false);
+    setCommand(MenuPos::PrevResult, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_result")), gotoPrevFound, NULL, false);
+    setCommand(MenuPos::Separator3, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
+
+    // Mark Replacements and the commands for its marks
+    setCommand(MenuPos::MarkReplacements, const_cast<TCHAR*>(LM.getLPCW(L"cmd_mark_replacements")), toggleMarkReplacements, NULL,
+        MultiReplace::isMarkReplacementsEnabled());
+    setCommand(MenuPos::NextReplacement, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_replacement")), gotoNextReplacement, NULL, false);
+    setCommand(MenuPos::PrevReplacement, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_replacement")), gotoPrevReplacement, NULL, false);
+    setCommand(MenuPos::RevertReplacement, const_cast<TCHAR*>(LM.getLPCW(L"cmd_revert_replacement")), revertReplacement, NULL, false);
+    setCommand(MenuPos::Separator4, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
 
     // Tandem Mode: docks MR to a N++ edge and follows N++ on move/resize.
-    setCommand(9, const_cast<TCHAR*>(LM.getLPCW(L"menu_tandem_mode")), toggleTandemMode, NULL,
+    setCommand(MenuPos::TandemMode, const_cast<TCHAR*>(LM.getLPCW(L"menu_tandem_mode")), toggleTandemMode, NULL,
         MultiReplace::isTandemPersistedEnabled());
 
     // Reopen-on-Startup: reopens the MR panel on N++ launch if it
     // was open at the last shutdown. Opt-in via this menu entry.
-    setCommand(10, const_cast<TCHAR*>(LM.getLPCW(L"menu_reopen_on_startup")),
+    setCommand(MenuPos::ReopenOnStartup, const_cast<TCHAR*>(LM.getLPCW(L"menu_reopen_on_startup")),
         toggleReopenOnStartup, NULL,
         MultiReplace::isReopenOnStartupEnabled());
-    setCommand(11, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
+    setCommand(MenuPos::Separator5, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
 
-    // Mark Replacements and the commands for its marks. New entries go after the others:
-    // N++ keeps a command's shortcut by its position.
-    setCommand(12, const_cast<TCHAR*>(LM.getLPCW(L"cmd_mark_replacements")), toggleMarkReplacements, NULL,
-        MultiReplace::isMarkReplacementsEnabled());
-    setCommand(13, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_replacement")), gotoNextReplacement, NULL, false);
-    setCommand(14, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_replacement")), gotoPrevReplacement, NULL, false);
-    setCommand(15, const_cast<TCHAR*>(LM.getLPCW(L"cmd_revert_replacement")), revertReplacement, NULL, false);
-    setCommand(16, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
-
-    setCommand(17, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
+    setCommand(MenuPos::About, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
 }
 
 //
@@ -204,7 +203,7 @@ void gotoPrevFound()
 // Syncs the plugin menu checkmark with the panel's tandem state.
 void syncTandemMenuCheckmark()
 {
-    const int tandemCmdId = funcItem[9]._cmdID;
+    const int tandemCmdId = funcItem[MenuPos::TandemMode]._cmdID;
     ::SendMessage(nppData._nppHandle, NPPM_SETMENUITEMCHECK,
         static_cast<WPARAM>(tandemCmdId),
         _MultiReplace.isTandemEnabled() ? TRUE : FALSE);
@@ -222,7 +221,7 @@ void toggleReopenOnStartup()
 {
     MultiReplace::toggleReopenOnStartup();
 
-    const int cmdId = funcItem[10]._cmdID;
+    const int cmdId = funcItem[MenuPos::ReopenOnStartup]._cmdID;
     ::SendMessage(nppData._nppHandle, NPPM_SETMENUITEMCHECK,
         static_cast<WPARAM>(cmdId),
         MultiReplace::isReopenOnStartupEnabled() ? TRUE : FALSE);
@@ -234,7 +233,7 @@ void toggleMarkReplacements()
 {
     _MultiReplace.setMarkReplacements(!MultiReplace::isMarkReplacementsEnabled());
 
-    const int cmdId = funcItem[12]._cmdID;
+    const int cmdId = funcItem[MenuPos::MarkReplacements]._cmdID;
     ::SendMessage(nppData._nppHandle, NPPM_SETMENUITEMCHECK,
         static_cast<WPARAM>(cmdId),
         MultiReplace::isMarkReplacementsEnabled() ? TRUE : FALSE);
@@ -255,19 +254,22 @@ void revertReplacement()
     _MultiReplace.revertReplacement();
 }
 
+// The menu positions of the commands the editor's context menu repeats, in MarkCommand order
+static constexpr int MARK_COMMAND_POS[] = { MenuPos::NextReplacement, MenuPos::PrevReplacement, MenuPos::RevertReplacement };
+
 void syncMarkReplacementsMenu(HMENU menu)
 {
-    const UINT next = static_cast<UINT>(funcItem[13]._cmdID);
+    const UINT next = static_cast<UINT>(funcItem[MenuPos::NextReplacement]._cmdID);
     if (!menu || ::GetMenuState(menu, next, MF_BYCOMMAND) == static_cast<UINT>(-1)) return;
 
     const UINT state = MF_BYCOMMAND | (_MultiReplace.hasReplaceMarks() ? MF_ENABLED : MF_GRAYED);
-    for (const int index : { 13, 14, 15 })
+    for (const int index : MARK_COMMAND_POS)
         ::EnableMenuItem(menu, static_cast<UINT>(funcItem[index]._cmdID), state);
 }
 
 std::wstring markCommandText(MarkCommand command)
 {
-    const FuncItem& item = funcItem[13 + static_cast<int>(command)];
+    const FuncItem& item = funcItem[MARK_COMMAND_POS[static_cast<int>(command)]];
     const HMENU menu = reinterpret_cast<HMENU>(::SendMessage(nppData._nppHandle, NPPM_GETMENUHANDLE, NPPPLUGINMENU, 0));
     wchar_t text[nbChar * 2] = {};   // with the shortcut after a tab
     if (menu && ::GetMenuStringW(menu, static_cast<UINT>(item._cmdID), text, static_cast<int>(std::size(text)), MF_BYCOMMAND) > 0)
@@ -283,30 +285,24 @@ void refreshPluginMenu()
 {
     LanguageManager& LM = LanguageManager::instance();
 
-    // Mapping: funcItem index -> language key
-    // Indices 1, 4, 8, 11 and 16 are SEPARATORs and are skipped.
+    // Mapping: menu position -> language key; separators have no text
     static const struct {
         int index;
         const wchar_t* langKey;
     } menuMappings[] = {
-        { 0, L"menu_open" },
-        // Index 1 is SEPARATOR - skip
-        { 2, L"menu_settings" },
-        { 3, L"menu_documentation" },
-        // Index 4 is SEPARATOR - skip
-        { 5, L"cmd_focus_results" },
-        { 6, L"cmd_next_result" },
-        { 7, L"cmd_prev_result" },
-        // Index 8 is SEPARATOR - skip
-        { 9, L"menu_tandem_mode" },
-        { 10, L"menu_reopen_on_startup" },
-        // Index 11 is SEPARATOR - skip
-        { 12, L"cmd_mark_replacements" },
-        { 13, L"cmd_next_replacement" },
-        { 14, L"cmd_prev_replacement" },
-        { 15, L"cmd_revert_replacement" },
-        // Index 16 is SEPARATOR - skip
-        { 17, L"menu_about" },
+        { MenuPos::Open, L"menu_open" },
+        { MenuPos::Settings, L"menu_settings" },
+        { MenuPos::Documentation, L"menu_documentation" },
+        { MenuPos::FocusResults, L"cmd_focus_results" },
+        { MenuPos::NextResult, L"cmd_next_result" },
+        { MenuPos::PrevResult, L"cmd_prev_result" },
+        { MenuPos::MarkReplacements, L"cmd_mark_replacements" },
+        { MenuPos::NextReplacement, L"cmd_next_replacement" },
+        { MenuPos::PrevReplacement, L"cmd_prev_replacement" },
+        { MenuPos::RevertReplacement, L"cmd_revert_replacement" },
+        { MenuPos::TandemMode, L"menu_tandem_mode" },
+        { MenuPos::ReopenOnStartup, L"menu_reopen_on_startup" },
+        { MenuPos::About, L"menu_about" },
     };
 
     // Get main menu handle from Notepad++

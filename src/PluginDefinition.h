@@ -33,10 +33,19 @@ const TCHAR NPP_PLUGIN_NAME[] = TEXT("MultiReplace");
 //-----------------------------------------------//
 //-- STEP 2. DEFINE YOUR PLUGIN COMMAND NUMBER --//
 //-----------------------------------------------//
-//
-// Here define the number of your plugin commands
-//
-const int nbFunc = 18;
+// The plugin menu from top to bottom. Notepad++ keeps a user's shortcut by position,
+// so moving an entry hands its shortcut to whatever takes that place.
+namespace MenuPos {
+    enum : int {
+        Open, Separator1, Settings, Documentation, Separator2,
+        FocusResults, NextResult, PrevResult, Separator3,
+        MarkReplacements, NextReplacement, PrevReplacement, RevertReplacement, Separator4,
+        TandemMode, ReopenOnStartup, Separator5,
+        About,
+        Count
+    };
+}
+const int nbFunc = MenuPos::Count;
 
 
 //

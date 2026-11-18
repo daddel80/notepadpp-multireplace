@@ -384,11 +384,11 @@ The plugin registers a few entries under **Plugins → MultiReplace** in the Not
 - **Documentation** — Opens this README in the browser.
 - **Focus Search Results** — Shows the Search Results Window and sets the keyboard focus to it.
 - **Next Search Result** / **Previous Search Result** — Jump to the next or previous match in the editor and highlight it in the results (see [Search Results Window](#search-results-window)).
-- **Tandem Mode** *(toggle)* — Attaches the MultiReplace window to the *outside* of a Notepad++ window edge and keeps it there on every move or resize. The last used edge is remembered, and the enabled state survives Notepad++ restarts.
-- **Reopen on Startup** *(toggle)* — When enabled, MultiReplace automatically reopens on the next Notepad++ launch if it was open at the previous shutdown. Opt-in by design, so the plugin only appears when you want it to.
 - **Mark Replacements** *(toggle)* — Underlines each replacement in open documents with a dotted line, deleted text leaves a small triangle; rest the mouse on a mark to see the text it replaced and the list entry that replaced it. Undo and redo keep the marks. **Clear all marks** removes them.
 - **Next Replacement** / **Previous Replacement** — Select the next or previous marked replacement; a tooltip shows what it replaced, with arrows to move on.
 - **Revert Replacement** — Puts back the replaced text of the mark at the cursor, or of all marks in the selection. Right-click a mark to reach these commands in the editor's context menu.
+- **Tandem Mode** *(toggle)* — Attaches the MultiReplace window to the *outside* of a Notepad++ window edge and keeps it there on every move or resize. The last used edge is remembered, and the enabled state survives Notepad++ restarts.
+- **Reopen on Startup** *(toggle)* — When enabled, MultiReplace automatically reopens on the next Notepad++ launch if it was open at the previous shutdown. Opt-in by design, so the plugin only appears when you want it to.
 - **About** — Shows version and credits.
 
 ## Settings and Customization

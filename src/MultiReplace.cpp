@@ -124,7 +124,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
         tbIcons.hToolbarIconDarkMode = CreateIconFromImageData(gimp_image_dark, dpi);
 
         // Send updated toolbar icons to Notepad++
-        ::SendMessage(nppData._nppHandle, NPPM_ADDTOOLBARICON_FORDARKMODE, funcItem[0]._cmdID, (LPARAM)&tbIcons);
+        ::SendMessage(nppData._nppHandle, NPPM_ADDTOOLBARICON_FORDARKMODE, funcItem[MenuPos::Open]._cmdID, (LPARAM)&tbIcons);
     }
     break;
 
@@ -139,7 +139,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
         // turn to settle before we call into multiReplace().
         if (MultiReplace::shouldReopenPanelOnStartup()) {
             ::PostMessage(nppData._nppHandle, WM_COMMAND,
-                MAKEWPARAM(funcItem[0]._cmdID, 0), 0);
+                MAKEWPARAM(funcItem[MenuPos::Open]._cmdID, 0), 0);
         }
 
         // No marks yet: their commands start grayed, the panel keeps them current once it exists
