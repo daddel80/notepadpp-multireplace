@@ -21,6 +21,7 @@
 // All difinitions of plugin interface
 //
 #include "PluginInterface.h"
+#include <string>
 
 //-------------------------------------//
 //-- STEP 1. DEFINE YOUR PLUGIN NAME --//
@@ -35,7 +36,7 @@ const TCHAR NPP_PLUGIN_NAME[] = TEXT("MultiReplace");
 //
 // Here define the number of your plugin commands
 //
-const int nbFunc = 12;
+const int nbFunc = 18;
 
 
 //
@@ -79,6 +80,17 @@ void gotoPrevFound();
 void toggleTandemMode();
 void syncTandemMenuCheckmark();
 void toggleReopenOnStartup();
+void toggleMarkReplacements();
+void gotoNextReplacement();
+void gotoPrevReplacement();
+void revertReplacement();
+
+// A menu with the Mark Replacements commands opens: grayed while the current document has no marks
+void syncMarkReplacementsMenu(HMENU menu);
+
+// The commands the editor's context menu repeats on a replacement mark, as the plugin menu shows them
+enum class MarkCommand { Next, Previous, Revert };
+std::wstring markCommandText(MarkCommand command);
 
 //
 // Plugin menu language refresh (called on NPPN_NATIVELANGCHANGED)

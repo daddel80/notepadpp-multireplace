@@ -141,6 +141,9 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
             ::PostMessage(nppData._nppHandle, WM_COMMAND,
                 MAKEWPARAM(funcItem[0]._cmdID, 0), 0);
         }
+
+        // No marks yet: their commands start grayed, the panel keeps them current once it exists
+        syncMarkReplacementsMenu(reinterpret_cast<HMENU>(::SendMessage(nppData._nppHandle, NPPM_GETMENUHANDLE, NPPPLUGINMENU, 0)));
     }
     break;
 
@@ -169,6 +172,9 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
         if (notifyCode->modificationType & (SC_MOD_BEFOREDELETE | SC_MOD_INSERTTEXT)) {
             MultiReplace::processScopeFrameEdit(notifyCode);
         }
+        if (notifyCode->modificationType & (SC_MOD_INSERTTEXT | SC_MOD_BEFOREDELETE | SC_MOD_DELETETEXT | SC_MOD_CONTAINER)) {
+            MultiReplace::processReplaceMarksEdit(notifyCode);
+        }
         if (notifyCode->modificationType & (SC_MOD_BEFOREDELETE | SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT)) {
             MultiReplace::processFlowTabsEdit(notifyCode);
         }
@@ -187,6 +193,15 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
 
     case SCN_ZOOM:
         MultiReplace::onZoom(notifyCode);
+        break;
+    case SCN_DWELLSTART:
+        MultiReplace::onDwellStart(notifyCode);
+        break;
+    case SCN_DWELLEND:
+        MultiReplace::onDwellEnd(notifyCode);
+        break;
+    case SCN_CALLTIPCLICK:
+        MultiReplace::onCallTipClick(notifyCode);
         break;
 
     case NPPN_FILEBEFORESAVE:
@@ -225,6 +240,10 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
         ::SetWindowPos(_MultiReplace.getHSelf(), nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         break;
     }
+    case NPPN_WORDSTYLESUPDATED:
+        MultiReplace::onWordStylesUpdated();
+        break;
+
     case NPPN_NATIVELANGCHANGED:
     {
         MultiReplace::loadLanguageGlobal();

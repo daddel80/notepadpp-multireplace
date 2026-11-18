@@ -108,6 +108,10 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_move_up", L"Move selected rows up (Ctrl+Up)" },
 { L"tooltip_move_down", L"Move selected rows down (Ctrl+Down)" },
 { L"tooltip_bookmark_matches", L"Bookmark matched lines" },
+{ L"tooltip_replaced_before", L"Before:" },
+{ L"tooltip_replaced_empty", L"(empty)" },
+{ L"tooltip_replacement_position", L"$REPLACE_STRING1 of $REPLACE_STRING2" },
+{ L"tooltip_replaced_by", L"List entry #$REPLACE_STRING:" },
 { L"tooltip_find_duplicates", L"Find Duplicates" },
 
 // header entries
@@ -152,6 +156,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_one_row_deleted", L"1 row deleted." },
 { L"status_column_marks_cleared", L"Column marks cleared." },
 { L"status_all_marks_cleared", L"All marks cleared." },
+{ L"status_mark_replacements_on", L"Replacements will be marked. Hover over a mark to see the text it replaced." },
 { L"status_cannot_replace_read_only", L"Cannot replace. Document is read-only." },
 { L"status_no_find_string", L"No 'Find what' text entered. Please provide a value to add to the list." },
 { L"status_no_rows_selected_to_shift", L"No rows selected to shift." },
@@ -456,6 +461,10 @@ const LangKV kEnglishPairs[] = {
 { L"cmd_focus_results", L"Focus Search Results" },
 { L"cmd_next_result", L"Next Search Result" },
 { L"cmd_prev_result", L"Previous Search Result" },
+{ L"cmd_mark_replacements", L"Mark Replacements" },
+{ L"cmd_next_replacement", L"Next Replacement" },
+{ L"cmd_prev_replacement", L"Previous Replacement" },
+{ L"cmd_revert_replacement", L"Revert Replacement" },
 
 // About Dialog
 { L"about_title", L"MultiReplace Plugin" },

@@ -96,8 +96,18 @@ void commandMenuInit()
     setCommand(10, const_cast<TCHAR*>(LM.getLPCW(L"menu_reopen_on_startup")),
         toggleReopenOnStartup, NULL,
         MultiReplace::isReopenOnStartupEnabled());
+    setCommand(11, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
 
-    setCommand(11, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
+    // Mark Replacements and the commands for its marks. New entries go after the others:
+    // N++ keeps a command's shortcut by its position.
+    setCommand(12, const_cast<TCHAR*>(LM.getLPCW(L"cmd_mark_replacements")), toggleMarkReplacements, NULL,
+        MultiReplace::isMarkReplacementsEnabled());
+    setCommand(13, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_replacement")), gotoNextReplacement, NULL, false);
+    setCommand(14, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_replacement")), gotoPrevReplacement, NULL, false);
+    setCommand(15, const_cast<TCHAR*>(LM.getLPCW(L"cmd_revert_replacement")), revertReplacement, NULL, false);
+    setCommand(16, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
+
+    setCommand(17, const_cast<TCHAR*>(LM.getLPCW(L"menu_about")), about, NULL, false);
 }
 
 //
@@ -218,6 +228,53 @@ void toggleReopenOnStartup()
         MultiReplace::isReopenOnStartupEnabled() ? TRUE : FALSE);
 }
 
+// Toggles Mark Replacements by its persisted value, so it works the same
+// with and without the panel, and syncs the checkmark.
+void toggleMarkReplacements()
+{
+    _MultiReplace.setMarkReplacements(!MultiReplace::isMarkReplacementsEnabled());
+
+    const int cmdId = funcItem[12]._cmdID;
+    ::SendMessage(nppData._nppHandle, NPPM_SETMENUITEMCHECK,
+        static_cast<WPARAM>(cmdId),
+        MultiReplace::isMarkReplacementsEnabled() ? TRUE : FALSE);
+}
+
+void gotoNextReplacement()
+{
+    _MultiReplace.gotoReplacement(true);
+}
+
+void gotoPrevReplacement()
+{
+    _MultiReplace.gotoReplacement(false);
+}
+
+void revertReplacement()
+{
+    _MultiReplace.revertReplacement();
+}
+
+void syncMarkReplacementsMenu(HMENU menu)
+{
+    const UINT next = static_cast<UINT>(funcItem[13]._cmdID);
+    if (!menu || ::GetMenuState(menu, next, MF_BYCOMMAND) == static_cast<UINT>(-1)) return;
+
+    const UINT state = MF_BYCOMMAND | (_MultiReplace.hasReplaceMarks() ? MF_ENABLED : MF_GRAYED);
+    for (const int index : { 13, 14, 15 })
+        ::EnableMenuItem(menu, static_cast<UINT>(funcItem[index]._cmdID), state);
+}
+
+std::wstring markCommandText(MarkCommand command)
+{
+    const FuncItem& item = funcItem[13 + static_cast<int>(command)];
+    const HMENU menu = reinterpret_cast<HMENU>(::SendMessage(nppData._nppHandle, NPPM_GETMENUHANDLE, NPPPLUGINMENU, 0));
+    wchar_t text[nbChar * 2] = {};   // with the shortcut after a tab
+    if (menu && ::GetMenuStringW(menu, static_cast<UINT>(item._cmdID), text, static_cast<int>(std::size(text)), MF_BYCOMMAND) > 0)
+        return text;
+    return item._itemName;
+}
+
 //
 // Refresh plugin menu text when UI language changes (NPPN_NATIVELANGCHANGED)
 // This updates the menu items without requiring Notepad++ restart
@@ -227,7 +284,7 @@ void refreshPluginMenu()
     LanguageManager& LM = LanguageManager::instance();
 
     // Mapping: funcItem index -> language key
-    // Indices 1, 4 and 8 are SEPARATORs and are skipped.
+    // Indices 1, 4, 8, 11 and 16 are SEPARATORs and are skipped.
     static const struct {
         int index;
         const wchar_t* langKey;
@@ -243,7 +300,13 @@ void refreshPluginMenu()
         // Index 8 is SEPARATOR - skip
         { 9, L"menu_tandem_mode" },
         { 10, L"menu_reopen_on_startup" },
-        { 11, L"menu_about" },
+        // Index 11 is SEPARATOR - skip
+        { 12, L"cmd_mark_replacements" },
+        { 13, L"cmd_next_replacement" },
+        { 14, L"cmd_prev_replacement" },
+        { 15, L"cmd_revert_replacement" },
+        // Index 16 is SEPARATOR - skip
+        { 17, L"menu_about" },
     };
 
     // Get main menu handle from Notepad++
@@ -264,6 +327,12 @@ void refreshPluginMenu()
 
         // Update the internal funcItem name (for consistency with Notepad++ internals)
         (void)lstrcpyn(funcItem[mapping.index]._itemName, newText.c_str(), nbChar);
+
+        // Keep the shortcut Notepad++ shows after a tab
+        wchar_t current[nbChar * 2] = {};
+        if (::GetMenuStringW(hMainMenu, cmdId, current, static_cast<int>(std::size(current)), MF_BYCOMMAND) > 0) {
+            if (const wchar_t* shortcut = wcschr(current, L'\t')) newText += shortcut;
+        }
 
         // Update the actual menu item text
         MENUITEMINFOW mii = {};

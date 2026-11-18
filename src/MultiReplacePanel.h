@@ -29,6 +29,7 @@
 #include "MultiReplaceConfigDialog.h"
 #include "NppStyleKit.h"
 #include "PluginInterface.h"
+#include "ReplaceMarks.h"
 #include "ResultDock.h"
 #include "SciUndoGuard.h"
 #include "SelectionFrame.h"
@@ -820,12 +821,16 @@ public:
     static void processContainerUndo(SCNotification* notifyCode);
     static void processScopeFrameEdit(SCNotification* notifyCode);
     static void processFlowTabsEdit(SCNotification* notifyCode);
+    static void processReplaceMarksEdit(SCNotification* notifyCode);
     static void onFileBeforeSave(UINT_PTR bufferId);
     static void onFileSaved(UINT_PTR bufferId);
     static void onFileBeforeClose(UINT_PTR bufferId);
     static void onBeforeShutdown();
     static void onCancelShutdown();
     static void onZoom(SCNotification* notifyCode);
+    static void onDwellStart(SCNotification* notifyCode);
+    static void onDwellEnd(SCNotification* notifyCode);
+    static void onCallTipClick(SCNotification* notifyCode);
     static LRESULT CALLBACK nppSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data);
     static LRESULT CALLBACK GetMsgHookProc(int nCode, WPARAM wParam, LPARAM lParam);
     static void processLog();
@@ -837,6 +842,7 @@ public:
     static void onCaretPositionChanged();
     static void onViewUpdated(HWND view);
     static void onThemeChanged();
+    static void onWordStylesUpdated();
     static void signalShutdown();
     static bool shouldReopenPanelOnStartup();
     static bool isReopenOnStartupEnabled();
@@ -875,6 +881,13 @@ public:
     bool isTandemEnabled() const { return _tandemEnabled; }
     static bool isTandemPersistedEnabled();  // for menu-init BEFORE the panel exists
 
+    // Mark Replacements from the plugin menu: the commands work in the current document, also with the panel closed
+    static bool isMarkReplacementsEnabled();  // for menu-init BEFORE the panel exists
+    void setMarkReplacements(bool enabled);
+    bool hasReplaceMarks() const;
+    void gotoReplacement(bool forward);
+    void revertReplacement();
+
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
 
@@ -885,6 +898,7 @@ private:
     bool isReplaceAllInDocs = false; // True if replacing in all open documents, false for current document only.
     bool isReplaceInFiles = false;   // True if replacing in files, false for current document only.
     bool _debugModeEnabled = false;  // Debug Mode checkbox state
+    bool _markReplacementsEnabled = false;  // Mark Replacements from the plugin menu, kept in the INI
     // Set when the user clicks "Run to End" in the debug window: silences
     // the per-match dialog for the remainder of the current run without
     // touching the persistent _debugModeEnabled toggle. Reset to false at
@@ -1177,6 +1191,22 @@ private:
     SelectionFrame::Frame m_scopeFrame;  // the remembered area as its document keeps it, framed
     bool m_scopeFrameAnnounced = false;  // the views report deletions beforehand, see processScopeFrameEdit
     bool m_ownReplace = false;           // MR's own replacement: the panel keeps the frame itself
+    // Mark Replacements: what replaced text held before, kept per document and shown on hover
+    ReplaceMarks::Marks m_replaceMarks;
+    std::unordered_map<UINT_PTR, std::intptr_t> m_replaceMarkDocs;   // buffer -> document with marks
+    bool m_replaceMarksAnnounced = false;   // from the first mark on, the views report deletions beforehand
+    HWND m_replaceTipView = nullptr;   // the view showing the original of a mark
+    bool m_replaceTipJump = false;     // that calltip came with a jump: it has arrows and stays while the mouse moves
+    // The editor's context menu opened on replacement marks: on the clicked one, or on the selection holding some
+    struct ReplaceMarksMenu {
+        HWND view = nullptr;
+        std::intptr_t document = 0;
+        ReplaceMarks::Span span;
+        bool selection = false;        // span is the selection, not one mark
+        bool pending = false;          // the commands go into the menu about to open
+    };
+    ReplaceMarksMenu m_replaceMarksMenu;
+    inline static UINT s_replaceMarksMenuId = 0;   // the first of the three command ids Notepad++ allocated
     SelectionRange m_lastFindResult = { -1, -1 };
     int m_lastTotalReplaceCount = 0;
     // Replace in Files on an open document: verify replacement conversions
@@ -1517,6 +1547,20 @@ private:
     void releaseSelectionScope();
     void releaseAllSelectionScopes();
     void applyScopeFrameStyle();
+    bool replaceMarksApply() const;
+    void setReplaceMarkSource(const ReplaceItemData& item, size_t itemIndex);
+    void markReplacement(Sci_Position newLength);
+    void applyReplaceMarksStyle();
+    void applyReplaceMarksStroke();
+    void clearReplaceMarks();
+    static void applyReplaceMarksDwell(bool enabled);
+    void jumpToReplacement(HWND view, ReplaceMarks::Span from, bool forward);
+    void revertReplacements(HWND view, ReplaceMarks::Span span, bool selection);
+    void showReplaceMarkTip(HWND view, ReplaceMarks::Span mark, const ReplaceMarks::Stop* stop);
+    void cancelReplaceMarkTip();
+    void prepareReplaceMarksMenu(HWND view, LPARAM screenPos);
+    void fillReplaceMarksMenu(HMENU menu);
+    bool runReplaceMarksMenu(UINT id);
     SelectionFrame::Send docSend() const;
     static SelectionFrame::Send viewSend(HWND hSci);
     std::wstring getSelectionScopeSuffix();
@@ -1559,7 +1603,7 @@ private:
     bool withFlowTabsLifted(const std::function<bool()>& body);
     LRESULT saveCopyWithoutPadding(const std::function<LRESULT()>& save);
     void onClipboardUpdate();
-    void ensureModEventMask();
+    void ensureModEventMask(HWND view = nullptr);
     void bindToView(int view);
     void handleDuplicatesButton();
     void findAndMarkDuplicates(bool showDialog = true);

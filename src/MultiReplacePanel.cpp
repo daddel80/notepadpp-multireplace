@@ -233,6 +233,7 @@ HHOOK MultiReplace::_hTandemSnapKeyHook = nullptr;
 static constexpr UINT WM_FLOWTAB_UNDO = WM_APP + 4;
 static constexpr UINT_PTR NPP_SUBCLASS_ID = 0x4D52;   // the Notepad++ window, for Save a Copy As
 static constexpr UINT WM_TANDEM_SNAP = WM_APP + 5;    // LL hook -> snap the pair
+static constexpr UINT WM_REPLACE_MARKS_STROKE = WM_APP + 6;   // the views have their new DPI: the marks follow it
 HHOOK MultiReplace::_hGetMsgHook = nullptr;
 
 LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
@@ -1095,6 +1096,13 @@ void MultiReplace::ensureIndicatorContext()
     if (!NppStyleKit::gIndicatorCoord.isIndicatorReserved(m_scopeFrame.indicator())) {
         m_scopeFrame.setIndicator(NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("SelectionFrame", -1));
         applyScopeFrameStyle();
+    }
+
+    // Mark Replacements: first free ids, for replaced text and for deletions
+    if (!NppStyleKit::gIndicatorCoord.isIndicatorReserved(m_replaceMarks.indicator())) {
+        const int marks = NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ReplaceMarks", -1);
+        m_replaceMarks.setIndicators(marks, NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ReplaceMarksDeleted", -1));
+        applyReplaceMarksStyle();
     }
 
     // Registry gets the full remaining pool (no dedicated standard id)
@@ -5706,6 +5714,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         return TRUE;
     }
 
+    case WM_REPLACE_MARKS_STROKE:
+        applyReplaceMarksStroke();
+        return TRUE;
+
     case WM_CLIPBOARDUPDATE:
     {
         onClipboardUpdate();
@@ -7239,6 +7251,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         {
             handleClearTextMarksButton();
             clearDuplicateMarks();
+            clearReplaceMarks();
             showStatusMessage(LM.get(L"status_all_marks_cleared"), MessageStatus::Success);
             drainMessageQueue();
             return TRUE;
@@ -8123,6 +8136,7 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
                 }
 
             send(SCI_SETMODEVENTMASK, savedEventMask, 0);
+            ensureModEventMask();   // the first marks of the run ask for deletions beforehand
             _delimiterPositionsStale = true;
         }
 
@@ -8153,6 +8167,7 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
             replaceSuccess = replaceAll(itemData, findCount, totalReplaceCount, fixedStart, SIZE_MAX, scope);
 
             send(SCI_SETMODEVENTMASK, savedEventMask, 0);
+            ensureModEventMask();
             _delimiterPositionsStale = true;
         }
 
@@ -8415,6 +8430,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 {
     // Get the document's codepage once at the beginning.
     int documentCodepage = getCurrentDocCodePage();
+    setReplaceMarkSource(itemData, itemIndex);
 
     // The match is confirmed by an independent search with the entry's own flags before anything is
     // written. It starts at the match, except where the caller knows the match is only visible from
@@ -8523,6 +8539,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     // Get the document's codepage once at the beginning.
     const int documentCodepage = getCurrentDocCodePage();
+    setReplaceMarkSource(itemData, itemIndex);
 
     // --- Search bytes MUST match document codepage---
     SearchContext context;
@@ -8675,9 +8692,12 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
 Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
+    ScopedUndoAction undo(*this);   // with the step that brings the marks back
     send(SCI_SETTARGETRANGE, pos, pos + length);
+    const bool marked = replaceMarksApply();
+    if (marked) m_replaceMarks.beforeReplace(docSend(), pos, length);
 
-    m_ownReplace = true;  // the panel keeps the scope frame itself, see processScopeFrameEdit
+    m_ownReplace = true;  // the panel keeps the scope frame and the replacement marks itself, see processScopeFrameEdit
     sptr_t replacedLen = send(
         SCI_REPLACETARGET,
         replaceTextUtf8.size(),
@@ -8685,12 +8705,16 @@ Sci_Position MultiReplace::performReplace(const std::string& replaceTextUtf8, Sc
     );
     m_ownReplace = false;
 
+    if (marked) markReplacement(static_cast<Sci_Position>(replacedLen));
     return pos + static_cast<Sci_Position>(replacedLen);
 }
 
 Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length)
 {
+    ScopedUndoAction undo(*this);   // with the step that brings the marks back
     send(SCI_SETTARGETRANGE, pos, pos + length);
+    const bool marked = replaceMarksApply();
+    if (marked) m_replaceMarks.beforeReplace(docSend(), pos, length);
 
     m_ownReplace = true;
     sptr_t replacedLen = send(
@@ -8700,6 +8724,7 @@ Sci_Position MultiReplace::performRegexReplace(const std::string& replaceTextUtf
     );
     m_ownReplace = false;
 
+    if (marked) markReplacement(static_cast<Sci_Position>(replacedLen));
     return pos + static_cast<Sci_Position>(replacedLen);
 }
 
@@ -11660,6 +11685,243 @@ std::wstring MultiReplace::getSelectionScopeSuffix() {
         return LM.get(L"status_scope_in_selection");
     }
     return L"";
+}
+
+#pragma endregion
+
+#pragma region Replacement Marks
+
+// Replacements in the editor views are marked, not those in the hidden buffer of Replace in Files
+bool MultiReplace::replaceMarksApply() const {
+    return _markReplacementsEnabled && m_replaceMarks.indicator() >= 0
+        && (_hScintilla == nppData._scintillaMainHandle || _hScintilla == nppData._scintillaSecondHandle);
+}
+
+// The list entry that makes the following replacements, for the calltip of their marks
+void MultiReplace::setReplaceMarkSource(const ReplaceItemData& item, size_t itemIndex) {
+    if (!replaceMarksApply()) return;
+    if (itemIndex == SIZE_MAX) m_replaceMarks.setSource(0, {});
+    else m_replaceMarks.setSource(itemIndex + 1, Encoding::wstringToUtf8(item.findText));
+}
+
+// The new text keeps what it replaced; the first mark of a document is remembered for its closing
+void MultiReplace::markReplacement(Sci_Position newLength) {
+    if (!m_replaceMarks.afterReplace(docSend(), newLength)) return;
+    const auto bufferId = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+    m_replaceMarkDocs[bufferId] = static_cast<std::intptr_t>(send(SCI_GETDOCPOINTER, 0, 0));
+    if (!m_replaceMarksAnnounced) {
+        m_replaceMarksAnnounced = true;   // undo brings back the marks of deleted text: the views report deletions beforehand
+        if (send(SCI_GETMODEVENTMASK, 0, 0)) ensureModEventMask();   // a Replace All does it once its run is over
+    }
+}
+
+void MultiReplace::applyReplaceMarksStyle() {
+    const bool dark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (hSci) m_replaceMarks.applyStyle(viewSend(hSci), dark);
+    }
+}
+
+// Zoom, fonts and DPI change the line height: the dots follow it
+void MultiReplace::applyReplaceMarksStroke() {
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (hSci) m_replaceMarks.applyStroke(viewSend(hSci));
+    }
+}
+
+// Off drops the marks of all documents: those in view at once, the others when they show again
+void MultiReplace::setMarkReplacements(bool enabled) {
+    _markReplacementsEnabled = enabled;
+    CFG.writeBool(optSec(L"MarkReplacements"), L"MarkReplacements", enabled);
+    CFG.save(generateConfigFilePaths());   // the plugin menu toggles it also with the panel never opened
+    applyReplaceMarksDwell(enabled);
+    if (enabled) {
+        showStatusMessage(LM.get(L"status_mark_replacements_on"), MessageStatus::Info);
+        return;
+    }
+    cancelReplaceMarkTip();
+    m_replaceMarks.retire();
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (hSci) m_replaceMarks.dropStale(viewSend(hSci));
+    }
+}
+
+bool MultiReplace::isMarkReplacementsEnabled() {
+    return CFG.readBool(optSec(L"MarkReplacements"), L"MarkReplacements", false);
+}
+
+// Clear all marks: the replacement marks of the documents in view as well
+void MultiReplace::clearReplaceMarks() {
+    cancelReplaceMarkTip();
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (hSci) m_replaceMarks.clear(viewSend(hSci));
+    }
+}
+
+// The current document shows replacement marks: their commands in the plugin menu are enabled
+bool MultiReplace::hasReplaceMarks() const {
+    const HWND view = currentEditorView();
+    return view && m_replaceMarks.any(directSend(view));
+}
+
+// From the selection to the next or previous replacement, around the document end
+void MultiReplace::gotoReplacement(bool forward) {
+    if (const HWND view = currentEditorView()) {
+        const auto from = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETSELECTIONSTART, 0, 0));
+        const auto to = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETSELECTIONEND, 0, 0));
+        jumpToReplacement(view, { from, to }, forward);
+    }
+}
+
+// The mark is selected like a search result; its calltip tells where it is and what it replaced
+void MultiReplace::jumpToReplacement(HWND view, ReplaceMarks::Span from, bool forward) {
+    const ReplaceMarks::Stop stop = m_replaceMarks.step(directSend(view), from.start, from.end, forward);
+    if (!stop.span.found()) return;
+    pointerToScintilla();
+    if (_hScintilla != view) return;
+    displayResultCentered(static_cast<size_t>(stop.span.start), static_cast<size_t>(stop.span.end), forward);
+    showReplaceMarkTip(view, stop.span, &stop);
+}
+
+// The marks in the selection, or the one at the caret, get back the text they replaced
+void MultiReplace::revertReplacement() {
+    const HWND view = currentEditorView();
+    if (!view) return;
+    const auto from = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETSELECTIONSTART, 0, 0));
+    const auto to = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETSELECTIONEND, 0, 0));
+    if (from < to) revertReplacements(view, { from, to }, true);
+    else revertReplacements(view, m_replaceMarks.atCaret(directSend(view), to), false);
+}
+
+// In one undo step; the selection then covers the restored text. No mark there or a read-only document: a beep
+void MultiReplace::revertReplacements(HWND view, ReplaceMarks::Span span, bool selection) {
+    const bool writable = !::SendMessage(view, SCI_GETREADONLY, 0, 0);
+    const auto sci = directSend(view);
+    const ReplaceMarks::Span restored = (span.found() && writable)
+        ? (selection ? m_replaceMarks.revert(sci, span.start, span.end) : m_replaceMarks.revert(sci, span)) : ReplaceMarks::Span{};
+    if (!restored.found()) {
+        if (!muteSounds) ::MessageBeep(MB_ICONASTERISK);
+        return;
+    }
+    cancelReplaceMarkTip();
+    ::SendMessage(view, SCI_SETSEL, static_cast<WPARAM>(restored.start), static_cast<LPARAM>(restored.end));
+}
+
+// The middle dot in a document's code page shows spaces the calltip would hide; a stand-in where the code page has none
+static std::string visibleSpace(UINT codepage)
+{
+    if (codepage == CP_UTF8) return "\xC2\xB7";
+    char dot[8] = {};
+    BOOL lost = FALSE;
+    const int length = ::WideCharToMultiByte(codepage, WC_NO_BEST_FIT_CHARS, L"\u00B7", 1, dot, static_cast<int>(sizeof(dot)), nullptr, &lost);
+    return (length > 0 && !lost) ? std::string(dot, static_cast<size_t>(length)) : std::string("_");
+}
+
+// The calltip at a mark: what it replaced and, below, the list entry that did; after a jump also its place among the
+// marks, between arrows to go on
+void MultiReplace::showReplaceMarkTip(HWND view, ReplaceMarks::Span mark, const ReplaceMarks::Stop* stop) {
+    if (!mark.found()) return;
+    const auto sciCodepage = static_cast<UINT>(::SendMessage(view, SCI_GETCODEPAGE, 0, 0));
+    const UINT codepage = sciCodepage ? sciCodepage : CP_ACP;
+    const std::string place = stop ? Encoding::wstringToBytes(LM.get(L"tooltip_replacement_position",
+        { std::to_wstring(stop->index), std::to_wstring(stop->count) }), codepage) : std::string();
+    const ReplaceMarks::Source source = m_replaceMarks.sourceOf(viewSend(view), mark);   // its list entry, if any
+    const std::string entry = source.entry
+        ? Encoding::wstringToBytes(LM.get(L"tooltip_replaced_by", { std::to_wstring(source.entry) }), codepage) : std::string();
+    const std::string find = source.entry
+        ? Encoding::wstringToBytes(Encoding::utf8ToWString(std::string(source.find)), codepage) : std::string();
+    const std::string tip = ReplaceMarks::tipText(
+        Encoding::wstringToBytes(LM.get(L"tooltip_replaced_before"), codepage),
+        Encoding::wstringToBytes(LM.get(L"tooltip_replaced_empty"), codepage),
+        visibleSpace(codepage), m_replaceMarks.originalOf(viewSend(view), mark), codepage == CP_UTF8, place, entry, find);
+    ::SendMessage(view, SCI_CALLTIPSHOW, static_cast<WPARAM>(mark.start), reinterpret_cast<LPARAM>(tip.c_str()));
+    m_replaceTipView = view;
+    m_replaceTipJump = stop != nullptr;
+}
+
+// The calltip of a mark goes with it
+void MultiReplace::cancelReplaceMarkTip() {
+    if (m_replaceTipView && ::SendMessage(m_replaceTipView, SCI_CALLTIPACTIVE, 0, 0))
+        ::SendMessage(m_replaceTipView, SCI_CALLTIPCANCEL, 0, 0);
+    m_replaceTipView = nullptr;
+    m_replaceTipJump = false;
+}
+
+// Right-click in the editor: on a replacement mark, or in a selection holding some, the context menu offers their commands
+void MultiReplace::prepareReplaceMarksMenu(HWND view, LPARAM screenPos) {
+    m_replaceMarksMenu = {};
+    if (m_replaceMarks.empty() || (view != nppData._scintillaMainHandle && view != nppData._scintillaSecondHandle)) return;
+    const auto sci = directSend(view);
+    const std::intptr_t from = sci(SCI_GETSELECTIONSTART, 0, 0);
+    const std::intptr_t to = sci(SCI_GETSELECTIONEND, 0, 0);
+    POINT pt{ GET_X_LPARAM(screenPos), GET_Y_LPARAM(screenPos) };
+    std::intptr_t pos = -1;   // the clicked character; the keyboard opens the menu at the caret
+    if (pt.x != -1 || pt.y != -1) {
+        ::ScreenToClient(view, &pt);
+        pos = sci(SCI_CHARPOSITIONFROMPOINTCLOSE, static_cast<std::uintptr_t>(pt.x), pt.y);
+        if (pos < 0) return;
+    }
+    ReplaceMarks::Span span;
+    const bool selection = from < to && (pos < 0 || (pos >= from && pos < to));
+    if (selection) {
+        if (!m_replaceMarks.within(sci, from, to).empty()) span = { from, to };
+    }
+    else if (pos >= 0) {   // the clicked character, or a deletion next to it
+        span = m_replaceMarks.at(sci, pos);
+        if (!span.found()) span = m_replaceMarks.deletionAt(sci, sci(SCI_POSITIONFROMPOINTCLOSE, static_cast<std::uintptr_t>(pt.x), pt.y));
+    }
+    else {
+        span = m_replaceMarks.atCaret(sci, to);
+    }
+    if (span.found()) m_replaceMarksMenu = { view, sci(SCI_GETDOCPOINTER, 0, 0), span, selection, true };
+}
+
+// The context menu opens: the commands for the marks lead it, named as in the plugin menu
+void MultiReplace::fillReplaceMarksMenu(HMENU menu) {
+    if (!m_replaceMarksMenu.pending) return;
+    m_replaceMarksMenu.pending = false;
+    if (!s_replaceMarksMenuId) {
+        int first = 0;
+        if (!::SendMessage(nppData._nppHandle, NPPM_ALLOCATECMDID, 3, reinterpret_cast<LPARAM>(&first))) return;
+        s_replaceMarksMenuId = static_cast<UINT>(first);
+    }
+    UINT position = 0;
+    for (const MarkCommand command : { MarkCommand::Next, MarkCommand::Previous, MarkCommand::Revert }) {
+        ::InsertMenuW(menu, position++, MF_BYPOSITION | MF_STRING, s_replaceMarksMenuId + static_cast<UINT>(command),
+            markCommandText(command).c_str());
+    }
+    ::InsertMenuW(menu, position, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+}
+
+// A command from the context menu works on the clicked mark or the selection
+bool MultiReplace::runReplaceMarksMenu(UINT id) {
+    if (!s_replaceMarksMenuId || id < s_replaceMarksMenuId || id > s_replaceMarksMenuId + static_cast<UINT>(MarkCommand::Revert)) return false;
+    const ReplaceMarksMenu target = m_replaceMarksMenu;
+    if (!target.view || static_cast<std::intptr_t>(::SendMessage(target.view, SCI_GETDOCPOINTER, 0, 0)) != target.document) return true;
+    switch (static_cast<MarkCommand>(id - s_replaceMarksMenuId)) {
+    case MarkCommand::Next:     jumpToReplacement(target.view, target.span, true); break;
+    case MarkCommand::Previous: jumpToReplacement(target.view, target.span, false); break;
+    case MarkCommand::Revert:   revertReplacements(target.view, target.span, target.selection); break;
+    }
+    return true;
+}
+
+// The views report a resting mouse while marks can show what they replaced; a dwell time set elsewhere stays
+void MultiReplace::applyReplaceMarksDwell(bool enabled) {
+    constexpr int kDwellMs = 500;
+    static bool dwellSet[2] = {};   // the views whose dwell time MR set
+    const HWND views[2] = { nppData._scintillaMainHandle, nppData._scintillaSecondHandle };
+    for (int i = 0; i < 2; ++i) {
+        if (!views[i]) continue;
+        if (enabled && !dwellSet[i] && ::SendMessage(views[i], SCI_GETMOUSEDWELLTIME, 0, 0) == SC_TIME_FOREVER) {
+            ::SendMessage(views[i], SCI_SETMOUSEDWELLTIME, kDwellMs, 0);
+            dwellSet[i] = true;
+        }
+        else if (!enabled && dwellSet[i]) {
+            ::SendMessage(views[i], SCI_SETMOUSEDWELLTIME, SC_TIME_FOREVER, 0);
+            dwellSet[i] = false;
+        }
+    }
 }
 
 #pragma endregion
@@ -14819,6 +15081,9 @@ std::wstring MultiReplace::buildListEnableStatus() const
 
 void MultiReplace::showStatusMessage(const std::wstring& messageText, MessageStatus status, bool isNotFound, bool isTransient)
 {
+    // Plugin menu commands also run before the panel exists: without it InvalidateRect below would repaint every window
+    if (!_hSelf) return;
+
     // No display-length limit here on purpose. The status control is owner-drawn
     // with DT_END_ELLIPSIS, which fits the text to the control's *current* width
     // on every repaint - and the control grows with the panel. Cutting by
@@ -16396,6 +16661,10 @@ void MultiReplace::loadSettingsToPanelUI() {
     // the other UI option toggles.
     bool bookmarkMatches = CFG.readBool(optSec(L"BookmarkMatches"), L"BookmarkMatches", false);
     SendMessage(GetDlgItem(_hSelf, IDC_BOOKMARK_MATCHES_CHECKBOX), BM_SETCHECK, bookmarkMatches ? BST_CHECKED : BST_UNCHECKED, 0);
+
+    // Mark Replacements from the plugin menu, written when toggled
+    _markReplacementsEnabled = isMarkReplacementsEnabled();
+    if (_markReplacementsEnabled) applyReplaceMarksDwell(true);
 
     useListEnabled = CFG.readBool(optSec(L"UseList"), L"UseList", true);
     updateUseListState(false);
@@ -19625,6 +19894,7 @@ const wchar_t* MultiReplace::optSec(const std::wstring& key)
         { L"PickupSelection",          L"SearchAndReplace" },
         { L"AutoEscapeForFindInput",   L"SearchAndReplace" },
         { L"DefaultEngine",            L"SearchAndReplace" },
+        { L"MarkReplacements",         L"SearchAndReplace" },
         { L"DoubleClickEdits",         L"ListView" },
         { L"HoverText",                L"ListView" },
         { L"HighlightMatch",           L"ListView" },
@@ -20102,6 +20372,25 @@ void MultiReplace::processScopeFrameEdit(SCNotification* notifyCode) {
         self->m_scopeFrame.keepInsert(viewSend(hSci), notifyCode->position, notifyCode->length);
 }
 
+// Changes in the views as Scintilla reports them: typed text, deleted marks for their undo, undo and redo of both
+void MultiReplace::processReplaceMarksEdit(SCNotification* notifyCode) {
+    MultiReplace* self = instance;
+    if (!self || self->m_ownReplace || self->m_replaceMarks.empty()) return;
+    HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    if (hSci != nppData._scintillaMainHandle && hSci != nppData._scintillaSecondHandle) return;
+    const int type = notifyCode->modificationType;
+    const ReplaceMarks::Step step = (type & SC_PERFORMED_UNDO) ? ReplaceMarks::Step::Undo
+        : (type & SC_PERFORMED_REDO) ? ReplaceMarks::Step::Redo : ReplaceMarks::Step::Edit;
+    // Notepad++'s undo and redo leave a calltip open, a mark's would no longer match
+    if (step != ReplaceMarks::Step::Edit && hSci == self->m_replaceTipView) self->cancelReplaceMarkTip();
+    const ReplaceMarks::Send view = directSend(hSci);
+    ReplaceMarks::Marks& marks = self->m_replaceMarks;
+    if (type & SC_MOD_CONTAINER) marks.replayed(view, notifyCode->token, step == ReplaceMarks::Step::Undo);
+    else if (type & SC_MOD_INSERTTEXT) marks.inserted(view, notifyCode->position, notifyCode->length, step);
+    else if (type & SC_MOD_BEFOREDELETE) marks.deleting(view, notifyCode->position, notifyCode->length, step);
+    else if (type & SC_MOD_DELETETEXT) marks.deleted(view, notifyCode->position, notifyCode->length, step);
+}
+
 // The view showing a document, if any
 static HWND viewShowing(std::intptr_t document)
 {
@@ -20142,11 +20431,31 @@ void MultiReplace::onFileBeforeSave(UINT_PTR bufferId) {
     if (hSci == self->_hScintilla) self->afterFlowTabsChange(ranges, false, false);
 }
 
-// Notepad++ tells plugins nothing when it saves a copy: the padding goes out before and comes back after
+// Notepad++ tells plugins nothing when it saves a copy or opens a menu: the padding goes out before a copy is saved and
+// comes back after, a menu shows whether the current document has replacement marks, the context menu on one its commands
 LRESULT CALLBACK MultiReplace::nppSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR)
 {
-    if (msg == WM_COMMAND && LOWORD(wParam) == IDM_FILE_SAVECOPYAS && instance)
-        return instance->saveCopyWithoutPadding([&] { return ::DefSubclassProc(hwnd, msg, wParam, lParam); });
+    if (!instance) return ::DefSubclassProc(hwnd, msg, wParam, lParam);
+    switch (msg) {
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDM_FILE_SAVECOPYAS)
+            return instance->saveCopyWithoutPadding([&] { return ::DefSubclassProc(hwnd, msg, wParam, lParam); });
+        if (!lParam && instance->runReplaceMarksMenu(LOWORD(wParam))) return 0;
+        break;
+    case WM_CONTEXTMENU: {
+        instance->prepareReplaceMarksMenu(reinterpret_cast<HWND>(wParam), lParam);
+        const LRESULT result = ::DefSubclassProc(hwnd, msg, wParam, lParam);
+        instance->m_replaceMarksMenu.pending = false;   // for the menu of this click only
+        return result;
+    }
+    case WM_INITMENUPOPUP:
+        syncMarkReplacementsMenu(reinterpret_cast<HMENU>(wParam));
+        instance->fillReplaceMarksMenu(reinterpret_cast<HMENU>(wParam));
+        break;
+    case WM_DPICHANGED:   // the views take their new DPI after Notepad++ has
+        if (instance->_hSelf) ::PostMessage(instance->_hSelf, WM_REPLACE_MARKS_STROKE, 0, 0);
+        break;
+    }
     return ::DefSubclassProc(hwnd, msg, wParam, lParam);
 }
 
@@ -20263,6 +20572,11 @@ void MultiReplace::onFileBeforeClose(UINT_PTR bufferId) {
         self->m_csvBuffer = 0;
         self->m_csvDocument = 0;
     }
+    const auto marks = self->m_replaceMarkDocs.find(bufferId);
+    if (marks != self->m_replaceMarkDocs.end()) {
+        self->m_replaceMarks.forget(marks->second);
+        self->m_replaceMarkDocs.erase(marks);
+    }
     const auto it = self->m_flowTabsDocs.find(bufferId);
     if (it == self->m_flowTabsDocs.end()) return;
     self->m_flowTabs.forget(it->second);
@@ -20291,20 +20605,53 @@ void MultiReplace::onCancelShutdown() {
 
 void MultiReplace::onZoom(SCNotification* notifyCode) {
     MultiReplace* self = instance;
-    if (!self || self->m_flowTabsDocs.empty()) return;
+    if (!self) return;
     HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
     if (hSci != nppData._scintillaMainHandle && hSci != nppData._scintillaSecondHandle) return;
-    self->m_flowTabs.refreshStops(directSend(hSci));
+    self->m_replaceMarks.applyStroke(viewSend(hSci));
+    if (!self->m_flowTabsDocs.empty()) self->m_flowTabs.refreshStops(directSend(hSci));
 }
 
-void MultiReplace::ensureModEventMask() {
-    if (!_hScintilla) return;
-    // Notepad++'s default mod-event mask omits SC_MOD_CONTAINER, which Flow Tabs undo markers report through, and
-    // SC_MOD_BEFOREDELETE, which the scope frame and Flow Tabs need once in use
-    const LRESULT wanted = SC_MOD_CONTAINER | ((m_scopeFrameAnnounced || m_flowTabsAnnounced) ? SC_MOD_BEFOREDELETE : 0);
-    const LRESULT mask = ::SendMessage(_hScintilla, SCI_GETMODEVENTMASK, 0, 0);
+// The mouse rests on a replacement mark: a calltip shows what it replaced, never over another calltip or a jump's
+void MultiReplace::onDwellStart(SCNotification* notifyCode) {
+    MultiReplace* self = instance;
+    if (!self || !self->_markReplacementsEnabled || self->m_replaceMarks.empty()) return;
+    HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    if (hSci != nppData._scintillaMainHandle && hSci != nppData._scintillaSecondHandle) return;
+    if (::SendMessage(hSci, SCI_CALLTIPACTIVE, 0, 0) && (self->m_replaceTipView != hSci || self->m_replaceTipJump)) return;
+    const auto x = static_cast<WPARAM>(notifyCode->x);
+    const auto y = static_cast<LPARAM>(notifyCode->y);
+    const ReplaceMarks::Send sci = viewSend(hSci);
+    ReplaceMarks::Span mark = self->m_replaceMarks.at(sci, static_cast<std::intptr_t>(::SendMessage(hSci, SCI_CHARPOSITIONFROMPOINTCLOSE, x, y)));
+    if (!mark.found())   // near a deletion's triangle
+        mark = self->m_replaceMarks.deletionAt(sci, static_cast<std::intptr_t>(::SendMessage(hSci, SCI_POSITIONFROMPOINTCLOSE, x, y)));
+    self->showReplaceMarkTip(hSci, mark, nullptr);
+}
+
+void MultiReplace::onDwellEnd(SCNotification* notifyCode) {
+    MultiReplace* self = instance;
+    if (!self || self->m_replaceTipJump || static_cast<HWND>(notifyCode->nmhdr.hwndFrom) != self->m_replaceTipView) return;
+    self->cancelReplaceMarkTip();
+}
+
+// The arrows of a jump's calltip go on to the previous or the next replacement
+void MultiReplace::onCallTipClick(SCNotification* notifyCode) {
+    MultiReplace* self = instance;
+    const HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
+    if (!self || !self->m_replaceTipJump || hSci != self->m_replaceTipView || hSci != currentEditorView()) return;
+    if (notifyCode->position == 1 || notifyCode->position == 2) self->gotoReplacement(notifyCode->position == 2);
+}
+
+void MultiReplace::ensureModEventMask(HWND view) {
+    if (!view) view = _hScintilla;
+    if (!view) return;
+    // Notepad++'s default mod-event mask omits SC_MOD_CONTAINER, which the undo steps of Flow Tabs and of the replacement
+    // marks report through, and SC_MOD_BEFOREDELETE, which the scope frame, Flow Tabs and the marks need once in use
+    const bool deletions = m_scopeFrameAnnounced || m_flowTabsAnnounced || m_replaceMarksAnnounced;
+    const LRESULT wanted = SC_MOD_CONTAINER | (deletions ? SC_MOD_BEFOREDELETE : 0);
+    const LRESULT mask = ::SendMessage(view, SCI_GETMODEVENTMASK, 0, 0);
     if ((mask & wanted) != wanted)
-        ::SendMessage(_hScintilla, SCI_SETMODEVENTMASK, (WPARAM)(mask | wanted), 0);
+        ::SendMessage(view, SCI_SETMODEVENTMASK, (WPARAM)(mask | wanted), 0);
 }
 
 // Resolve (view, index) from BufferID. Returns false if not found in any view.
@@ -20338,7 +20685,16 @@ static bool PostActivateBufferId(BufferId bufId)
 void MultiReplace::onDocumentSwitched()
 {
     MultiReplace* self = instance;
-    if (!self || !self->isWindowOpen) return;
+    if (!self) return;
+
+    // Replacement marks switched off while this document was in the background, also with the panel closed; the dots
+    // follow the document's fonts, deletions are reported beforehand once marks exist
+    if (HWND view = currentEditorView()) {
+        self->m_replaceMarks.dropStale(viewSend(view));
+        self->m_replaceMarks.applyStroke(viewSend(view));
+        if (self->m_replaceMarksAnnounced) self->ensureModEventMask(view);
+    }
+    if (!self->isWindowOpen) return;
 
     self->pointerToScintilla();
     if (!self->_hScintilla) return;
@@ -20547,6 +20903,12 @@ void MultiReplace::onCaretPositionChanged()
 
 }
 
+// The Style Configurator changed fonts: the dots of the replacement marks follow the line height
+void MultiReplace::onWordStylesUpdated()
+{
+    if (instance) instance->applyReplaceMarksStroke();
+}
+
 void MultiReplace::onThemeChanged()
 {
     if (instance) {
@@ -20555,6 +20917,7 @@ void MultiReplace::onThemeChanged()
         ResultDock::instance().onThemeChanged();
         instance->updateTextMarkerStyles();
         instance->applyScopeFrameStyle();
+        instance->applyReplaceMarksStyle();
     }
 }
 
