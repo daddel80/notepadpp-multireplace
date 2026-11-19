@@ -20,7 +20,7 @@
 // undo and redo bring the marks back with their text, also those of deleted text.
 // VERBATIM: the indicator messages as Editor::WndProc hands them to the Document.
 // Build: Scintilla object files as for selection_frame_qa, Document.cxx without SCI_OWNREGEX (no Boost), then
-//   g++ -std=c++17 -O2 -DNDEBUG -I$S/include -I$S/src -I.. replace_marks_qa.cpp ../ReplaceMarks.cpp *.o -o replace_marks_qa
+//   g++ -std=c++17 -O2 -DNDEBUG -I$S/include -I$S/src -I.. replace_marks_qa.cpp ../ReplaceMarks.cpp ../EditorPalette.cpp *.o -o replace_marks_qa
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
@@ -249,15 +249,31 @@ int main() {
     m.setIndicators(kId, kCutId);
 
     {
-        std::map<unsigned int, std::intptr_t> light, dark, cutLight, cutDark;
-        m.applyStyle([&](unsigned int msg, std::uintptr_t w, std::intptr_t l) -> std::intptr_t { (w == kId ? light : cutLight)[msg] = l; return 0; }, false);
-        m.applyStyle([&](unsigned int msg, std::uintptr_t w, std::intptr_t l) -> std::intptr_t { (w == kId ? dark : cutDark)[msg] = l; return 0; }, true);
+        // The editor theme decides, not Notepad++'s dark mode: the default themes, a black theme as in #139
+        // and MossyLawn, where the light grey stands out too little on the background
+        using Styles = std::map<unsigned int, std::intptr_t>;
+        Styles light, dark, black, mossy, cutLight, cutDark, cutBlack, cutMossy;
+        const auto styled = [&](Styles& marks, Styles& cuts, const EditorPalette::Theme& theme) {
+            m.applyStyle([pm = &marks, pc = &cuts](unsigned int msg, std::uintptr_t w, std::intptr_t l) -> std::intptr_t {
+                (w == kId ? *pm : *pc)[msg] = l; return 0; }, theme);
+        };
+        const EditorPalette::Theme mossyLawn = EditorPalette::makeTheme(0x3D6958, 0x76C4F2, 0x397A71);
+        styled(light, cutLight, EditorPalette::makeTheme(0xFFFFFF, 0x000000, 0xFFE8E8));
+        styled(dark, cutDark, EditorPalette::makeTheme(0x3F3F3F, 0xCCDCDC, 0x101010));
+        styled(black, cutBlack, EditorPalette::makeTheme(0x000000, 0xFFFFFF, 0x333333));
+        styled(mossy, cutMossy, mossyLawn);
         check("style: grey dotted underline, darker on light, lighter on dark",
             light[SCI_INDICSETSTYLE] == INDIC_DOTS && dark[SCI_INDICSETSTYLE] == INDIC_DOTS && light[SCI_INDICSETSTROKEWIDTH] == 100
             && light[SCI_INDICSETFORE] == 0x505050 && dark[SCI_INDICSETFORE] == 0xB0B0B0);
+        check("style: a black theme gets the light grey", black[SCI_INDICSETFORE] == 0xB0B0B0);
+        const auto mossyDots = static_cast<EditorPalette::Color>(mossy[SCI_INDICSETFORE]);
+        check("style: a grey too close to the theme is lightened until it stands out",
+            mossyDots != 0xB0B0B0 && EditorPalette::contrast(mossyDots, mossyLawn.background) >= EditorPalette::MARK_CONTRAST
+            && EditorPalette::contrast(mossyDots, mossyLawn.caretLine) >= EditorPalette::MARK_CONTRAST);
         check("style: deletions a triangle in the same grey",
             cutLight[SCI_INDICSETSTYLE] == INDIC_POINT && cutDark[SCI_INDICSETSTYLE] == INDIC_POINT
-            && cutLight[SCI_INDICSETFORE] == 0x505050 && cutDark[SCI_INDICSETFORE] == 0xB0B0B0);
+            && cutLight[SCI_INDICSETFORE] == 0x505050 && cutDark[SCI_INDICSETFORE] == 0xB0B0B0
+            && cutBlack[SCI_INDICSETFORE] == 0xB0B0B0 && cutMossy[SCI_INDICSETFORE] == mossy[SCI_INDICSETFORE]);
     }
 
     { Doc doc("one two three"); Watch w(doc, m);
@@ -670,17 +686,25 @@ int main() {
     // The list entry of a replacement
     { Doc doc("colour colour"); Watch w(doc, m);
       const auto send = doc.send();
-      m.setSource(3, "colour"); mrReplace(m, doc, w, 0, 6, "color");
-      m.setSource(0, "ignored"); mrReplace(m, doc, w, 6, 6, "color");
+      m.setSource({ 2, 3, "colour" }); mrReplace(m, doc, w, 0, 6, "color");
+      m.setSource({ 2, 0, "ignored" }); mrReplace(m, doc, w, 6, 6, "color");
       const ReplaceMarks::Source a = m.sourceOf(send, { 0, 5 });
-      check("a mark names the list entry that made it", a.entry == 3 && a.find == "colour" && m.sourceOf(send, { 6, 11 }).entry == 0);
-      m.setSource(5, "color"); mrReplace(m, doc, w, 0, 5, "hue");
+      check("a mark names the list and the entry that made it",
+          a == ReplaceMarks::Source{ 2, 3, "colour" } && m.sourceOf(send, { 6, 11 }) == ReplaceMarks::Source{});
+      m.setSource({ 2, 5, "color" }); mrReplace(m, doc, w, 0, 5, "hue");
       const ReplaceMarks::Source c = m.sourceOf(send, { 0, 3 });
       check("a whole mark replaced again keeps its original, the entry is the new one",
           c.entry == 5 && c.find == "color" && m.originalOf(send, { 0, 3 }) == "colour" && doc.all() == "hue color");
       doc.d->Undo();
       check("undo brings back the mark with its own entry", m.sourceOf(send, { 0, 5 }).entry == 3 && doc.all() == "color color");
-      m.setSource(0, {});
+      m.setSource({ 2, 7, {} }); mrReplace(m, doc, w, 6, 5, "tint");
+      const ReplaceMarks::Source plain = m.sourceOf(send, { 6, 10 });
+      check("an entry without a find text keeps its id", plain == ReplaceMarks::Source{ 2, 7, {} } && doc.all() == "color tint");
+      m.setSource({ 4, 7, {} }); mrReplace(m, doc, w, 0, 5, "tone");
+      check("the same entry id in another list is another entry",
+          m.sourceOf(send, { 0, 4 }) == ReplaceMarks::Source{ 4, 7, {} } && m.sourceOf(send, { 5, 9 }) == ReplaceMarks::Source{ 2, 7, {} }
+          && doc.all() == "tone tint");
+      m.setSource({});
       m.forget(reinterpret_cast<std::intptr_t>(doc.d)); }
 
     // The dots grow with the line height
@@ -894,6 +918,8 @@ int main() {
 
     check("tip: the list entry with its find text", tipText("Before:", "(empty)", "_", "two", true, {}, "List entry #3:", "two")
         == "Before: two\nList entry #3: \"two\"");
+    check("tip: an entry without a find text stands alone", tipText("Before:", "(empty)", "_", "two", true, {}, "List entry #3", "")
+        == "Before: two\nList entry #3");
     check("tip: the entry after a jump and an empty original", tipText("B:", "(e)", "_", "", true, "1 of 2", "E:", "a\tb")
         == "\0011 of 2\002 B: (e)\nE: \"a\\tb\"");
     check("tip: a long find text is cut", tipText("B:", "-", "_", "x", true, {}, "E:", std::string(50, 'f'))
@@ -919,6 +945,8 @@ int main() {
         const ReplaceMarks::Tip empty = ReplaceMarks::tipText("Before:", "(empty)", "_", "", true, {}, "E:", "x");
         check("tip highlight: none on the placeholder of an empty original", empty.start == empty.end && empty.text.find("(empty)") != std::string::npos);
     }
+    check("tip highlight: the original only, before an entry without a find text",
+        highlighted(ReplaceMarks::tipText("Before:", "(empty)", "_", "two", true, {}, "List entry #3", "")) == "two");
 
     std::printf("%d/%d checks passed\n", checks - fails, checks);
     return fails ? 1 : 0;

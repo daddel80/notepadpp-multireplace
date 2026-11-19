@@ -316,6 +316,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Toggle entry activation    | Space                | Toggles the activation state of the selected entries.       |
 | In-place editing           | Double-Click         | Opens the selected entry for direct in-place editing (configurable in Settings). |
 | Move rows up / down        | Ctrl+Up / Ctrl+Down  | Moves selected rows up or down in the list. Hold for auto-repeat. |
+| Sort by column             | Click on column header | Sorts the list ascending, then descending; the third click brings back the order from before sorting. |
 | Toggle list visibility     | Ctrl+L               | Collapses or expands the list.                              |
 | List visibility options    | Right-Click on "Use List" | Opens a menu holding **Keep list always visible**, which keeps the list on screen (dimmed) instead of collapsing it. |
 | Fill Find field with selection | Ctrl+Shift+H     | Copies the current editor selection into the **Find what** field and puts the focus there, from anywhere in Notepad++ while the MultiReplace panel is open. Requires **Fill Find field with selected text on activation**. |
@@ -386,7 +387,8 @@ The plugin registers a few entries under **Plugins → MultiReplace** in the Not
 - **Next Search Result** / **Previous Search Result** — Jump to the next or previous match in the editor and highlight it in the results (see [Search Results Window](#search-results-window)).
 - **Mark Replacements** *(toggle)* — Underlines each replacement in open documents with a dotted line, deleted text leaves a small triangle; rest the mouse on a mark to see the text it replaced and the list entry that replaced it. Undo and redo keep the marks. **Clear all marks** removes them.
 - **Next Replacement** / **Previous Replacement** — Select the next or previous marked replacement; a tooltip shows what it replaced, with arrows to move on.
-- **Revert Replacement** — Puts back the replaced text of the mark at the cursor, or of all marks in the selection. Right-click a mark to reach these commands in the editor's context menu.
+- **Revert Replacement** — Puts back the replaced text of the mark at the cursor, or of all marks in the selection.
+- **Go to List Entry** — Selects the list entry that made the mark at the cursor (or the first mark in the selection), in its list tab. Right-click a mark to reach these commands in the editor's context menu.
 - **Tandem Mode** *(toggle)* — Attaches the MultiReplace window to the *outside* of a Notepad++ window edge and keeps it there on every move or resize. The last used edge is remembered, and the enabled state survives Notepad++ restarts.
 - **Reopen on Startup** *(toggle)* — When enabled, MultiReplace automatically reopens on the next Notepad++ launch if it was open at the previous shutdown. Opt-in by design, so the plugin only appears when you want it to.
 - **About** — Shows version and credits.

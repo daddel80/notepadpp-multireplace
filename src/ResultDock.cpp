@@ -244,23 +244,11 @@ void ResultDock::applyStyling() const
     }
 
     // 2) Configure Dynamic Indicators based on _slotToColor map
-    const bool dark = ::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
-    const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
-    const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
-
     if (_perEntryColorsEnabled) {
         // Configure only slots that are actually used
-        for (const auto& [slotIdx, rgbColor] : _slotToColor) {
-            // Safety check
-            if (slotIdx < 0 || slotIdx >= MAX_ENTRY_COLORS) continue;
-
-            const int indicId = INDIC_ENTRY_BG_BASE + slotIdx;
-            S(SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
-            S(SCI_INDICSETFORE, indicId, static_cast<COLORREF>(rgbColor));
-            S(SCI_INDICSETALPHA, indicId, bgAlpha);
-            S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
-            S(SCI_INDICSETUNDER, indicId, TRUE);
-        }
+        const EditorPalette::Theme theme = contentTheme();
+        for (const auto& [slotIdx, rgbColor] : _slotToColor)
+            styleEntryIndicator(slotIdx, static_cast<COLORREF>(rgbColor), theme);
     }
 
     // 3) Styles of the whole text: headers, line numbers, matches
@@ -670,13 +658,19 @@ void ResultDock::applyTheme()
         return ::SendMessage(_hSci, m, w, l);
         };
 
-    // Determine if dark mode is active
-    const bool dark = ::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0;
+    // The editor theme picks the light or dark colors, Notepad++'s dark mode only sets the interface
+    const EditorPalette::Theme editor = contentTheme();
+    const bool dark = editor.dark;
     const DockThemeColors& theme = currentColors(dark);
 
-    // Base editor colors from Notepad++
-    const COLORREF editorBg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTBACKGROUNDCOLOR, 0, 0);
-    const COLORREF editorFg = (COLORREF)::SendMessage(nppData._nppHandle, NPPM_GETEDITORDEFAULTFOREGROUNDCOLOR, 0, 0);
+    // Base editor colors as the editor paints them
+    const COLORREF editorBg = editor.background;
+    const COLORREF editorFg = editor.text;
+
+    // Colored labels and glyphs keep their contrast where a theme is close to them
+    const auto label = [](COLORREF color, COLORREF back) {
+        return static_cast<COLORREF>(EditorPalette::readable(color, back, EditorPalette::MARK_CONTRAST));
+        };
 
     // Reset styles and set default font
     S(SCI_STYLESETFORE, STYLE_DEFAULT, editorFg);
@@ -687,7 +681,7 @@ void ResultDock::applyTheme()
 
     // Margin colors
     const COLORREF marginBg = dark ? RGB(0, 0, 0) : editorBg;
-    const COLORREF marginFg = dark ? RGB(200, 200, 200) : RGB(80, 80, 80);
+    const COLORREF marginFg = label(dark ? RGB(200, 200, 200) : RGB(80, 80, 80), marginBg);
 
     for (int m = 0; m <= 2; ++m)
         S(SCI_SETMARGINBACKN, m, marginBg);
@@ -699,7 +693,7 @@ void ResultDock::applyTheme()
 
     // Selection colors
     const COLORREF selBg = dark ? RGB(96, 96, 96) : RGB(224, 224, 224);
-    const COLORREF selFg = dark ? RGB(255, 255, 255) : editorFg;
+    const COLORREF selFg = EditorPalette::readable(dark ? RGB(255, 255, 255) : editorFg, selBg);
 
     S(SCI_SETSELFORE, TRUE, selFg);
     S(SCI_SETSELBACK, TRUE, selBg);
@@ -711,6 +705,8 @@ void ResultDock::applyTheme()
     S(SCI_SETADDITIONALSELALPHA, 256, 0);
 
     // Fold markers
+    const COLORREF foldGlyph = label(theme.foldGlyph, marginBg);
+    const COLORREF foldHighlight = label(theme.foldHighlight, marginBg);
     for (int id : {
         SC_MARKNUM_FOLDER,
             SC_MARKNUM_FOLDEREND,
@@ -720,19 +716,19 @@ void ResultDock::applyTheme()
             SC_MARKNUM_FOLDERMIDTAIL,
             SC_MARKNUM_FOLDERTAIL
     }) {
-        S(SCI_MARKERSETBACK, id, theme.foldGlyph);
+        S(SCI_MARKERSETBACK, id, foldGlyph);
         S(SCI_MARKERSETFORE, id, marginBg);
-        S(SCI_MARKERSETBACKSELECTED, id, theme.foldHighlight);
+        S(SCI_MARKERSETBACKSELECTED, id, foldHighlight);
     }
 
     // Caret line (always visible, even when dock loses focus after navigation)
     S(SCI_SETCARETLINEVISIBLEALWAYS, TRUE, 0);
     S(SCI_SETCARETLINEBACK, theme.caretLineBg, 0);
-    S(SCI_SETCARETLINEBACKALPHA, theme.caretLineAlpha);
+    S(SCI_SETCARETLINEBACKALPHA, EditorPalette::fillAlpha(theme.caretLineBg, theme.caretLineAlpha, editor));
 
     // Line numbers and matches: the default text in their own color
-    for (const auto& [style, fore] : { std::pair<int, COLORREF>{ STYLE_HIT_NUMBER, theme.lineNr },
-                                       std::pair<int, COLORREF>{ STYLE_HIT_MATCH, theme.matchFg } }) {
+    for (const auto& [style, fore] : { std::pair<int, COLORREF>{ STYLE_HIT_NUMBER, label(theme.lineNr, editorBg) },
+                                       std::pair<int, COLORREF>{ STYLE_HIT_MATCH, label(theme.matchFg, editorBg) } }) {
         S(SCI_STYLESETFONT, style, reinterpret_cast<LPARAM>("Consolas"));
         S(SCI_STYLESETSIZE, style, 10);
         S(SCI_STYLESETFORE, style, fore);
@@ -740,33 +736,28 @@ void ResultDock::applyTheme()
     }
 
     // Per-entry background color indicators
-    // Text color remains standard (matchFg), only background varies per entry
-    // Determine alpha based on mode
-    const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
-    const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
-
+    // Text color remains standard (matchFg), only background varies per entry, each with the alpha its color allows
     for (int i = 0; i < MAX_ENTRY_COLORS; ++i) {
-        const int indicId = INDIC_ENTRY_BG_BASE + i;
-        S(SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
-        S(SCI_INDICSETALPHA, indicId, bgAlpha);
-        S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
-        S(SCI_INDICSETUNDER, indicId, TRUE);
+        const auto slot = _slotToColor.find(i);
+        const COLORREF color = slot != _slotToColor.end() ? static_cast<COLORREF>(slot->second)
+                                                          : static_cast<COLORREF>(S(SCI_INDICGETFORE, INDIC_ENTRY_BG_BASE + i));
+        styleEntryIndicator(i, color, editor);
     }
 
     // Header style
-    S(SCI_STYLESETFORE, STYLE_HEADER, theme.headerFg);
+    S(SCI_STYLESETFORE, STYLE_HEADER, EditorPalette::readable(theme.headerFg, theme.headerBg));
     S(SCI_STYLESETBACK, STYLE_HEADER, theme.headerBg);
     S(SCI_STYLESETBOLD, STYLE_HEADER, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_HEADER, TRUE);
 
     // CritHdr style
-    S(SCI_STYLESETFORE, STYLE_CRITHDR, theme.critHdrFg);
+    S(SCI_STYLESETFORE, STYLE_CRITHDR, EditorPalette::readable(theme.critHdrFg, theme.critHdrBg));
     S(SCI_STYLESETBACK, STYLE_CRITHDR, theme.critHdrBg);
     S(SCI_STYLESETBOLD, STYLE_CRITHDR, TRUE);
     S(SCI_STYLESETEOLFILLED, STYLE_CRITHDR, TRUE);
 
     // File path style
-    S(SCI_STYLESETFORE, STYLE_FILEPATH, theme.filePathFg);
+    S(SCI_STYLESETFORE, STYLE_FILEPATH, label(theme.filePathFg, editorBg));
     S(SCI_STYLESETBACK, STYLE_FILEPATH, editorBg);
     S(SCI_STYLESETBOLD, STYLE_FILEPATH, TRUE);
     S(SCI_STYLESETITALIC, STYLE_FILEPATH, TRUE);
@@ -2983,18 +2974,24 @@ void ResultDock::defineSlotColor(int slotIndex, COLORREF color)
     // 2. Apply configuration immediately to Scintilla
     // This is crucial because clear() might have reset the indicators,
     // and we need them ready BEFORE we start adding text.
-    if (!_hSci) return;
+    styleEntryIndicator(slotIndex, color, contentTheme());
+}
 
+// A slot's fill under the hits: the alpha of light or dark themes, lowered where the text would lose contrast
+void ResultDock::styleEntryIndicator(int slotIndex, COLORREF color, const EditorPalette::Theme& theme) const
+{
+    if (!_hSci || slotIndex < 0 || slotIndex >= MAX_ENTRY_COLORS) return;
     const int indicId = INDIC_ENTRY_BG_BASE + slotIndex;
-
-    // Check dark mode for alpha values (reusing logic from applyTheme)
-    const bool dark = (::SendMessage(nppData._nppHandle, NPPM_ISDARKMODEENABLED, 0, 0) != 0);
-    const int bgAlpha = dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
-    const int outlineAlpha = dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT;
+    const int bgAlpha = theme.dark ? ENTRY_BG_ALPHA_DARK : ENTRY_BG_ALPHA_LIGHT;
 
     S(SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
     S(SCI_INDICSETFORE, indicId, color);
-    S(SCI_INDICSETALPHA, indicId, bgAlpha);
-    S(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
+    S(SCI_INDICSETALPHA, indicId, EditorPalette::fillAlpha(color, bgAlpha, theme));
+    S(SCI_INDICSETOUTLINEALPHA, indicId, theme.dark ? ENTRY_OUTLINE_ALPHA_DARK : ENTRY_OUTLINE_ALPHA_LIGHT);
     S(SCI_INDICSETUNDER, indicId, TRUE);
+}
+
+EditorPalette::Theme ResultDock::contentTheme()
+{
+    return NppStyleKit::ThemeUtils::editorTheme(nppData._scintillaMainHandle);
 }

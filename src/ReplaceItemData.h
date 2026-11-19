@@ -27,7 +27,7 @@
 
 struct ReplaceItemData
 {
-    size_t id = 0;
+    size_t id = 0;                  // Session-only: given when the entry comes into a list and kept there; 0 outside a list
     int findCount = -1;
     int replaceCount = -1;
     bool isEnabled = true;

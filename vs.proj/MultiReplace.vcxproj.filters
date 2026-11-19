@@ -118,6 +118,7 @@
     <ClCompile Include="..\src\ColumnTabs.cpp" />
     <ClCompile Include="..\src\CsvDocState.cpp" />
     <ClCompile Include="..\src\LineOrder.cpp" />
+    <ClCompile Include="..\src\ListOrder.cpp" />
     <ClCompile Include="..\src\OnePassHits.cpp" />
     <ClCompile Include="..\src\NumericToken.cpp" />
     <ClCompile Include="..\src\NppStyleKit.cpp" />
@@ -163,6 +164,7 @@
     <ClCompile Include="..\src\TabStripLayout.cpp" />
     <ClCompile Include="..\src\SelectionFrame.cpp" />
     <ClCompile Include="..\src\ReplaceMarks.cpp" />
+    <ClCompile Include="..\src\EditorPalette.cpp" />
     <ClCompile Include="..\src\MultiReplacePanel_FormulaDebug.cpp" />
     <ClCompile Include="..\src\FileDialogUtil.cpp" />
     <ClCompile Include="..\src\FileLoad.cpp" />
@@ -270,6 +272,7 @@
     <ClInclude Include="..\src\TabStripLayout.h" />
     <ClInclude Include="..\src\SelectionFrame.h" />
     <ClInclude Include="..\src\ReplaceMarks.h" />
+    <ClInclude Include="..\src\EditorPalette.h" />
     <ClInclude Include="..\src\StaticDialog\Docking.h" />
     <ClInclude Include="..\src\ResultDock.h" />
     <ClInclude Include="..\src\Encoding.h" />
@@ -284,6 +287,7 @@
     <ClInclude Include="..\src\ColumnTabs.h" />
     <ClInclude Include="..\src\CsvDocState.h" />
     <ClInclude Include="..\src\LineOrder.h" />
+    <ClInclude Include="..\src\ListOrder.h" />
     <ClInclude Include="..\src\CsvLine.h" />
     <ClInclude Include="..\src\OnePassHits.h" />
     <ClInclude Include="..\src\NumericToken.h" />

@@ -39,7 +39,7 @@ namespace MenuPos {
     enum : int {
         Open, Separator1, Settings, Documentation, Separator2,
         FocusResults, NextResult, PrevResult, Separator3,
-        MarkReplacements, NextReplacement, PrevReplacement, RevertReplacement, Separator4,
+        MarkReplacements, NextReplacement, PrevReplacement, RevertReplacement, GotoListEntry, Separator4,
         TandemMode, ReopenOnStartup, Separator5,
         About,
         Count
@@ -93,12 +93,13 @@ void toggleMarkReplacements();
 void gotoNextReplacement();
 void gotoPrevReplacement();
 void revertReplacement();
+void gotoListEntry();
 
 // A menu with the Mark Replacements commands opens: grayed while the current document has no marks
 void syncMarkReplacementsMenu(HMENU menu);
 
-// The commands the editor's context menu repeats on a replacement mark, as the plugin menu shows them
-enum class MarkCommand { Next, Previous, Revert };
+// The commands the editor's context menu repeats on a replacement mark, as the plugin menu shows them; Count is their number
+enum class MarkCommand { Next, Previous, Revert, GotoListEntry, Count };
 std::wstring markCommandText(MarkCommand command);
 
 //

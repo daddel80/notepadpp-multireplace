@@ -317,6 +317,7 @@ struct TabState {
     bool         needsRelayout = false;
     std::vector<ColumnID>         columnOrder;
     std::map<int, SortDirection>  columnSortOrder;
+    std::vector<size_t>           unsortedOrder;   // entry ids from before sorting, see MultiReplace::unsortedOrder
 
     // Default-constructible (all members have member-initializers).
     TabState() = default;
@@ -373,6 +374,7 @@ struct TabState {
         , needsRelayout(other.needsRelayout)
         , columnOrder(other.columnOrder)
         , columnSortOrder(other.columnSortOrder)
+        , unsortedOrder(other.unsortedOrder)
     {
     }
 
@@ -887,6 +889,7 @@ public:
     bool hasReplaceMarks() const;
     void gotoReplacement(bool forward);
     void revertReplacement();
+    void gotoListEntry();
 
 protected:
     virtual INT_PTR CALLBACK run_dlgProc(UINT message, WPARAM wParam, LPARAM lParam) override;
@@ -1006,6 +1009,7 @@ private:
     bool allSelected = true;
     std::unordered_map<int, int> colorToStyleMap;
     std::map<int, SortDirection> columnSortOrder;
+    std::vector<size_t> unsortedOrder;   // entry ids in the order before the list was sorted; going back to unsorted restores it
     ColumnDelimiterData columnDelimiterData;
     std::vector<ReplaceItemData> replaceListData;
     std::vector<LineInfo> lineDelimiterPositions;
@@ -1206,7 +1210,13 @@ private:
         bool pending = false;          // the commands go into the menu about to open
     };
     ReplaceMarksMenu m_replaceMarksMenu;
-    inline static UINT s_replaceMarksMenuId = 0;   // the first of the three command ids Notepad++ allocated
+    inline static UINT s_replaceMarksMenuId = 0;   // the first of the command ids Notepad++ allocated for them
+    // Where a list entry is: the index of its tab and its row there; tab -1 where it is gone
+    struct ListPlace {
+        int tab = -1;
+        size_t row = 0;
+        bool found() const noexcept { return tab >= 0; }
+    };
     SelectionRange m_lastFindResult = { -1, -1 };
     int m_lastTotalReplaceCount = 0;
     // Replace in Files on an open document: verify replacement conversions
@@ -1338,7 +1348,16 @@ private:
     void removeItemsFromReplaceList(const std::vector<size_t>& indicesToRemove);
     void modifyItemInReplaceList(size_t index, const ReplaceItemData& newData);
     bool moveItemsInReplaceList(std::vector<size_t>& indices, Direction direction);
-    void sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID, SortDirection direction);
+    // The order of the list with its sort state, as undo and redo of a sort bring them back
+    struct ListSort {
+        std::vector<size_t> order;               // entry ids from top to bottom
+        std::map<int, SortDirection> columns;    // columnSortOrder
+        std::vector<size_t> unsorted;            // unsortedOrder
+    };
+    ListSort listSort() const;
+    void applyListSort(const ListSort& sort);
+    void arrangeReplaceList(const std::vector<size_t>& from);
+    void sortItemsInReplaceList(const ListSort& before, const ListSort& after);
     void scrollToIndices(size_t firstIndex, size_t lastIndex);
     void copyReportToClipboard();
 
@@ -1538,6 +1557,7 @@ private:
     void displayResultCentered(size_t posStart, size_t posEnd, bool isDownwards);
     void selectListItem(size_t matchIndex);
     void focusListRow(size_t rowIndex);
+    void expandReplaceList();
     void updateSelectionScope();
     void captureCurrentSelectionAsScope();
     bool hasSelectionScope();
@@ -1547,8 +1567,9 @@ private:
     void releaseSelectionScope();
     void releaseAllSelectionScopes();
     void applyScopeFrameStyle();
+    void applyEditorColors();
     bool replaceMarksApply() const;
-    void setReplaceMarkSource(const ReplaceItemData& item, size_t itemIndex);
+    void setReplaceMarkSource(const ReplaceItemData& item);
     void markReplacement(Sci_Position newLength);
     void applyReplaceMarksStyle();
     void applyReplaceMarksStroke();
@@ -1556,6 +1577,10 @@ private:
     static void applyReplaceMarksDwell(bool enabled);
     void jumpToReplacement(HWND view, ReplaceMarks::Span from, bool forward);
     void revertReplacements(HWND view, ReplaceMarks::Span span, bool selection);
+    ListPlace findListEntry(int tabId, size_t entryId) const;
+    ListPlace listPlaceOf(HWND view, ReplaceMarks::Span span, bool selection) const;
+    std::wstring listEntryLabel(const ReplaceMarks::Source& source) const;
+    void gotoListEntry(HWND view, ReplaceMarks::Span span, bool selection);
     void showReplaceMarkTip(HWND view, ReplaceMarks::Span mark, const ReplaceMarks::Stop* stop);
     void cancelReplaceMarkTip();
     void prepareReplaceMarksMenu(HWND view, LPARAM screenPos);
@@ -1579,6 +1604,7 @@ private:
     void copyTextToClipboard(const std::wstring& text, int textCount);
     void initTextMarkerIndicators();
     void updateTextMarkerStyles();
+    static void applyFillIndicator(HWND hSci, int id, int style, COLORREF color, const EditorPalette::Theme& theme);
     // Result of scanning the replace list for enabled, non-empty, unique-signature
     // rows: which indices to run, and how many were skipped as exact duplicates
     // of an earlier row (same find text + same option flags).
@@ -1653,7 +1679,7 @@ private:
     bool ensureCsvHeaderMap() const;
     LRESULT adjustForegroundForDarkMode(LRESULT textColor, LRESULT backgroundColor);
     void initializeColumnStyles();
-    void applyColumnStyleColors();
+    void applyColumnStyleColors(HWND hSci);
     void handleHighlightColumnsInDocument();
     void reapplyColumnHighlighting();
     void restoreColumnVisuals();

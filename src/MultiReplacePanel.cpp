@@ -35,6 +35,7 @@
 #include "LanguageManager.h"
 #include "language_mapping.h"
 #include "LineOrder.h"
+#include "ListOrder.h"
 #include "LiteralPrefilter.h"
 #include "menuCmdID.h"
 #include "MultiReplaceConfigDialog.h"
@@ -1844,6 +1845,18 @@ void MultiReplace::updateUseListState(bool isUpdate)
     SendMessage(_hUseListButtonTooltip, TTM_ADDTOOL, 0, reinterpret_cast<LPARAM>(&ti));
 }
 
+// Classic Mode: list mode goes on and the collapsed list shows with its buttons and tab row
+void MultiReplace::expandReplaceList()
+{
+    useListEnabled = true;
+    updateUseListState(true);
+    adjustWindowSize();
+    ShowWindow(_replaceListView, SW_SHOW);
+    for (int id : { IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON, IDC_UP_BUTTON, IDC_DOWN_BUTTON })
+        ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
+    setBottomRowVisible(true);
+}
+
 // Library Mode switch. Only the collapsed states need layout work: with
 // the list active it stays visible either way and just the glyph changes.
 // The flag is written straight through because the settings dialog reads
@@ -2078,8 +2091,12 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
     size_t startIndex = insertPosition;
     size_t endIndex = startIndex + items.size() - 1;
 
+    // The entries are new to the list and get their ids here; redo brings back the same ones
+    std::vector<ReplaceItemData> added(items);
+    for (ReplaceItemData& item : added) item.id = generateUniqueID();
+
     // Insert items at the specified position
-    replaceListData.insert(replaceListData.begin() + insertPosition, items.begin(), items.end());
+    replaceListData.insert(replaceListData.begin() + insertPosition, added.begin(), added.end());
 
     // Update the ListView
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
@@ -2109,9 +2126,8 @@ void MultiReplace::addItemsToReplaceList(const std::vector<ReplaceItemData>& ite
         };
 
     // Redo action: Re-insert the items
-    std::vector<ReplaceItemData> itemsToRedo(items); // Copy of items to redo
-    action.redoAction = [this, itemsToRedo, startIndex, endIndex]() {
-        replaceListData.insert(replaceListData.begin() + startIndex, itemsToRedo.begin(), itemsToRedo.end());
+    action.redoAction = [this, added, startIndex, endIndex]() {
+        replaceListData.insert(replaceListData.begin() + startIndex, added.begin(), added.end());
 
         // Update the ListView
         ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
@@ -2434,60 +2450,44 @@ bool MultiReplace::moveItemsInReplaceList(std::vector<size_t>& indices, Directio
     return true;
 }
 
-void MultiReplace::sortItemsInReplaceList(const std::vector<size_t>& originalOrder, const std::vector<size_t>& newOrder, const std::map<int, SortDirection>& previousColumnSortOrder, int columnID, SortDirection direction) {
+void MultiReplace::sortItemsInReplaceList(const ListSort& before, const ListSort& after) {
     UndoRedoAction action;
-
-    // Undo action: Restore original order and sort state
-    action.undoAction = [this, originalOrder, previousColumnSortOrder]() {
-        // Restore original order
-        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
-        for (const auto& item : replaceListData) {
-            idToItemMap[item.id] = item;
-        }
-
-        replaceListData.clear();
-        for (size_t id : originalOrder) {
-            replaceListData.push_back(idToItemMap[id]);
-        }
-
-        // Restore previous sort order
-        columnSortOrder = previousColumnSortOrder;
-
-        // Update UI
-        updateHeaderSortDirection();
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, nullptr, TRUE);
-
-        markActiveTabDirty();
-        };
-
-    // Redo action: Restore sorted order and current sort state
-    action.redoAction = [this, newOrder, columnID, direction]() {
-        // Restore sorted order
-        std::unordered_map<size_t, ReplaceItemData> idToItemMap;
-        for (const auto& item : replaceListData) {
-            idToItemMap[item.id] = item;
-        }
-
-        replaceListData.clear();
-        for (size_t id : newOrder) {
-            replaceListData.push_back(idToItemMap[id]);
-        }
-
-        // Update sort state
-        columnSortOrder.clear();
-        columnSortOrder[columnID] = direction;
-
-        // Update UI
-        updateHeaderSortDirection();
-        ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
-        InvalidateRect(_replaceListView, nullptr, TRUE);
-
-        markActiveTabDirty();
-        };
-
-    // Push the action onto the undo stack
+    action.undoAction = [this, before]() { applyListSort(before); };
+    action.redoAction = [this, after]() { applyListSort(after); };
     URM.push(action.undoAction, action.redoAction, L"Sort items");
+}
+
+// Entry ids from top to bottom
+static std::vector<size_t> entryIds(const std::vector<ReplaceItemData>& list) {
+    std::vector<size_t> ids;
+    ids.reserve(list.size());
+    for (const ReplaceItemData& item : list) ids.push_back(item.id);
+    return ids;
+}
+
+MultiReplace::ListSort MultiReplace::listSort() const {
+    return { entryIds(replaceListData), columnSortOrder, unsortedOrder };
+}
+
+// The list takes a recorded order with the sort state that went with it
+void MultiReplace::applyListSort(const ListSort& sort) {
+    arrangeReplaceList(ListOrder::arranged(sort.order, entryIds(replaceListData), false));
+    columnSortOrder = sort.columns;
+    unsortedOrder = sort.unsorted;
+
+    updateHeaderSortDirection();
+    ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
+    InvalidateRect(_replaceListView, nullptr, TRUE);
+
+    markActiveTabDirty();
+}
+
+// The list in a new order: for each row the row its entry comes from
+void MultiReplace::arrangeReplaceList(const std::vector<size_t>& from) {
+    std::vector<ReplaceItemData> arranged;
+    arranged.reserve(from.size());
+    for (size_t row : from) arranged.push_back(std::move(replaceListData[row]));
+    replaceListData = std::move(arranged);
 }
 
 void MultiReplace::scrollToIndices(size_t firstIndex, size_t lastIndex) {
@@ -3557,20 +3557,7 @@ void MultiReplace::sortReplaceListData(int columnID) {
 
     // Preserve the selection
     auto selectedIDs = getSelectedRows();
-
-    // Ensure IDs are assigned
-    for (auto& item : replaceListData) {
-        if (item.id == 0) {
-            item.id = generateUniqueID();
-        }
-    }
-
-    // Capture the original order and previous sort state
-    std::vector<size_t> originalOrder;
-    for (const auto& item : replaceListData) {
-        originalOrder.push_back(item.id);
-    }
-    auto previousColumnSortOrder = columnSortOrder;
+    const ListSort before = listSort();
 
     // Determine the new sort direction (3-state cycle)
     SortDirection direction = SortDirection::Ascending;
@@ -3584,58 +3571,59 @@ void MultiReplace::sortReplaceListData(int columnID) {
         }
     }
 
+    // Sorting the unsorted list remembers its order, the third click brings it back
+    const bool wasUnsorted = std::none_of(columnSortOrder.begin(), columnSortOrder.end(),
+        [](const auto& column) { return column.second != SortDirection::Unsorted; });
+    if (wasUnsorted) {
+        unsortedOrder = before.order;
+    }
+
     // Update the column sort order
     columnSortOrder.clear();
     if (direction != SortDirection::Unsorted) {
         columnSortOrder[columnID] = direction;
     }
 
-    // Perform the sorting
-    std::sort(replaceListData.begin(), replaceListData.end(),
-        [this, columnID, direction]
-        (const ReplaceItemData& a, const ReplaceItemData& b) -> bool
-        {
-            // Unsorted = sort by ID (insertion order)
-            if (direction == SortDirection::Unsorted) {
-                return a.id < b.id;
-            }
-
-            switch (columnID)
+    if (direction == SortDirection::Unsorted) {
+        // Entries added since then go where new entries go
+        arrangeReplaceList(ListOrder::arranged(unsortedOrder, before.order, newEntriesAtTop));
+    }
+    else {
+        // Equal entries keep their order
+        std::stable_sort(replaceListData.begin(), replaceListData.end(),
+            [columnID, direction](const ReplaceItemData& a, const ReplaceItemData& b) -> bool
             {
-            case ColumnID::FIND_COUNT:
-                return direction == SortDirection::Ascending ? a.findCount < b.findCount : a.findCount > b.findCount;
-            case ColumnID::REPLACE_COUNT:
-                return direction == SortDirection::Ascending ? a.replaceCount < b.replaceCount : a.replaceCount > b.replaceCount;
-            case ColumnID::FIND_TEXT:
-            {
-                int cmp = lstrcmpiW(a.findText.c_str(), b.findText.c_str());
-                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
-            }
-            case ColumnID::REPLACE_TEXT:
-            {
-                int cmp = lstrcmpiW(a.replaceText.c_str(), b.replaceText.c_str());
-                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
-            }
-            case ColumnID::COMMENTS:
-            {
-                int cmp = lstrcmpiW(a.comments.c_str(), b.comments.c_str());
-                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
-            }
-            case ColumnID::LAST_MODIFIED:
-            {
-                // YYYY-MM-DD HH:MM format sorts correctly lexicographically
-                int cmp = lstrcmpW(a.lastModified.c_str(), b.lastModified.c_str());
-                return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
-            }
-            default:
-                return false;
-            }
-        });
-
-    // Capture the new order after sorting
-    std::vector<size_t> newOrder;
-    for (const auto& item : replaceListData) {
-        newOrder.push_back(item.id);
+                switch (columnID)
+                {
+                case ColumnID::FIND_COUNT:
+                    return direction == SortDirection::Ascending ? a.findCount < b.findCount : a.findCount > b.findCount;
+                case ColumnID::REPLACE_COUNT:
+                    return direction == SortDirection::Ascending ? a.replaceCount < b.replaceCount : a.replaceCount > b.replaceCount;
+                case ColumnID::FIND_TEXT:
+                {
+                    int cmp = lstrcmpiW(a.findText.c_str(), b.findText.c_str());
+                    return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+                }
+                case ColumnID::REPLACE_TEXT:
+                {
+                    int cmp = lstrcmpiW(a.replaceText.c_str(), b.replaceText.c_str());
+                    return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+                }
+                case ColumnID::COMMENTS:
+                {
+                    int cmp = lstrcmpiW(a.comments.c_str(), b.comments.c_str());
+                    return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+                }
+                case ColumnID::LAST_MODIFIED:
+                {
+                    // YYYY-MM-DD HH:MM format sorts correctly lexicographically
+                    int cmp = lstrcmpW(a.lastModified.c_str(), b.lastModified.c_str());
+                    return direction == SortDirection::Ascending ? (cmp < 0) : (cmp > 0);
+                }
+                default:
+                    return false;
+                }
+            });
     }
 
     // Update the UI and restore the selection
@@ -3647,7 +3635,7 @@ void MultiReplace::sortReplaceListData(int columnID) {
     markActiveTabDirty();
 
     // Delegate undo/redo creation
-    sortItemsInReplaceList(originalOrder, newOrder, previousColumnSortOrder, columnID, direction);
+    sortItemsInReplaceList(before, listSort());
 }
 
 std::vector<size_t> MultiReplace::getSelectedRows() {
@@ -3661,6 +3649,7 @@ std::vector<size_t> MultiReplace::getSelectedRows() {
     return selectedIDs;
 }
 
+// Ids of list entries: unique for the session, growing with every new entry, never 0
 size_t MultiReplace::generateUniqueID() {
     static size_t currentID = 0;
     return ++currentID;
@@ -3711,18 +3700,7 @@ void MultiReplace::handleCopyToListButton() {
     // Classic Mode: auto-expand so the user sees the insert took effect.
     // Library Mode: keep disabled state - list is visible (dimmed) anyway.
     if (!useListEnabled && !keepListVisible) {
-        useListEnabled = true;
-
-        const std::vector<int> listToolbarButtons = {
-            IDC_LOAD_FROM_CSV_BUTTON, IDC_SAVE_TO_CSV_BUTTON,
-            IDC_UP_BUTTON, IDC_DOWN_BUTTON
-        };
-        updateUseListState(true);
-        adjustWindowSize();
-        ShowWindow(_replaceListView, SW_SHOW);
-        for (int id : listToolbarButtons)
-            ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
-        setBottomRowVisible(true);
+        expandReplaceList();
     }
 }
 
@@ -7049,17 +7027,12 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
                     adjustWindowSize();
                 }
                 else {
-                    updateUseListState(true);
-                    adjustWindowSize();
-                    ShowWindow(_replaceListView, SW_SHOW);
-                    for (int id : listToolbarButtons)
-                        ShowWindow(GetDlgItem(_hSelf, id), SW_SHOW);
-                    setBottomRowVisible(true);
+                    expandReplaceList();
                 }
             }
 
-            // User-initiated toggle: announce the new state. This is
-            // the only place that should emit this message; other
+            // User-initiated toggle: announce the new state, as Go to List
+            // Entry does when it turns list mode on; other
             // updateUseListState callers refresh the UI silently.
             showStatusMessage(useListEnabled ? buildListEnableStatus()
                 : LM.get(L"status_disable_list"),
@@ -8430,7 +8403,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 {
     // Get the document's codepage once at the beginning.
     int documentCodepage = getCurrentDocCodePage();
-    setReplaceMarkSource(itemData, itemIndex);
+    setReplaceMarkSource(itemData);
 
     // The match is confirmed by an independent search with the entry's own flags before anything is
     // written. It starts at the match, except where the caller knows the match is only visible from
@@ -8539,7 +8512,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     // Get the document's codepage once at the beginning.
     const int documentCodepage = getCurrentDocCodePage();
-    setReplaceMarkSource(itemData, itemIndex);
+    setReplaceMarkSource(itemData);
 
     // --- Search bytes MUST match document codepage---
     SearchContext context;
@@ -10154,7 +10127,7 @@ void MultiReplace::handleFindAllButton()
 
         // Synchronized Limit Calculation
         int maxListSlots = calcMaxListSlots();
-        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+        const bool isDark = ResultDock::contentTheme().dark;
 
         for (size_t idx : workIndices)
         {
@@ -10206,7 +10179,7 @@ void MultiReplace::handleFindAllButton()
         std::wstring findW = getTextFromDialogItem(_hSelf, IDC_FIND_EDIT);
         std::wstring headerPattern = this->sanitizeSearchPattern(findW);
 
-        bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+        const bool isDark = ResultDock::contentTheme().dark;
         COLORREF c = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
         dock.defineSlotColor(0, c);
 
@@ -10311,7 +10284,7 @@ void MultiReplace::handleFindAllInDocsButton()
     }
 
     int maxListSlots = calcMaxListSlots();
-    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    const bool isDark = ResultDock::contentTheme().dark;
 
     if (useListEnabled) {
 
@@ -10560,7 +10533,7 @@ void MultiReplace::handleFindInFiles() {
     }
 
     int maxListSlots = calcMaxListSlots();
-    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
+    const bool isDark = ResultDock::contentTheme().dark;
 
     // The search is read once; per file only a pattern's bytes can change, with the codepage
     struct FilePattern {
@@ -11662,9 +11635,8 @@ void MultiReplace::releaseAllSelectionScopes() {
 }
 
 void MultiReplace::applyScopeFrameStyle() {
-    const bool dark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
-        if (hSci) m_scopeFrame.applyStyle(viewSend(hSci), dark);
+        if (hSci) m_scopeFrame.applyStyle(viewSend(hSci), NppStyleKit::ThemeUtils::editorTheme(hSci));
     }
 }
 
@@ -11697,11 +11669,16 @@ bool MultiReplace::replaceMarksApply() const {
         && (_hScintilla == nppData._scintillaMainHandle || _hScintilla == nppData._scintillaSecondHandle);
 }
 
-// The list entry that makes the following replacements, for the calltip of their marks
-void MultiReplace::setReplaceMarkSource(const ReplaceItemData& item, size_t itemIndex) {
+// The list entry that makes the following replacements, for the calltip of their marks: its list tab and its id, the
+// input fields have none. Only a regex shows its pattern there, a plain find text would repeat the original.
+void MultiReplace::setReplaceMarkSource(const ReplaceItemData& item) {
     if (!replaceMarksApply()) return;
-    if (itemIndex == SIZE_MAX) m_replaceMarks.setSource(0, {});
-    else m_replaceMarks.setSource(itemIndex + 1, Encoding::wstringToUtf8(item.findText));
+    if (item.id == 0 || _activeTabIndex < 0 || _activeTabIndex >= static_cast<int>(_tabs.size())) {
+        m_replaceMarks.setSource({});
+        return;
+    }
+    const std::string pattern = item.regex ? Encoding::wstringToUtf8(item.findText) : std::string();
+    m_replaceMarks.setSource({ _tabs[_activeTabIndex]->id, item.id, pattern });
 }
 
 // The new text keeps what it replaced; the first mark of a document is remembered for its closing
@@ -11716,9 +11693,8 @@ void MultiReplace::markReplacement(Sci_Position newLength) {
 }
 
 void MultiReplace::applyReplaceMarksStyle() {
-    const bool dark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
-        if (hSci) m_replaceMarks.applyStyle(viewSend(hSci), dark);
+        if (hSci) m_replaceMarks.applyStyle(viewSend(hSci), NppStyleKit::ThemeUtils::editorTheme(hSci));
     }
 }
 
@@ -11807,6 +11783,72 @@ void MultiReplace::revertReplacements(HWND view, ReplaceMarks::Span span, bool s
     ::SendMessage(view, SCI_SETSEL, static_cast<WPARAM>(restored.start), static_cast<LPARAM>(restored.end));
 }
 
+// Where a list entry is now; the active tab's list is the live one
+MultiReplace::ListPlace MultiReplace::findListEntry(int tabId, size_t entryId) const {
+    if (entryId == 0) return {};
+    for (int tab = 0; tab < static_cast<int>(_tabs.size()); ++tab) {
+        if (!_tabs[tab] || _tabs[tab]->id != tabId) continue;
+        const std::vector<ReplaceItemData>& list = (tab == _activeTabIndex) ? replaceListData : _tabs[tab]->data;
+        for (size_t row = 0; row < list.size(); ++row) {
+            if (list[row].id == entryId) return { tab, row };
+        }
+        break;
+    }
+    return {};
+}
+
+// The list entry behind a mark, or behind the first mark in a selection
+MultiReplace::ListPlace MultiReplace::listPlaceOf(HWND view, ReplaceMarks::Span span, bool selection) const {
+    const auto sci = directSend(view);
+    if (selection) {
+        const std::vector<ReplaceMarks::Span> marks = m_replaceMarks.within(sci, span.start, span.end);
+        span = marks.empty() ? ReplaceMarks::Span{} : marks.front();
+    }
+    const ReplaceMarks::Source source = m_replaceMarks.sourceOf(sci, span);
+    return findListEntry(source.list, source.entry);
+}
+
+// The calltip's line for the list entry of a mark: its number now, with the tab's name when it is in another tab;
+// empty when the entry is gone
+std::wstring MultiReplace::listEntryLabel(const ReplaceMarks::Source& source) const {
+    const ListPlace place = findListEntry(source.list, source.entry);
+    if (!place.found()) return {};
+    const bool pattern = !source.find.empty();
+    const std::wstring number = std::to_wstring(place.row + 1);
+    if (place.tab == _activeTabIndex) {
+        return LM.get(pattern ? L"tooltip_replaced_by_pattern" : L"tooltip_replaced_by", { number });
+    }
+    return LM.get(pattern ? L"tooltip_replaced_by_tab_pattern" : L"tooltip_replaced_by_tab", { number, _tabs[place.tab]->name });
+}
+
+// The list entry of the mark at the caret, or of the first mark in the selection
+void MultiReplace::gotoListEntry() {
+    const HWND view = currentEditorView();
+    if (!view) return;
+    const auto from = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETSELECTIONSTART, 0, 0));
+    const auto to = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETSELECTIONEND, 0, 0));
+    if (from < to) gotoListEntry(view, { from, to }, true);
+    else gotoListEntry(view, m_replaceMarks.atCaret(directSend(view), to), false);
+}
+
+// The panel shows the entry selected in its tab, the keyboard goes to the list. No entry there: a beep
+void MultiReplace::gotoListEntry(HWND view, ReplaceMarks::Span span, bool selection) {
+    const ListPlace place = listPlaceOf(view, span, selection);
+    if (!place.found()) {
+        if (!muteSounds) ::MessageBeep(MB_ICONASTERISK);
+        return;
+    }
+    cancelReplaceMarkTip();
+    if (!isVisible()) display(true);
+    switchToTab(place.tab);
+    if (!useListEnabled && !keepListVisible) {
+        expandReplaceList();
+        showStatusMessage(buildListEnableStatus(), MessageStatus::Info);
+    }
+    focusListRow(place.row);
+    ::SetFocus(_replaceListView);
+}
+
 // The middle dot in a document's code page shows spaces the calltip would hide; a stand-in where the code page has none
 static std::string visibleSpace(UINT codepage)
 {
@@ -11826,10 +11868,9 @@ void MultiReplace::showReplaceMarkTip(HWND view, ReplaceMarks::Span mark, const 
     const std::string place = stop ? Encoding::wstringToBytes(LM.get(L"tooltip_replacement_position",
         { std::to_wstring(stop->index), std::to_wstring(stop->count) }), codepage) : std::string();
     const ReplaceMarks::Source source = m_replaceMarks.sourceOf(viewSend(view), mark);   // its list entry, if any
-    const std::string entry = source.entry
-        ? Encoding::wstringToBytes(LM.get(L"tooltip_replaced_by", { std::to_wstring(source.entry) }), codepage) : std::string();
-    const std::string find = source.entry
-        ? Encoding::wstringToBytes(Encoding::utf8ToWString(std::string(source.find)), codepage) : std::string();
+    const std::string entry = Encoding::wstringToBytes(listEntryLabel(source), codepage);
+    const std::string find = entry.empty() ? std::string()
+        : Encoding::wstringToBytes(Encoding::utf8ToWString(std::string(source.find)), codepage);
     const ReplaceMarks::Tip tip = ReplaceMarks::tipText(
         Encoding::wstringToBytes(LM.get(L"tooltip_replaced_before"), codepage),
         Encoding::wstringToBytes(LM.get(L"tooltip_replaced_empty"), codepage),
@@ -11881,28 +11922,34 @@ void MultiReplace::prepareReplaceMarksMenu(HWND view, LPARAM screenPos) {
 void MultiReplace::fillReplaceMarksMenu(HMENU menu) {
     if (!m_replaceMarksMenu.pending) return;
     m_replaceMarksMenu.pending = false;
+    constexpr UINT count = static_cast<UINT>(MarkCommand::Count);
     if (!s_replaceMarksMenuId) {
         int first = 0;
-        if (!::SendMessage(nppData._nppHandle, NPPM_ALLOCATECMDID, 3, reinterpret_cast<LPARAM>(&first))) return;
+        if (!::SendMessage(nppData._nppHandle, NPPM_ALLOCATECMDID, count, reinterpret_cast<LPARAM>(&first))) return;
         s_replaceMarksMenuId = static_cast<UINT>(first);
     }
-    UINT position = 0;
-    for (const MarkCommand command : { MarkCommand::Next, MarkCommand::Previous, MarkCommand::Revert }) {
-        ::InsertMenuW(menu, position++, MF_BYPOSITION | MF_STRING, s_replaceMarksMenuId + static_cast<UINT>(command),
+    const ReplaceMarksMenu& target = m_replaceMarksMenu;
+    const bool hasEntry = listPlaceOf(target.view, target.span, target.selection).found();
+    for (UINT position = 0; position < count; ++position) {
+        const auto command = static_cast<MarkCommand>(position);
+        const UINT state = (command == MarkCommand::GotoListEntry && !hasEntry) ? MF_GRAYED : MF_ENABLED;
+        ::InsertMenuW(menu, position, MF_BYPOSITION | MF_STRING | state, s_replaceMarksMenuId + position,
             markCommandText(command).c_str());
     }
-    ::InsertMenuW(menu, position, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
+    ::InsertMenuW(menu, count, MF_BYPOSITION | MF_SEPARATOR, 0, nullptr);
 }
 
 // A command from the context menu works on the clicked mark or the selection
 bool MultiReplace::runReplaceMarksMenu(UINT id) {
-    if (!s_replaceMarksMenuId || id < s_replaceMarksMenuId || id > s_replaceMarksMenuId + static_cast<UINT>(MarkCommand::Revert)) return false;
+    if (!s_replaceMarksMenuId || id < s_replaceMarksMenuId || id >= s_replaceMarksMenuId + static_cast<UINT>(MarkCommand::Count)) return false;
     const ReplaceMarksMenu target = m_replaceMarksMenu;
     if (!target.view || static_cast<std::intptr_t>(::SendMessage(target.view, SCI_GETDOCPOINTER, 0, 0)) != target.document) return true;
     switch (static_cast<MarkCommand>(id - s_replaceMarksMenuId)) {
-    case MarkCommand::Next:     jumpToReplacement(target.view, target.span, true); break;
-    case MarkCommand::Previous: jumpToReplacement(target.view, target.span, false); break;
-    case MarkCommand::Revert:   revertReplacements(target.view, target.span, target.selection); break;
+    case MarkCommand::Next:          jumpToReplacement(target.view, target.span, true); break;
+    case MarkCommand::Previous:      jumpToReplacement(target.view, target.span, false); break;
+    case MarkCommand::Revert:        revertReplacements(target.view, target.span, target.selection); break;
+    case MarkCommand::GotoListEntry: gotoListEntry(target.view, target.span, target.selection); break;
+    case MarkCommand::Count:         break;
     }
     return true;
 }
@@ -12133,16 +12180,8 @@ int MultiReplace::resolveIndicatorForText(const std::wstring& findText)
 
         // Configure indicator style once for this findText
         if (indicId >= 0) {
-            bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-            int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
-            int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
-            COLORREF color = ResultDock::generateColorFromText(findText, isDark);
-
-            ::SendMessage(_hScintilla, SCI_INDICSETSTYLE, indicId, INDIC_ROUNDBOX);
-            ::SendMessage(_hScintilla, SCI_INDICSETFORE, indicId, color);
-            ::SendMessage(_hScintilla, SCI_INDICSETALPHA, indicId, alpha);
-            ::SendMessage(_hScintilla, SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
-            ::SendMessage(_hScintilla, SCI_INDICSETUNDER, indicId, TRUE);
+            const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(_hScintilla);
+            applyFillIndicator(_hScintilla, indicId, INDIC_ROUNDBOX, ResultDock::generateColorFromText(findText, theme.dark), theme);
         }
     }
     else {
@@ -12322,22 +12361,10 @@ void MultiReplace::updateTextMarkerStyles()
 {
     if (_textMarkerIds.empty()) return;
 
-    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-    int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
-    int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
-
-    auto applyStyle = [&](HWND hSci, int id, COLORREF color) {
-        if (!hSci || id < 0) return;
-        ::SendMessage(hSci, SCI_INDICSETSTYLE, id, INDIC_ROUNDBOX);
-        ::SendMessage(hSci, SCI_INDICSETFORE, id, color);
-        ::SendMessage(hSci, SCI_INDICSETALPHA, id, alpha);
-        ::SendMessage(hSci, SCI_INDICSETOUTLINEALPHA, id, outlineAlpha);
-        ::SendMessage(hSci, SCI_INDICSETUNDER, id, TRUE);
-        };
-
-    // 1. Update List Mode colors (ResultDock & Editor Indicators)
+    // 1. Update List Mode colors of the ResultDock, which follows the theme of the main view
     if (useListEnabled) {
         ResultDock& dock = ResultDock::instance();
+        const bool dockDark = ResultDock::contentTheme().dark;
 
         int maxListSlots = calcMaxListSlots();
 
@@ -12348,43 +12375,41 @@ void MultiReplace::updateTextMarkerStyles()
             int slot = static_cast<int>(i);
             if (slot >= maxListSlots) slot = maxListSlots - 1;
 
-            COLORREF c = ResultDock::generateColorFromText(replaceListData[i].findText, isDark);
+            COLORREF c = ResultDock::generateColorFromText(replaceListData[i].findText, dockDark);
             dock.defineSlotColor(slot, c);
         }
     }
 
-    // 2. Update active Editor indicators based on map
-    for (const auto& [text, slot] : textToSlot) {
-        if (slot >= 0 && slot < static_cast<int>(_textMarkerIds.size())) {
-            COLORREF c = ResultDock::generateColorFromText(text, isDark);
-            int indicId = _textMarkerIds[slot];
-
-            for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
-                applyStyle(hSci, indicId, c);
-            }
-        }
-    }
-
-    // 3. Update Duplicate Marker (separate indicator)
+    // Per view, fitted to its editor theme
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
         if (!hSci) continue;
+        const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(hSci);
 
-        if (_duplicateIndicatorId >= 0) {
-            COLORREF duplicateColor = isDark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT;
-            applyStyle(hSci, _duplicateIndicatorId, duplicateColor);
+        // 2. Update active Editor indicators based on map
+        for (const auto& [text, slot] : textToSlot) {
+            if (slot >= 0 && slot < static_cast<int>(_textMarkerIds.size()))
+                applyFillIndicator(hSci, _textMarkerIds[slot], INDIC_ROUNDBOX, ResultDock::generateColorFromText(text, theme.dark), theme);
         }
-    }
 
-    // 4. Update Single/Standard Marker (last available ID)
-    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
-        if (!hSci) continue;
+        // 3. Update Duplicate Marker (separate indicator), drawn as applyDuplicateMarks draws it
+        applyFillIndicator(hSci, _duplicateIndicatorId, INDIC_FULLBOX,
+            theme.dark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT, theme);
 
-        if (!_textMarkerIds.empty()) {
-            int singleMarkerIndex = static_cast<int>(_textMarkerIds.size()) - 1;
-            COLORREF markerColor = isDark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT;
-            applyStyle(hSci, _textMarkerIds[singleMarkerIndex], markerColor);
-        }
+        // 4. Update Single/Standard Marker (last available ID)
+        applyFillIndicator(hSci, _textMarkerIds.back(), INDIC_ROUNDBOX, theme.dark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT, theme);
     }
+}
+
+// A fill under the text: the alpha of light or dark themes, lowered where the theme's text would lose contrast
+void MultiReplace::applyFillIndicator(HWND hSci, int id, int style, COLORREF color, const EditorPalette::Theme& theme)
+{
+    if (!hSci || id < 0) return;
+    const int alpha = theme.dark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
+    ::SendMessage(hSci, SCI_INDICSETSTYLE, id, style);
+    ::SendMessage(hSci, SCI_INDICSETFORE, id, color);
+    ::SendMessage(hSci, SCI_INDICSETALPHA, id, EditorPalette::fillAlpha(color, alpha, theme));
+    ::SendMessage(hSci, SCI_INDICSETOUTLINEALPHA, id, theme.dark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT);
+    ::SendMessage(hSci, SCI_INDICSETUNDER, id, TRUE);
 }
 
 MultiReplace::UniqueEnabledItems MultiReplace::getIndicesOfUniqueEnabledItems(bool removeDuplicates) const
@@ -13083,16 +13108,8 @@ void MultiReplace::applyDuplicateMarks(bool bookmarks)
 
     const int indicId = _duplicateIndicatorId;
 
-    bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-    int alpha = isDark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT;
-    int outlineAlpha = isDark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT;
-    COLORREF color = isDark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT;
-
-    send(SCI_INDICSETSTYLE, indicId, INDIC_FULLBOX);
-    send(SCI_INDICSETFORE, indicId, color);
-    send(SCI_INDICSETALPHA, indicId, alpha);
-    send(SCI_INDICSETOUTLINEALPHA, indicId, outlineAlpha);
-    send(SCI_INDICSETUNDER, indicId, TRUE);
+    const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(_hScintilla);
+    applyFillIndicator(_hScintilla, indicId, INDIC_FULLBOX, theme.dark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT, theme);
     send(SCI_SETINDICATORCURRENT, indicId, 0);
 
     int markerId = resolveBookmarkMarkerId();
@@ -14187,26 +14204,22 @@ LRESULT MultiReplace::adjustForegroundForDarkMode(LRESULT textColor, LRESULT bac
 void MultiReplace::initializeColumnStyles() {
 
     ::SendMessage(nppData._nppHandle, NPPM_MENUCOMMAND, 0, IDM_LANG_TEXT);
-    applyColumnStyleColors();
+    applyColumnStyleColors(_hScintilla);
 }
 
-// The colors of the column styles; Notepad++ resets them whenever it activates a document
-void MultiReplace::applyColumnStyleColors() {
-    // Get default text color from Notepad++
-    LRESULT fgColor = send(SCI_STYLEGETFORE, STYLE_DEFAULT);
-
-    // Check if Notepad++ is in dark mode
-    const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-
-    // Select color scheme based on mode
-    const auto& columnColors = isDark ? darkModeColumnColors : lightModeColumnColors;
+// The colors of the column styles in a view; Notepad++ resets them when it activates a document or applies a theme
+void MultiReplace::applyColumnStyleColors(HWND hSci) {
+    // The editor theme picks the light or dark columns, Notepad++'s dark mode only sets the interface
+    const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(hSci);
+    const auto& columnColors = theme.dark ? darkModeColumnColors : lightModeColumnColors;
 
     for (SIZE_T column = 0; column < hColumnStyles.size(); ++column) {
         long bgColor = columnColors[column % columnColors.size()];
-        LRESULT adjustedFgColor = isDark ? adjustForegroundForDarkMode(fgColor, bgColor) : fgColor;
+        const EditorPalette::Color text = theme.dark
+            ? static_cast<EditorPalette::Color>(adjustForegroundForDarkMode(theme.text, bgColor)) : theme.text;
 
-        send(SCI_STYLESETBACK, hColumnStyles[column], bgColor);
-        send(SCI_STYLESETFORE, hColumnStyles[column], adjustedFgColor);
+        ::SendMessage(hSci, SCI_STYLESETBACK, hColumnStyles[column], bgColor);
+        ::SendMessage(hSci, SCI_STYLESETFORE, hColumnStyles[column], EditorPalette::readable(text, static_cast<EditorPalette::Color>(bgColor)));
     }
 }
 
@@ -14685,7 +14698,7 @@ void MultiReplace::resumeCsvView(UINT_PTR buffer) {
         columnDelimiterData.quoteCharChanged = false;
         columnDelimiterData.columnChanged = false;
         isColumnHighlighted = true;
-        applyColumnStyleColors();
+        applyColumnStyleColors(_hScintilla);
         // Padding taken out on leaving changed the text as well: same workaround as after typing
         fixHighlightAtDocumentEnd();
     }
@@ -15211,10 +15224,17 @@ void MultiReplace::applyThemePalette()
     retheme(_hTabTooltip);
 }
 
+// A theme resets the styles of both views: each one showing a highlighted document gets its column colors again
 void MultiReplace::refreshColumnStylesIfNeeded()
 {
-    if (isColumnHighlighted) {          // flag is managed by highlight/clear handlers
-        initializeColumnStyles();
+    for (const int view : { MAIN_VIEW, SUB_VIEW }) {
+        const HWND hSci = (view == MAIN_VIEW) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
+        if (!hSci || !::IsWindowVisible(hSci)) continue;
+        const LRESULT index = ::SendMessage(nppData._nppHandle, NPPM_GETCURRENTDOCINDEX, 0, view);
+        if (index < 0) continue;
+        const auto buffer = static_cast<CsvDocState::Buffer>(::SendMessage(nppData._nppHandle, NPPM_GETBUFFERIDFROMPOS, index, view));
+        if (hSci == _hScintilla ? isColumnHighlighted : m_csvDocs.highlighted(buffer))
+            applyColumnStyleColors(hSci);
     }
 }
 
@@ -16331,6 +16351,9 @@ void MultiReplace::loadListFromCsvSilent(const std::wstring& filePath, std::vect
         }
     }
 
+    // Loaded entries are new to the list, also when it is loaded again
+    for (ReplaceItemData& item : tempList) item.id = generateUniqueID();
+
     // Transfer parsed data to the target list. An empty list (header
     // row only, no data rows) is a VALID state - for example, the
     // snapshot of an untitled tab the user never added anything to.
@@ -17023,6 +17046,7 @@ void MultiReplace::captureStateIntoTab(TabState& tab)
     tab.commentsLocked = commentsColumnLockedEnabled;
     tab.columnOrder = columnOrder;
     tab.columnSortOrder = columnSortOrder;
+    tab.unsortedOrder = unsortedOrder;
 }
 
 void MultiReplace::restoreStateFromTab(const TabState& tab)
@@ -17118,6 +17142,7 @@ void MultiReplace::restoreStateFromTab(const TabState& tab)
     commentsColumnLockedEnabled = tab.commentsLocked;
     columnOrder = tab.columnOrder;
     columnSortOrder = tab.columnSortOrder;
+    unsortedOrder = tab.unsortedOrder;
 }
 
 // Flag all inactive tabs for relayout on next activation (on WM_SIZE).
@@ -19237,9 +19262,12 @@ void MultiReplace::onTabReload(int tabIndex)
         return;
     }
 
-    // Replace the list with the file content; the tab is now in sync.
+    // Replace the list with the file content; the tab is now in sync and in its file order.
     replaceListData = fileList;
     for (auto& item : replaceListData) item.isDirty = false;
+    columnSortOrder.clear();
+    unsortedOrder.clear();
+    updateHeaderSortDirection();
     tab.data = replaceListData;
     tab.originalHash = computeListHash(fileList);
     originalListHash = tab.originalHash;
@@ -20904,22 +20932,28 @@ void MultiReplace::onCaretPositionChanged()
 
 }
 
-// The Style Configurator changed fonts: the dots of the replacement marks follow the line height
+// A theme change or the Style Configurator: the colors in the text follow the theme, the dots the line height
 void MultiReplace::onWordStylesUpdated()
 {
-    if (instance) instance->applyReplaceMarksStroke();
+    if (instance) instance->applyEditorColors();
 }
 
 void MultiReplace::onThemeChanged()
 {
     if (instance) {
         instance->applyThemePalette();
-        instance->refreshColumnStylesIfNeeded();
-        ResultDock::instance().onThemeChanged();
-        instance->updateTextMarkerStyles();
-        instance->applyScopeFrameStyle();
-        instance->applyReplaceMarksStyle();
+        instance->applyEditorColors();
     }
+}
+
+// What MR draws into the views, fitted to the editor theme
+void MultiReplace::applyEditorColors()
+{
+    refreshColumnStylesIfNeeded();
+    updateTextMarkerStyles();
+    applyScopeFrameStyle();
+    applyReplaceMarksStyle();
+    applyReplaceMarksStroke();
 }
 
 void MultiReplace::signalShutdown() {

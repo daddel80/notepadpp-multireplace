@@ -93,6 +93,7 @@ void commandMenuInit()
     setCommand(MenuPos::NextReplacement, const_cast<TCHAR*>(LM.getLPCW(L"cmd_next_replacement")), gotoNextReplacement, NULL, false);
     setCommand(MenuPos::PrevReplacement, const_cast<TCHAR*>(LM.getLPCW(L"cmd_prev_replacement")), gotoPrevReplacement, NULL, false);
     setCommand(MenuPos::RevertReplacement, const_cast<TCHAR*>(LM.getLPCW(L"cmd_revert_replacement")), revertReplacement, NULL, false);
+    setCommand(MenuPos::GotoListEntry, const_cast<TCHAR*>(LM.getLPCW(L"cmd_goto_list_entry")), gotoListEntry, NULL, false);
     setCommand(MenuPos::Separator4, const_cast<TCHAR*>(TEXT("SEPARATOR")), NULL, NULL, false);
 
     // Tandem Mode: docks MR to a N++ edge and follows N++ on move/resize.
@@ -254,8 +255,14 @@ void revertReplacement()
     _MultiReplace.revertReplacement();
 }
 
+void gotoListEntry()
+{
+    _MultiReplace.gotoListEntry();
+}
+
 // The menu positions of the commands the editor's context menu repeats, in MarkCommand order
-static constexpr int MARK_COMMAND_POS[] = { MenuPos::NextReplacement, MenuPos::PrevReplacement, MenuPos::RevertReplacement };
+static constexpr int MARK_COMMAND_POS[] = { MenuPos::NextReplacement, MenuPos::PrevReplacement, MenuPos::RevertReplacement, MenuPos::GotoListEntry };
+static_assert(std::size(MARK_COMMAND_POS) == static_cast<std::size_t>(MarkCommand::Count), "one menu position per command");
 
 void syncMarkReplacementsMenu(HMENU menu)
 {
@@ -300,6 +307,7 @@ void refreshPluginMenu()
         { MenuPos::NextReplacement, L"cmd_next_replacement" },
         { MenuPos::PrevReplacement, L"cmd_prev_replacement" },
         { MenuPos::RevertReplacement, L"cmd_revert_replacement" },
+        { MenuPos::GotoListEntry, L"cmd_goto_list_entry" },
         { MenuPos::TandemMode, L"menu_tandem_mode" },
         { MenuPos::ReopenOnStartup, L"menu_reopen_on_startup" },
         { MenuPos::About, L"menu_about" },

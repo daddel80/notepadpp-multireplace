@@ -27,8 +27,8 @@ namespace ReplaceMarks {
     namespace {
 
         // Grey (COLORREF, 0x00BBGGRR): dark on light, light on dark editor themes
-        constexpr std::intptr_t LIGHT_COLOR = 0x505050;
-        constexpr std::intptr_t DARK_COLOR = 0xB0B0B0;
+        constexpr EditorPalette::Color LIGHT_COLOR = 0x505050;
+        constexpr EditorPalette::Color DARK_COLOR = 0xB0B0B0;
 
         // One pixel of dot per 16 pixels of line height: thin at the usual sizes, growing with zoom, font and DPI
         constexpr std::intptr_t LINE_PER_DOT = 16;
@@ -129,9 +129,9 @@ namespace ReplaceMarks {
         }
     }
 
-    void Marks::applyStyle(const Send& view, bool dark) const
+    void Marks::applyStyle(const Send& view, const EditorPalette::Theme& theme) const
     {
-        const std::intptr_t color = dark ? DARK_COLOR : LIGHT_COLOR;
+        const auto color = static_cast<std::intptr_t>(EditorPalette::visible(theme.dark ? DARK_COLOR : LIGHT_COLOR, theme));
         if (id_ >= 0) {
             const auto id = static_cast<std::uintptr_t>(id_);
             view(SCI_INDICSETSTYLE, id, INDIC_DOTS);
@@ -153,11 +153,11 @@ namespace ReplaceMarks {
         if (view(SCI_INDICGETSTROKEWIDTH, id, 0) != dots * 100) view(SCI_INDICSETSTROKEWIDTH, id, dots * 100);
     }
 
-    void Marks::setSource(std::size_t entry, std::string_view find)
+    void Marks::setSource(Source source)
     {
-        if (entry == source_.entry && find == source_.find) return;
-        source_.entry = entry;
-        source_.find.assign(entry ? find : std::string_view());
+        if (source.entry == 0) source = {};   // without an entry the rest names nothing
+        if (source == source_.source()) return;
+        source_ = { source.list, source.entry, std::string(source.find) };
     }
 
     void Marks::beforeReplace(const Send& doc, std::intptr_t pos, std::intptr_t length)
@@ -497,8 +497,7 @@ namespace ReplaceMarks {
         const Store* store = nullptr;
         const Record* record = recordOf(doc, mark, store);
         if (!record || record->source == 0) return {};
-        const Origin& origin = store->sources[record->source - 1];
-        return { origin.entry, origin.find };
+        return store->sources[record->source - 1].source();
     }
 
     Stop Marks::step(const Send& doc, std::intptr_t from, std::intptr_t to, bool forward) const
@@ -658,7 +657,7 @@ namespace ReplaceMarks {
     {
         if (source_.entry == 0) return 0;
         for (std::size_t i = store.sources.size(); i-- > 0;) {   // mostly the last one
-            if (store.sources[i].entry == source_.entry && store.sources[i].find == source_.find) return static_cast<std::uint32_t>(i + 1);
+            if (store.sources[i].source() == source_.source()) return static_cast<std::uint32_t>(i + 1);
         }
         store.sources.push_back(source_);
         return static_cast<std::uint32_t>(store.sources.size());
@@ -803,8 +802,10 @@ namespace ReplaceMarks {
         const std::size_t end = tip.size();
         if (entry.empty()) return { std::move(tip), start, end };
 
-        // The list entry on a line of its own, its find text on one line in quotes
-        tip.append("\n").append(entry).append(" \"");
+        // The list entry on a line of its own, its find text (if any) on one line in quotes
+        tip.append("\n").append(entry);
+        if (find.empty()) return { std::move(tip), start, end };
+        tip.append(" \"");
         columns = 0;
         for (std::size_t i = 0; i < find.size(); ++i) {
             const auto c = static_cast<unsigned char>(find[i]);

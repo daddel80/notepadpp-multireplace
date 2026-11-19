@@ -135,6 +135,21 @@ namespace NppStyleKit {
         return isDarkMode(hNpp) ? darkModeColors(hNpp).disabledText : ::GetSysColor(COLOR_GRAYTEXT);
     }
 
+    EditorPalette::Theme ThemeUtils::editorTheme(HWND hSci)
+    {
+        if (!hSci) return EditorPalette::makeTheme(RGB(0xFF, 0xFF, 0xFF), RGB(0, 0, 0));
+        const auto back = static_cast<EditorPalette::Color>(::SendMessage(hSci, SCI_STYLEGETBACK, STYLE_DEFAULT, 0));
+        const auto text = static_cast<EditorPalette::Color>(::SendMessage(hSci, SCI_STYLEGETFORE, STYLE_DEFAULT, 0));
+
+        // The current line counts when it is filled; as a frame it leaves the background as it is
+        EditorPalette::Color caretLine = EditorPalette::NO_COLOR;
+        if (::SendMessage(hSci, SCI_GETELEMENTISSET, SC_ELEMENT_CARET_LINE_BACK, 0) && ::SendMessage(hSci, SCI_GETCARETLINEFRAME, 0, 0) == 0) {
+            const auto argb = static_cast<EditorPalette::Color>(::SendMessage(hSci, SCI_GETELEMENTCOLOUR, SC_ELEMENT_CARET_LINE_BACK, 0));
+            caretLine = EditorPalette::blend(argb & 0xFFFFFF, back, static_cast<int>(argb >> 24));
+        }
+        return EditorPalette::makeTheme(back, text, caretLine);
+    }
+
     // ---------- ColorTools ----------
     uint32_t ColorTools::djb2Color(const std::string& s)
     {

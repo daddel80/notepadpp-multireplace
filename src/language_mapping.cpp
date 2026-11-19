@@ -111,7 +111,10 @@ const LangKV kEnglishPairs[] = {
 { L"tooltip_replaced_before", L"Before:" },
 { L"tooltip_replaced_empty", L"(empty)" },
 { L"tooltip_replacement_position", L"$REPLACE_STRING1 of $REPLACE_STRING2" },
-{ L"tooltip_replaced_by", L"List entry #$REPLACE_STRING:" },
+{ L"tooltip_replaced_by", L"List entry #$REPLACE_STRING" },
+{ L"tooltip_replaced_by_pattern", L"List entry #$REPLACE_STRING:" },
+{ L"tooltip_replaced_by_tab", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2)" },
+{ L"tooltip_replaced_by_tab_pattern", L"List entry #$REPLACE_STRING1 ($REPLACE_STRING2):" },
 { L"tooltip_find_duplicates", L"Find Duplicates" },
 
 // header entries
@@ -465,6 +468,7 @@ const LangKV kEnglishPairs[] = {
 { L"cmd_next_replacement", L"Next Replacement" },
 { L"cmd_prev_replacement", L"Previous Replacement" },
 { L"cmd_revert_replacement", L"Revert Replacement" },
+{ L"cmd_goto_list_entry", L"Go to List Entry" },
 
 // About Dialog
 { L"about_title", L"MultiReplace Plugin" },

@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "EditorPalette.h"
+
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -37,8 +39,8 @@ namespace SelectionFrame {
         void setIndicator(int id) noexcept { id_ = id; }
         int indicator() const noexcept { return id_; }
 
-        // Per view: a thin outline over a light fill, under the text
-        void applyStyle(const Send& view, bool dark) const;
+        // Per view: a thin outline over a light fill, under the text, fitted to the view's theme
+        void applyStyle(const Send& view, const EditorPalette::Theme& theme) const;
 
         // Per document, leaving its current indicator and value as found; draw replaces the frame
         void draw(const Send& doc, const std::vector<Span>& spans);

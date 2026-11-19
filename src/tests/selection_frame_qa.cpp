@@ -19,7 +19,7 @@
 // and frames belong to their document.
 // VERBATIM: the indicator messages as Editor::WndProc hands them to the Document.
 // Build: object files as for onepass_engine_qa (Notepad++ sources: scintilla + boostregex, Boost.Regex), then
-//   g++ -std=c++17 -O2 -DNDEBUG -I$S/include -I$S/src -I.. selection_frame_qa.cpp ../SelectionFrame.cpp *.o -lboost_regex -o selection_frame_qa
+//   g++ -std=c++17 -O2 -DNDEBUG -I$S/include -I$S/src -I.. selection_frame_qa.cpp ../SelectionFrame.cpp ../EditorPalette.cpp *.o -lboost_regex -o selection_frame_qa
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
@@ -166,11 +166,25 @@ int main() {
     f.setIndicator(9);
 
     {
-        std::map<unsigned int, std::intptr_t> style;
-        f.applyStyle([&](unsigned int msg, std::uintptr_t w, std::intptr_t l) -> std::intptr_t { if (w == 9) style[msg] = l; return 0; }, false);
+        // The editor theme decides the blue: the default themes, and Hello Kitty, whose pink hides the light blue
+        using Styles = std::map<unsigned int, std::intptr_t>;
+        const auto styled = [&](const EditorPalette::Theme& theme) {
+            Styles style;
+            f.applyStyle([&style](unsigned int msg, std::uintptr_t w, std::intptr_t l) -> std::intptr_t { if (w == 9) style[msg] = l; return 0; }, theme);
+            return style;
+        };
+        Styles style = styled(EditorPalette::makeTheme(0xFFFFFF, 0x000000, 0xFFE8E8));
+        Styles dark = styled(EditorPalette::makeTheme(0x3F3F3F, 0xCCDCDC, 0x101010));
+        const EditorPalette::Theme helloKitty = EditorPalette::makeTheme(0xFFB0FF, 0x000000, 0xC080FF);
+        Styles pink = styled(helloKitty);
         check("style: straight box, light fill, opaque thin outline under the text",
             style[SCI_INDICSETSTYLE] == INDIC_STRAIGHTBOX && style[SCI_INDICSETALPHA] > 0 && style[SCI_INDICSETALPHA] < 64 && style[SCI_INDICSETOUTLINEALPHA] == 255
             && style[SCI_INDICSETSTROKEWIDTH] == 100 && style[SCI_INDICSETUNDER] == 1);
+        check("style: the default themes keep their blue", style[SCI_INDICSETFORE] == 0xBD814F && dark[SCI_INDICSETFORE] == 0xD19B6A
+            && style[SCI_INDICSETALPHA] == dark[SCI_INDICSETALPHA]);
+        const auto pinkFrame = static_cast<EditorPalette::Color>(pink[SCI_INDICSETFORE]);
+        check("style: a blue too close to the theme is darkened until it stands out",
+            pinkFrame != 0xBD814F && EditorPalette::contrast(pinkFrame, helloKitty.background) >= EditorPalette::MARK_CONTRAST);
     }
 
     const std::string four = "ab foo foo cd\nab foo foo cd\nab foo foo cd\nab foo foo cd";

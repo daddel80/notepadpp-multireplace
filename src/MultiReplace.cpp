@@ -242,6 +242,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notifyCode)
     }
     case NPPN_WORDSTYLESUPDATED:
         MultiReplace::onWordStylesUpdated();
+        ResultDock::instance().onThemeChanged();
         break;
 
     case NPPN_NATIVELANGCHANGED:

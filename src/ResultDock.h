@@ -26,6 +26,7 @@
 #include <memory>
 #include <unordered_map>
 
+#include "EditorPalette.h"
 #include "Encoding.h"
 #include "Sci_Position.h"
 #include "PluginDefinition.h"
@@ -123,7 +124,7 @@ public:
     void clear();              // Remove all text and hits
     void rebuildFolding();     // Re-calculate folding markers
     void applyStyling() const; // Update indicators/colors
-    void onThemeChanged();     // Called on N++ dark mode toggle
+    void onThemeChanged();     // Called when the editor theme or N++ dark mode changes
     void updateTabIcon();      // Update tab icon for current theme
 
     const std::vector<Hit>& hits() const { return _hits; }
@@ -168,6 +169,8 @@ public:
         bool added);
 
     // ------------------- Color Utilities ----------------------
+    // The theme the dock's text follows: the editor's, as Notepad++'s dark mode only sets the interface
+    static EditorPalette::Theme contentTheme();
     static COLORREF generateColorFromText(const std::wstring& text, bool darkMode);
     static COLORREF hslToRgb(double hue01, double saturation, double lightness);
     void defineSlotColor(int slotIndex, COLORREF color);
@@ -218,6 +221,7 @@ private:
     void create(const NppData& npp);
     void initFolding() const;
     void applyTheme();
+    void styleEntryIndicator(int slotIndex, COLORREF color, const EditorPalette::Theme& theme) const;
 
     // -------- Range styling / folding (partial updates) -------
     void applyStylingRange(Sci_Position pos0, std::string_view text, const std::vector<Hit>& hits) const;

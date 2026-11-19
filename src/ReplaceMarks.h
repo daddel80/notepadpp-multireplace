@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "EditorPalette.h"
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -46,11 +48,17 @@ namespace ReplaceMarks {
         std::size_t count = 0;
     };
 
-    // The list entry a replacement came from: its number (from 1) and find text (UTF-8); entry 0 for none
+    // The list entry a replacement came from: its list and its id there, as the caller names them, and the find text its
+    // calltip shows (UTF-8, may be empty); entry 0 for none
     struct Source {
+        int list = 0;
         std::size_t entry = 0;
         std::string_view find;
     };
+    inline bool operator==(const Source& a, const Source& b) noexcept
+    {
+        return a.list == b.list && a.entry == b.entry && a.find == b.find;
+    }
 
     // How a change reached the text: typed or done by a command, or Scintilla's undo or redo of an earlier one
     enum class Step { Edit, Undo, Redo };
@@ -62,13 +70,13 @@ namespace ReplaceMarks {
         int indicator() const noexcept { return id_; }
         bool empty() const noexcept { return stores_.empty(); }
 
-        // Per view: a dotted underline, the usual sign of text with a hint behind it, and a triangle in the same grey.
-        // The dots grow with the line height, so zoom, font and DPI changes call applyStroke again.
-        void applyStyle(const Send& view, bool dark) const;
+        // Per view: a dotted underline, the usual sign of text with a hint behind it, and a triangle in the same grey,
+        // fitted to the view's theme. The dots grow with the line height, so zoom, font and DPI changes call applyStroke again.
+        void applyStyle(const Send& view, const EditorPalette::Theme& theme) const;
         void applyStroke(const Send& view) const;
 
         // The list entry that makes the replacements that follow
-        void setSource(std::size_t entry, std::string_view find);
+        void setSource(Source source);
 
         // Around each replacement of [pos, pos + length): the new text gets a mark with what the area held before
         // MultiReplace replaced anything in it, no text a deletion mark. The caller makes both calls and the replacement
@@ -122,8 +130,10 @@ namespace ReplaceMarks {
         };
 
         struct Origin {
+            int list = 0;
             std::size_t entry = 0;
             std::string find;
+            Source source() const noexcept { return { list, entry, find }; }
         };
 
         struct Store {
@@ -236,7 +246,7 @@ namespace ReplaceMarks {
 
     // The calltip: label and the original with control characters, line breaks and the spaces at its edges (as space)
     // made visible, cut to a few lines (utf8 counts characters); after a jump, place ("3 of 12") between arrows leads;
-    // a line with the list entry (its label) and its find text in quotes follows
+    // a line with the list entry (its label) and, if given, its find text in quotes follows
     Tip tipText(std::string_view label, std::string_view empty, std::string_view space, std::string_view original,
         bool utf8, std::string_view place = {}, std::string_view entry = {}, std::string_view find = {});
 }

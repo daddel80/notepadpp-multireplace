@@ -23,11 +23,11 @@ namespace SelectionFrame {
     namespace {
 
         // Classic blue (COLORREF, 0x00BBGGRR): #4F81BD on light, #6A9BD1 on dark editor themes
-        constexpr std::intptr_t LIGHT_COLOR = 0xBD814F;
-        constexpr std::intptr_t DARK_COLOR = 0xD19B6A;
+        constexpr EditorPalette::Color LIGHT_COLOR = 0xBD814F;
+        constexpr EditorPalette::Color DARK_COLOR = 0xD19B6A;
 
         // Light fill under the text: #4F81BD on white gives #E6EDF6
-        constexpr std::intptr_t FILL_ALPHA = 36;
+        constexpr int FILL_ALPHA = 36;
 
         // Indicator values stay below SC_INDICVALUEBIT
         constexpr int GENERATION_LIMIT = 0xFFFFFF;
@@ -71,13 +71,14 @@ namespace SelectionFrame {
         };
     }
 
-    void Frame::applyStyle(const Send& view, bool dark) const
+    void Frame::applyStyle(const Send& view, const EditorPalette::Theme& theme) const
     {
         if (id_ < 0) return;
         const auto id = static_cast<std::uintptr_t>(id_);
+        const EditorPalette::Color color = EditorPalette::visible(theme.dark ? DARK_COLOR : LIGHT_COLOR, theme);
         view(SCI_INDICSETSTYLE, id, INDIC_STRAIGHTBOX);
-        view(SCI_INDICSETFORE, id, dark ? DARK_COLOR : LIGHT_COLOR);
-        view(SCI_INDICSETALPHA, id, FILL_ALPHA);
+        view(SCI_INDICSETFORE, id, static_cast<std::intptr_t>(color));
+        view(SCI_INDICSETALPHA, id, EditorPalette::fillAlpha(color, FILL_ALPHA, theme));
         view(SCI_INDICSETOUTLINEALPHA, id, 255);
         view(SCI_INDICSETSTROKEWIDTH, id, 100);
         view(SCI_INDICSETUNDER, id, 1);

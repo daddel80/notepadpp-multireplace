@@ -25,6 +25,7 @@
 #include <string>
 
 #include "Scintilla.h"
+#include "EditorPalette.h"
 
 namespace NppStyleKit {
 
@@ -36,6 +37,10 @@ namespace NppStyleKit {
         // Text colors of Notepad++'s dialog links and (?) markers: dark mode tone, else system colors.
         COLORREF linkTextColor(HWND hNpp);
         COLORREF disabledTextColor(HWND hNpp);
+
+        // What a Scintilla view paints behind the text: the theme's default colors and the current line.
+        // The colors drawn into the text follow it, not Notepad++'s dark mode.
+        EditorPalette::Theme editorTheme(HWND hSci);
     }
 
     // ---------- Colors ----------
