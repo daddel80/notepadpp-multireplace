@@ -16,12 +16,14 @@
 
 #include "AboutDialog.h"
 #include "StaticDialog/resource.h"
+#include "EditorPalette.h"
 #include "LanguageManager.h"
 #include "MultiReplacePanel.h"
 #include "NppStyleKit.h"
 #include "Version.h"
 #include <commctrl.h>
 #include <shellapi.h>
+#include <vector>
 
 namespace {
     // UI Constants
@@ -32,11 +34,14 @@ namespace {
 
     constexpr unsigned char kTextKey = 0xA7;
     const unsigned char eT[] = { 0xC1, 0xC8, 0xD5, 0x87, 0xE6, 0xC3, 0xD5, 0xCE, 0xC6, 0xC9, 0x87, 0xC6, 0xC9, 0xC3, 0x87, 0xED, 0xD2, 0xCB, 0xCE, 0xC6, 0xC9 };
+    const unsigned char eN[] = { 0xE0, 0xC6, 0xC5, 0xD5, 0xCE, 0xC2, 0xCB, 0xC6 };
+    constexpr int kFirstHoldTicks = 34;   // the text in between stands about 1.2 seconds
 
-    std::wstring decodeText()
+    template <size_t N>
+    std::wstring decodeText(const unsigned char (&encoded)[N])
     {
         std::wstring text;
-        for (const unsigned char c : eT) {
+        for (const unsigned char c : encoded) {
             text += static_cast<wchar_t>(c ^ kTextKey);
         }
         return text;
@@ -58,13 +63,6 @@ namespace {
         return size.cx;
     }
 
-    // fg over bg with alpha 0 to 255, as Scintilla fills an indicator
-    COLORREF blendColor(COLORREF fg, COLORREF bg, int alpha)
-    {
-        const auto mix = [alpha](int f, int b) { return (f * alpha + b * (255 - alpha)) / 255; };
-        return RGB(mix(GetRValue(fg), GetRValue(bg)), mix(GetGValue(fg), GetGValue(bg)), mix(GetBValue(fg), GetBValue(bg)));
-    }
-
     // Background and text color as the dialog gives a plain static, light or dark, plus the control's font;
     // returns the previous font
     HGDIOBJ beginOwnerDraw(const DRAWITEMSTRUCT& dis)
@@ -74,6 +72,31 @@ namespace {
         FillRect(dis.hDC, &dis.rcItem, hBrush ? hBrush : GetSysColorBrush(COLOR_3DFACE));
         SetBkMode(dis.hDC, TRANSPARENT);
         return SelectObject(dis.hDC, reinterpret_cast<HFONT>(SendMessage(dis.hwndItem, WM_GETFONT, 0, 0)));
+    }
+
+    // Draws into a bitmap and copies it in one go, so a control redrawn many times a second does not flicker;
+    // without a bitmap it draws directly
+    template <typename Draw>
+    void drawBuffered(const DRAWITEMSTRUCT& dis, Draw draw)
+    {
+        const int width = dis.rcItem.right - dis.rcItem.left;
+        const int height = dis.rcItem.bottom - dis.rcItem.top;
+        const HDC hdc = CreateCompatibleDC(dis.hDC);
+        const HBITMAP hBitmap = hdc ? CreateCompatibleBitmap(dis.hDC, width, height) : nullptr;
+        if (!hBitmap) {
+            if (hdc) DeleteDC(hdc);
+            draw(dis);
+            return;
+        }
+        const HGDIOBJ hOldBitmap = SelectObject(hdc, hBitmap);
+        DRAWITEMSTRUCT buffered = dis;
+        buffered.hDC = hdc;
+        buffered.rcItem = { 0, 0, width, height };
+        draw(buffered);
+        BitBlt(dis.hDC, dis.rcItem.left, dis.rcItem.top, width, height, hdc, 0, 0, SRCCOPY);
+        SelectObject(hdc, hOldBitmap);
+        DeleteObject(hBitmap);
+        DeleteDC(hdc);
     }
 }
 
@@ -232,36 +255,54 @@ void AboutDialog::swapName()
         return;
     }
 
+    LanguageManager& LM = LanguageManager::instance();
     HWND hwndName = GetDlgItem(_hSelf, IDC_NAME_STATIC);
-    std::wstring target = _nameSwapped ? _name : decodeText();
+    const std::wstring text = windowText(hwndName);
+    std::vector<TextReplaceAnimation::Step> steps;
+    if (_nameSwapped) {
+        steps.push_back({ text, _name, LM.get(L"status_replace_one") });
+    }
+    else {
+        // Two list entries, the second works on what the first left
+        const std::wstring firstName = _name.substr(0, _name.find(L' '));
+        const std::wstring otherName = decodeText(eN);
+        steps.push_back({ firstName, otherName, LM.get(L"status_replace_one"), kFirstHoldTicks });
+        steps.push_back({ otherName + _name.substr(firstName.size()), decodeText(eT), LM.get(L"status_occurrences_replaced", { L"2" }) });
+    }
     _nameSwapped = !_nameSwapped;
+    _nameSwap.start(text, std::move(steps));
 
     BOOL animate = TRUE;
     SystemParametersInfo(SPI_GETCLIENTAREAANIMATION, 0, &animate, 0);
-    if (!animate) {
-        SetWindowText(hwndName, target.c_str());
+    if (!animate || !_nameSwap.isActive()) {
+        _nameSwap.stop();
+        SetWindowText(hwndName, _nameSwap.result().c_str());
         return;
     }
 
-    _nameSwap.start(windowText(hwndName), std::move(target));
     SetTimer(_hSelf, kNameTimerId, TextReplaceAnimation::TICK_MS, nullptr);
     InvalidateRect(hwndName, nullptr, FALSE);
 }
 
 void AboutDialog::advanceNameSwap()
 {
-    const bool wasReplacing = _nameSwap.phase() != TextReplaceAnimation::Phase::Status;
-    if (!_nameSwap.tick()) {
+    switch (_nameSwap.tick()) {
+    case TextReplaceAnimation::Tick::Over:
         endNameSwap();
         return;
-    }
-
-    HWND hwndName = GetDlgItem(_hSelf, IDC_NAME_STATIC);
-    if (wasReplacing && _nameSwap.phase() == TextReplaceAnimation::Phase::Status) {
-        SetWindowText(hwndName, _nameSwap.target().c_str());
+    case TextReplaceAnimation::Tick::StepDone:
+    {
+        // The step's result stands, its status takes the place of the website link
+        HWND hwndStatus = GetDlgItem(_hSelf, IDC_STATUS_STATIC);
+        SetWindowText(hwndStatus, _nameSwap.step().status.c_str());
+        InvalidateRect(hwndStatus, nullptr, FALSE);
         showSwapStatus(true);
+        break;
     }
-    InvalidateRect(hwndName, nullptr, FALSE);
+    case TextReplaceAnimation::Tick::Running:
+        break;
+    }
+    InvalidateRect(GetDlgItem(_hSelf, IDC_NAME_STATIC), nullptr, FALSE);
 }
 
 void AboutDialog::endNameSwap()
@@ -269,7 +310,7 @@ void AboutDialog::endNameSwap()
     KillTimer(_hSelf, kNameTimerId);
     _nameSwap.stop();
     HWND hwndName = GetDlgItem(_hSelf, IDC_NAME_STATIC);
-    SetWindowText(hwndName, _nameSwap.target().c_str());
+    SetWindowText(hwndName, _nameSwap.result().c_str());
     showSwapStatus(false);
     InvalidateRect(hwndName, nullptr, FALSE);
 }
@@ -284,23 +325,29 @@ void AboutDialog::drawName(const DRAWITEMSTRUCT& dis) const
 {
     const HGDIOBJ hOldFont = beginOwnerDraw(dis);
 
-    const std::wstring text = _nameSwap.isActive() ? std::wstring() : windowText(dis.hwndItem);
-    const std::wstring_view done = _nameSwap.isActive() ? _nameSwap.done() : std::wstring_view(text);
-    const std::wstring_view rest = _nameSwap.rest();
-    const int left = dis.rcItem.left;
-    const int restLeft = left + textWidth(dis.hDC, done);
+    // The background just painted, read before any text covers it
+    COLORREF background = GetPixel(dis.hDC, dis.rcItem.left, dis.rcItem.top);
+    if (background == CLR_INVALID) {
+        background = GetBkColor(dis.hDC);
+    }
 
-    if (!rest.empty()) {
-        // Marked like a Mark Matches hit, over the background just painted
-        COLORREF background = GetPixel(dis.hDC, dis.rcItem.left, dis.rcItem.top);
-        if (background == CLR_INVALID) {
-            background = GetBkColor(dis.hDC);
+    const std::wstring text = _nameSwap.isActive() ? std::wstring() : windowText(dis.hwndItem);
+    const std::wstring_view marked = _nameSwap.marked();
+    const int top = dis.rcItem.top;
+    int x = dis.rcItem.left;
+    const auto draw = [&dis, top, &x](std::wstring_view part) {
+        if (!part.empty()) {
+            TextOut(dis.hDC, x, top, part.data(), static_cast<int>(part.size()));
         }
-        const bool isDark = NppStyleKit::ThemeUtils::isDarkMode(nppData._nppHandle);
-        const COLORREF mark = blendColor(
-            static_cast<COLORREF>(isDark ? MultiReplace::MARKER_COLOR_DARK : MultiReplace::MARKER_COLOR_LIGHT),
-            background,
-            isDark ? MultiReplace::EDITOR_MARK_ALPHA_DARK : MultiReplace::EDITOR_MARK_ALPHA_LIGHT);
+        x += textWidth(dis.hDC, part);
+    };
+
+    draw(_nameSwap.isActive() ? _nameSwap.before() : std::wstring_view(text));
+    if (!marked.empty()) {
+        // Marked like a Mark Matches hit, in the list color of the step's find text
+        const EditorPalette::Theme theme = EditorPalette::makeTheme(background, GetTextColor(dis.hDC));
+        const COLORREF mark = EditorPalette::blend(MultiReplace::matchMarkColor(_nameSwap.step().find, theme), background,
+            theme.dark ? MultiReplace::EDITOR_MARK_ALPHA_DARK : MultiReplace::EDITOR_MARK_ALPHA_LIGHT);
 
         TEXTMETRIC tm{};
         GetTextMetrics(dis.hDC, &tm);
@@ -309,15 +356,12 @@ void AboutDialog::drawName(const DRAWITEMSTRUCT& dis) const
         const HGDIOBJ hOldBrush = SelectObject(dis.hDC, GetStockObject(DC_BRUSH));
         const HGDIOBJ hOldPen = SelectObject(dis.hDC, GetStockObject(DC_PEN));
         const int corner = tm.tmHeight / 4;
-        RoundRect(dis.hDC, restLeft, dis.rcItem.top, restLeft + textWidth(dis.hDC, rest), dis.rcItem.top + tm.tmHeight, corner, corner);
+        RoundRect(dis.hDC, x, top, x + textWidth(dis.hDC, marked), top + tm.tmHeight, corner, corner);
         SelectObject(dis.hDC, hOldPen);
         SelectObject(dis.hDC, hOldBrush);
-
-        TextOut(dis.hDC, restLeft, dis.rcItem.top, rest.data(), static_cast<int>(rest.size()));
     }
-    if (!done.empty()) {
-        TextOut(dis.hDC, left, dis.rcItem.top, done.data(), static_cast<int>(done.size()));
-    }
+    draw(marked);
+    draw(_nameSwap.after());
 
     SelectObject(dis.hDC, hOldFont);
 }
@@ -348,7 +392,6 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         SetDlgItemText(_hSelf, IDC_AUTHOR_LABEL, LM.getLPCW(L"about_author"));
         SetDlgItemText(_hSelf, IDC_LICENSE_LABEL, LM.getLPCW(L"about_license"));
         SetDlgItemText(_hSelf, IDC_WEBSITE_LINK, LM.getLPCW(L"about_help_support"));
-        SetDlgItemText(_hSelf, IDC_STATUS_STATIC, LM.getLPCW(L"status_replace_one"));
         SetDlgItemText(_hSelf, IDOK, LM.getLPCW(L"about_ok"));
         SetDlgItemText(_hSelf, IDC_VERSION_STATIC, VER_WSTRING);
 
@@ -408,7 +451,7 @@ intptr_t CALLBACK AboutDialog::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
     {
         const auto* dis = reinterpret_cast<const DRAWITEMSTRUCT*>(lParam);
         if (dis->CtlID == IDC_NAME_STATIC) {
-            drawName(*dis);
+            drawBuffered(*dis, [this](const DRAWITEMSTRUCT& buffered) { drawName(buffered); });   // the animation redraws it every tick
             return TRUE;
         }
         if (dis->CtlID == IDC_STATUS_STATIC) {

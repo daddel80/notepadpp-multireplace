@@ -18,6 +18,7 @@
 
 #include "CsvLine.h"
 #include "NumericToken.h"
+#include "SciIndicators.h"
 #include "Scintilla.h"
 
 #include <algorithm>
@@ -34,6 +35,7 @@ namespace ColumnTabs {
     namespace {
 
         using Pos = std::intptr_t;
+        using SciIndicators::KeepCurrent;
 
         // Marker tokens: 'MR' in the upper half, a number per document in the lower
         constexpr Pos MARKER_TAG = 0x4D52;
@@ -352,6 +354,17 @@ namespace ColumnTabs {
             }
         }
 
+        // Scintilla drops a view's tab stops when it shows another document: any in a document Flow Tabs have not
+        // aligned come from someone else
+        bool stopsTaken(const Send& v)
+        {
+            const Pos lines = v(SCI_GETLINECOUNT, 0, 0);
+            for (Pos line = 0; line < lines; ++line) {
+                if (v(SCI_GETNEXTTABSTOP, static_cast<std::uintptr_t>(line), 0) > 0) return true;
+            }
+            return false;
+        }
+
         void clearStops(const Send& v, Meter* meter = nullptr)
         {
             const Pos lines = v(SCI_GETLINECOUNT, 0, 0);
@@ -360,25 +373,6 @@ namespace ColumnTabs {
                 v(SCI_CLEARTABSTOPS, static_cast<std::uintptr_t>(line), 0);
             }
         }
-
-        // Notepad++ and other plugins fill with the document's current indicator and value: put both back
-        class KeepCurrent {
-        public:
-            explicit KeepCurrent(const Send& v)
-                : v_(v), indicator_(v(SCI_GETINDICATORCURRENT, 0, 0)), value_(v(SCI_GETINDICATORVALUE, 0, 0)) {}
-            ~KeepCurrent()
-            {
-                v_(SCI_SETINDICATORCURRENT, static_cast<std::uintptr_t>(indicator_), 0);
-                v_(SCI_SETINDICATORVALUE, static_cast<std::uintptr_t>(value_), 0);
-            }
-            KeepCurrent(const KeepCurrent&) = delete;
-            KeepCurrent& operator=(const KeepCurrent&) = delete;
-
-        private:
-            const Send& v_;
-            Pos indicator_;
-            Pos value_;
-        };
 
         // While Flow Tabs change the text: outside the undo history, unannounced, past a read-only flag. Scintilla's
         // change history replays the undo history and breaks on changes outside it (a crash on a later undo): the
@@ -733,6 +727,7 @@ namespace ColumnTabs {
         if (d.recipe) return d.padded ? SwitchedOn::Padded : SwitchedOn::StopsOnly;
         if (indicator_ < 0 || settings.delimiter.empty()) return SwitchedOn::NothingToAlign;
         if (view(SCI_GETREADONLY, 0, 0)) return SwitchedOn::ReadOnly;
+        if (stopsTaken(view)) return SwitchedOn::StopsTaken;
         Busy busy(busy_);
         Meter meter(progress_, true, progressDelayMs_, progressIntervalMs_);
         meter.pass(5);

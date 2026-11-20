@@ -22,10 +22,12 @@
 #include "DPIManager.h"
 #include "DocScope.h"
 #include "DropTarget.h"
+#include "EditorIndicators.h"
 #include "Encoding.h"
 #include "ColumnTabs.h"
 #include "CsvDocState.h"
 #include "LanguageManager.h"
+#include "MarkMatches.h"
 #include "MultiReplaceConfigDialog.h"
 #include "NppStyleKit.h"
 #include "PluginInterface.h"
@@ -46,6 +48,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // Third-party
@@ -792,6 +795,9 @@ public:
     static constexpr int EDITOR_MARK_ALPHA_DARK = 130;
     static constexpr int EDITOR_OUTLINE_ALPHA_DARK = 0;
 
+    // The fill a Mark Matches hit carries: its text's list color, the single color for no text
+    static EditorPalette::Color matchMarkColor(const std::wstring& text, const EditorPalette::Theme& theme);
+
     static constexpr BYTE MIN_TRANSPARENCY = 50;  // Minimum visible transparency
     static constexpr BYTE MAX_TRANSPARENCY = 255; // Fully opaque
     static constexpr BYTE DEFAULT_FOREGROUND_TRANSPARENCY = 255; // Default foreground transparency
@@ -850,6 +856,7 @@ public:
     static bool isReopenOnStartupEnabled();
     static void toggleReopenOnStartup();
     static void loadConfigOnce();
+    static void initEditorIndicators();
     static void migrateLegacyStartupKeys();
     static void migrateOptionsLayout();
 #pragma endregion
@@ -970,44 +977,15 @@ private:
 
     POINT _contextMenuClickPoint;
 
-    // Style-related variables and constants
-    /*
-       Available styles (self-tested):
-       { 0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43 }
-       Note: Gaps in the list are intentional.
-
-       Styles 0 - 7 are reserved for syntax style.
-       Indicator 30 is reserved for MultiReplace ColumnTabs
-    */
-
+    // Column highlighting: Scintilla styles, a color per column for light and dark themes
     const std::vector<int> hColumnStyles = { STYLE1, STYLE2, STYLE3, STYLE4, STYLE5, STYLE6, STYLE7, STYLE8, STYLE9, STYLE10 };
 
     const std::vector<int> lightModeColumnColors = { 0xFFE0E0, 0xC0E0FF, 0x80FF80, 0xFFE0FF,  0xB0E0E0, 0xFFFF80, 0xE0C0C0, 0x80FFFF, 0xFFB0FF, 0xC0FFC0 };
     const std::vector<int> darkModeColumnColors = { 0x553333, 0x335577, 0x225522, 0x553355, 0x335555, 0x555522, 0x774444, 0x225555, 0x553366, 0x336633 };
 
-    // Preferences (input)
-    int preferredColumnTabsStyleId = 30; // preferred ColumnTabs id; -1 = auto
-
-    // Assigned (output)
-    // Pools (runtime)
-    std::vector<int> textStyles;           // highlight pool (excludes ColumnTabs + standard)
-
-    // Coordinator config
-    inline static constexpr int kPreferredIds[] = {
-        9,10,11,12,13,14,15,16,17,18,19,20,30,
-        32,33,34,35,36,37,38,39,40,41,42,43
-    };
-
-    inline static constexpr int kReservedIds[] = {
-        0,1,2,3,4,5,6,7,       // lexer
-        21,22,23,24,25,26,27,28,29,
-        31                     // N++ mark
-    };
-
     // Data-related variables
     size_t markedStringsCount = 0;
     bool allSelected = true;
-    std::unordered_map<int, int> colorToStyleMap;
     std::map<int, SortDirection> columnSortOrder;
     std::vector<size_t> unsortedOrder;   // entry ids in the order before the list was sorted; going back to unsorted restores it
     ColumnDelimiterData columnDelimiterData;
@@ -1186,10 +1164,6 @@ private:
     inline static bool pickupSelection = true;
     inline static bool autoEscapeForFindInput = false;
 
-    inline static std::vector<int> _textMarkerIds;  // Fixed IDs for text marking (0-9 = list, last = single)
-    inline static bool _textMarkersInitialized = false;
-    inline static int _duplicateIndicatorId = -1;    // Separate indicator for duplicate marking
-
     // Selection Scope Management for interactive search
     std::vector<SelectionRange> m_selectionScope;
     SelectionFrame::Frame m_scopeFrame;  // the remembered area as its document keeps it, framed
@@ -1200,7 +1174,15 @@ private:
     std::unordered_map<UINT_PTR, std::intptr_t> m_replaceMarkDocs;   // buffer -> document with marks
     bool m_replaceMarksAnnounced = false;   // from the first mark on, the views report deletions beforehand
     HWND m_replaceTipView = nullptr;   // the view showing the original of a mark
+    std::intptr_t m_replaceTipPos = -1;   // where that calltip started, see replaceTipShown
     bool m_replaceTipJump = false;     // that calltip came with a jump: it has arrows and stays while the mouse moves
+    // Mark Matches: the texts marked in their list colors, and per document the theme its marks were drawn for
+    struct MatchMarkDoc {
+        std::intptr_t document = 0;
+        EditorPalette::Theme theme;
+    };
+    std::unordered_set<std::wstring> m_matchMarkTexts;
+    std::unordered_map<UINT_PTR, MatchMarkDoc> m_matchMarkDocs;   // buffer -> document with marks
     // The editor's context menu opened on replacement marks: on the clicked one, or on the selection holding some
     struct ReplaceMarksMenu {
         HWND view = nullptr;
@@ -1269,10 +1251,6 @@ private:
     // GUI control-related constants
     const int maxHistoryItems = 10;  // Maximum number of history items to be saved for Find/Replace
 
-    // Coloring Slot for marking
-    std::unordered_map<std::wstring, int> textToSlot;
-    int nextSlot = 0;
-
     // Window related settings
     RECT windowRect; // Structure to store window position and size
     BYTE foregroundTransparency;     // Default Foreground transparency
@@ -1313,7 +1291,8 @@ private:
     void positionAndResizeControls(int windowWidth, int windowHeight);
     void initializeCtrlMap();
     bool createAndShowWindows();
-    void ensureIndicatorContext();
+    int indicatorFor(EditorIndicators::Kind kind);
+    void initFlowTabsProgress();
     void initializeListView();
     void moveAndResizeControls(bool moveStatic);
     void updateTwoButtonsVisibility();
@@ -1568,7 +1547,7 @@ private:
     void releaseAllSelectionScopes();
     void applyScopeFrameStyle();
     void applyEditorColors();
-    bool replaceMarksApply() const;
+    bool replaceMarksApply();
     void setReplaceMarkSource(const ReplaceItemData& item);
     void markReplacement(Sci_Position newLength);
     void applyReplaceMarksStyle();
@@ -1583,6 +1562,7 @@ private:
     void gotoListEntry(HWND view, ReplaceMarks::Span span, bool selection);
     void showReplaceMarkTip(HWND view, ReplaceMarks::Span mark, const ReplaceMarks::Stop* stop);
     void cancelReplaceMarkTip();
+    bool replaceTipShown(HWND view) const;
     void prepareReplaceMarksMenu(HWND view, LPARAM screenPos);
     void fillReplaceMarksMenu(HMENU menu);
     bool runReplaceMarksMenu(UINT id);
@@ -1598,11 +1578,11 @@ private:
         const std::wstring& findText = L"",
         int bookmarkMarkerId = -1);
     int calcMaxListSlots() const;
-    int resolveIndicatorForText(const std::wstring& findText);
+    void applyMatchMarksStyle();
+    void recolorMatchMarks(HWND view);
     void handleClearTextMarksButton();
     void handleCopyMarkedTextToClipboardButton();
     void copyTextToClipboard(const std::wstring& text, int textCount);
-    void initTextMarkerIndicators();
     void updateTextMarkerStyles();
     static void applyFillIndicator(HWND hSci, int id, int style, COLORREF color, const EditorPalette::Theme& theme);
     // Result of scanning the replace list for enabled, non-empty, unique-signature
@@ -1638,6 +1618,7 @@ private:
     void applyDuplicateMarks(bool bookmarks);
     void clearDuplicateMarks();
     void clearDuplicateIndicator();
+    void applyDuplicateStyle();
     void clearDuplicateBookmarks();
     void showDeleteDuplicatesDialog();
     void deleteDuplicateLines();

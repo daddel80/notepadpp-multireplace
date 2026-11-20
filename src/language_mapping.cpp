@@ -224,6 +224,8 @@ const LangKV kEnglishPairs[] = {
 { L"status_tabs_aligning", L"Flow Tabs: aligning ..." },
 { L"status_tabs_removing", L"Flow Tabs: removing ..." },
 { L"status_tabs_read_only", L"Flow Tabs: the document is read-only." },
+{ L"status_no_free_indicator", L"Notepad++ has no free indicator left: other plugins use all of them." },
+{ L"status_tabs_in_use", L"Flow Tabs: another plugin already sets the tab stops of this document." },
 { L"status_tabs_undo_reset", L"Flow Tabs: undo history cleared, it no longer matched the text." },
 { L"status_no_selection", L"No text selected." },
 { L"status_select_area_first", L"Please select an area first." },

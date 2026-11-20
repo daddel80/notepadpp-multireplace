@@ -17,10 +17,14 @@
 #include "SelectionFrame.h"
 
 #include "Scintilla.h"
+#include "SciIndicators.h"
 
 namespace SelectionFrame {
 
     namespace {
+
+        using SciIndicators::KeepCurrent;
+        using SciIndicators::forEachRun;
 
         // Classic blue (COLORREF, 0x00BBGGRR): #4F81BD on light, #6A9BD1 on dark editor themes
         constexpr EditorPalette::Color LIGHT_COLOR = 0xBD814F;
@@ -32,43 +36,11 @@ namespace SelectionFrame {
         // Indicator values stay below SC_INDICVALUEBIT
         constexpr int GENERATION_LIMIT = 0xFFFFFF;
 
-        // Calls visit(start, end, value) for every run of the indicator in the document
-        template <class Visit>
-        void forEachRun(const Send& doc, int id, Visit visit)
-        {
-            const std::intptr_t length = doc(SCI_GETLENGTH, 0, 0);
-            for (std::intptr_t pos = 0; pos < length;) {
-                const std::intptr_t end = doc(SCI_INDICATOREND, static_cast<std::uintptr_t>(id), pos);
-                if (end <= pos) break;  // the document never held this indicator
-                visit(pos, end, doc(SCI_INDICATORVALUEAT, static_cast<std::uintptr_t>(id), pos));
-                pos = end;
-            }
-        }
-
         void clearAll(const Send& doc, int id)
         {
             doc(SCI_SETINDICATORCURRENT, static_cast<std::uintptr_t>(id), 0);
             doc(SCI_INDICATORCLEARRANGE, 0, doc(SCI_GETLENGTH, 0, 0));
         }
-
-        // Notepad++ and other plugins fill with the document's current indicator and value: put both back
-        class KeepCurrent {
-        public:
-            explicit KeepCurrent(const Send& doc)
-                : doc_(doc), indicator_(doc(SCI_GETINDICATORCURRENT, 0, 0)), value_(doc(SCI_GETINDICATORVALUE, 0, 0)) {}
-            ~KeepCurrent()
-            {
-                doc_(SCI_SETINDICATORCURRENT, static_cast<std::uintptr_t>(indicator_), 0);
-                doc_(SCI_SETINDICATORVALUE, static_cast<std::uintptr_t>(value_), 0);
-            }
-            KeepCurrent(const KeepCurrent&) = delete;
-            KeepCurrent& operator=(const KeepCurrent&) = delete;
-
-        private:
-            const Send& doc_;
-            const std::intptr_t indicator_;
-            const std::intptr_t value_;
-        };
     }
 
     void Frame::applyStyle(const Send& view, const EditorPalette::Theme& theme) const

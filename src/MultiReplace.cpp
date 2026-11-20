@@ -62,6 +62,7 @@ extern "C" __declspec(dllexport) void setInfo(NppData notpadPlusData)
     nppData = notpadPlusData;
     MultiReplace::loadLanguageGlobal();  // loading language Information for Plugin
     MultiReplace::loadConfigOnce();   // Load INI into cache once at plugin start
+    MultiReplace::initEditorIndicators();   // Notepad++ hands them out on their first use
     commandMenuInit();
 }
 

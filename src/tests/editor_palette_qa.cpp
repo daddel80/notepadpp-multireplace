@@ -21,7 +21,9 @@
 //      white or black allows both; a mark that stands out already keeps its color
 //   C. readable: text reaches the asked contrast; text that reaches it already keeps its color
 //   D. fillAlpha: the theme's text keeps 3:1 over the fill, or the theme's own contrast where that is lower;
-//      the alpha is the highest that does so and never above the given one
+//      the alpha is the highest that does so and never above the given one. fillColor: drawn at the given alpha
+//      the text keeps the same contrast and a fill that keeps its alpha keeps its color; on the ramp and the shipped
+//      themes it looks as the fill at fillAlpha (random themes hold colors of equal contrast that look different)
 //   E. the default themes of Notepad++ keep their look: marks, frames, fills, column colors, Result Dock
 //   F. every shipped theme with the colors MR uses: marks, frames, column text and labels keep their
 //      contrast, and a fill whose alpha is lowered still stands out (CIELAB difference of at least 5)
@@ -213,6 +215,23 @@ static void checkReadable(const std::string& where, Color text, Color background
     check(where + " readable " + hex(text) + " on " + hex(background), contrast(r, background) >= minimum);
     if (contrast(text, background) >= minimum) check(where + " readable " + hex(text) + ": kept when readable", r == text);
 }
+static double g_mostLookDifference = 0;   // fillColor against fillAlpha, CIELAB, on the ramp and the shipped themes
+static Color checkFillColor(const std::string& where, Color fill, int alpha, const Theme& theme, bool sameLook = true)
+{
+    const Color c = fillColor(fill, alpha, theme);
+    const Color drawn = blend(c, theme.background, alpha);
+    const int a = fillAlpha(fill, alpha, theme);
+    const double wanted = std::min(FILL_CONTRAST, contrast(theme.text, theme.background));
+    check(where + " fill color " + hex(fill) + ": the text keeps its contrast", contrast(theme.text, drawn) >= wanted);
+    if (sameLook) {
+        const double difference = labDistance(drawn, blend(fill, theme.background, a));
+        g_mostLookDifference = std::max(g_mostLookDifference, difference);
+        // At most a just noticeable difference: rounding twice costs a step where the text barely reaches 3:1
+        check(where + " fill color " + hex(fill) + ": looks as at fillAlpha", difference <= 3.0);
+    }
+    if (a == std::clamp(alpha, 0, 255)) check(where + " fill color " + hex(fill) + ": kept with its alpha", c == (fill & 0xFFFFFF));
+    return c;
+}
 static int checkFill(const std::string& where, Color fill, int alpha, const Theme& theme)
 {
     const int a = fillAlpha(fill, alpha, theme);
@@ -262,13 +281,17 @@ int main(int argc, char** argv)
         const Theme theme = makeTheme(grey, isDark(grey) ? 0xFFFFFF : 0x000000);
         for (const Color c : { MARKS[0], MARKS[1], FRAME[0], FRAME[1], grey, 0x000000u, 0xFFFFFFu }) checkVisible("B: ramp", c, theme);
         for (const Color c : { 0x000000u, 0xFFFFFFu, 0x808080u, grey }) checkReadable("C: ramp", c, grey, TEXT_CONTRAST);
-        for (const Color c : { SINGLE_MARKER[0], SINGLE_MARKER[1], DUPLICATE_MARKER[0], DUPLICATE_MARKER[1], 0xFFFFFFu, 0x000000u }) checkFill("D: ramp", c, 255, theme);
+        for (const Color c : { SINGLE_MARKER[0], SINGLE_MARKER[1], DUPLICATE_MARKER[0], DUPLICATE_MARKER[1], 0xFFFFFFu, 0x000000u }) {
+            checkFill("D: ramp", c, 255, theme);
+            checkFillColor("D: ramp", c, MARK_ALPHA[theme.dark ? 1 : 0], theme);
+        }
     }
     for (int i = 0; i < cases; ++i) {
         const Theme theme = makeTheme(randomColor(), randomColor(), (i & 1) ? randomColor() : NO_COLOR);
         checkVisible("B: random", randomColor(), theme);
         checkReadable("C: random", randomColor(), randomColor(), (i & 2) ? TEXT_CONTRAST : MARK_CONTRAST);
         checkFill("D: random", randomColor(), static_cast<int>(rng() % 256), theme);
+        checkFillColor("D: random", randomColor(), static_cast<int>(rng() % 256), theme, false);
         if (fails > 40) break;
     }
 
@@ -334,17 +357,20 @@ int main(int argc, char** argv)
         fills.push_back(DUPLICATE_MARKER[d]);
         for (const Color c : fills) {
             const int a = checkFill(name, c, MARK_ALPHA[d], t);
+            const Color drawn = blend(checkFillColor(name, c, MARK_ALPHA[d], t), t.background, MARK_ALPHA[d]);
             if (a == MARK_ALPHA[d]) continue;
             ++lowered;
             const double seen = labDistance(blend(c, t.background, a), t.background);
             leastSeen = std::min(leastSeen, seen);
             check(name + " fill " + hex(c) + ": stands out at alpha " + std::to_string(a), seen >= 5.0);
+            check(name + " fill color " + hex(c) + ": stands out", labDistance(drawn, t.background) >= 5.0);
         }
         std::printf("%-20s %s  text %5.2f:1  marks %s  frame %s  fills lowered %3d of %zu%s\n", s.name, t.dark ? "dark " : "light",
             contrast(t.text, t.background), hex(visible(MARKS[d], t)).c_str(), hex(visible(FRAME[d], t)).c_str(), lowered, fills.size(),
             lowered ? (", least difference " + std::to_string(leastSeen).substr(0, 4)).c_str() : "");
     }
 
+    std::printf("fillColor against fillAlpha: at most %.2f apart (CIELAB)\n", g_mostLookDifference);
     std::printf("%d/%d checks passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }

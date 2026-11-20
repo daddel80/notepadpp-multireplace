@@ -42,7 +42,10 @@
     <ClInclude Include="..\src\DocScope.h" />
     <ClInclude Include="..\src\DPIManager.h" />
     <ClInclude Include="..\src\DropTarget.h" />
+    <ClInclude Include="..\src\EditorIndicators.h" />
     <ClInclude Include="..\src\EditorPalette.h" />
+    <ClInclude Include="..\src\MarkMatches.h" />
+    <ClInclude Include="..\src\SciIndicators.h" />
     <ClInclude Include="..\src\Encoding.h" />
     <ClInclude Include="..\src\engine\EngineFactory.h" />
     <ClInclude Include="..\src\engine\EngineTypes.h" />
@@ -130,7 +133,9 @@
     <ClCompile Include="..\src\DirectoryWalk.cpp" />
     <ClCompile Include="..\src\DPIManager.cpp" />
     <ClCompile Include="..\src\DropTarget.cpp" />
+    <ClCompile Include="..\src\EditorIndicators.cpp" />
     <ClCompile Include="..\src\EditorPalette.cpp" />
+    <ClCompile Include="..\src\MarkMatches.cpp" />
     <ClCompile Include="..\src\Encoding.cpp" />
     <ClCompile Include="..\src\engine\EngineFactory.cpp" />
     <ClCompile Include="..\src\engine\ExprTkEngine.cpp">

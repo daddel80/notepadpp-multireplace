@@ -49,4 +49,7 @@ namespace EditorPalette {
     Color readable(Color text, Color background, double minimum = TEXT_CONTRAST);
     // The highest alpha up to the given one at which a fill under the theme's text keeps FILL_CONTRAST
     int fillAlpha(Color fill, int alpha, const Theme& theme);
+    // For fills that share one alpha: the fill moved towards the background until the text over it drawn at alpha
+    // keeps FILL_CONTRAST, which looks as the fill at fillAlpha does
+    Color fillColor(Color fill, int alpha, const Theme& theme);
 }

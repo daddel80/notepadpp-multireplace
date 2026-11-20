@@ -109,4 +109,17 @@ namespace EditorPalette {
         }
         return 0;
     }
+
+    Color fillColor(Color fill, int alpha, const Theme& theme)
+    {
+        alpha = std::clamp(alpha, 0, 255);
+        if (alpha == 0) return fill & 0xFFFFFF;
+        const double wanted = std::min(FILL_CONTRAST, contrast(theme.text, theme.background));
+        // As far towards the background as fillAlpha lowers the alpha, a step further where rounding costs contrast
+        for (int share = fillAlpha(fill, alpha, theme) * 255 / alpha; share > 0; --share) {
+            const Color candidate = blend(fill, theme.background, share);
+            if (contrast(theme.text, blend(candidate, theme.background, alpha)) >= wanted) return candidate;
+        }
+        return theme.background;
+    }
 }

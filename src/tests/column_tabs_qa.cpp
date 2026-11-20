@@ -648,6 +648,12 @@ static void runAll() {
         check("read-only refused", r.on() == SwitchedOn::ReadOnly && r.text() == DECIMAL);
         Editor n("no delimiter here");
         check("nothing to align", n.on() == SwitchedOn::NothingToAlign && !n.d->CanUndo());
+        Editor t("a\tb\n1\t22");
+        t.stops[1] = { 40 };   // elastic tabstops of another plugin
+        check("stops of another plugin refused", t.on("\t", false) == SwitchedOn::StopsTaken && t.stops.size() == 1 && t.stops[1][0] == 40);
+        Editor u(DECIMAL);
+        u.stops[2] = { 64 };
+        check("stops of another plugin refused, padding too", u.on() == SwitchedOn::StopsTaken && u.text() == DECIMAL && !u.d->CanUndo());
     }
 
     // A read-only document still loses its padding

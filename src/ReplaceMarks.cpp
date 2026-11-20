@@ -17,6 +17,7 @@
 #include "ReplaceMarks.h"
 
 #include "Scintilla.h"
+#include "SciIndicators.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -25,6 +26,8 @@
 namespace ReplaceMarks {
 
     namespace {
+
+        using SciIndicators::KeepCurrent;
 
         // Grey (COLORREF, 0x00BBGGRR): dark on light, light on dark editor themes
         constexpr EditorPalette::Color LIGHT_COLOR = 0x505050;
@@ -53,25 +56,6 @@ namespace ReplaceMarks {
             const auto* text = reinterpret_cast<const char*>(doc(SCI_GETRANGEPOINTER, static_cast<std::uintptr_t>(pos), length));
             return text ? std::string_view(text, static_cast<std::size_t>(length)) : std::string_view();
         }
-
-        // Notepad++ and other plugins fill with the document's current indicator and value: put both back
-        class KeepCurrent {
-        public:
-            explicit KeepCurrent(const Send& doc)
-                : doc_(doc), indicator_(doc(SCI_GETINDICATORCURRENT, 0, 0)), value_(doc(SCI_GETINDICATORVALUE, 0, 0)) {}
-            ~KeepCurrent()
-            {
-                doc_(SCI_SETINDICATORCURRENT, static_cast<std::uintptr_t>(indicator_), 0);
-                doc_(SCI_SETINDICATORVALUE, static_cast<std::uintptr_t>(value_), 0);
-            }
-            KeepCurrent(const KeepCurrent&) = delete;
-            KeepCurrent& operator=(const KeepCurrent&) = delete;
-
-        private:
-            const Send& doc_;
-            const std::intptr_t indicator_;
-            const std::intptr_t value_;
-        };
 
         // [pos, pos + length) of one indicator gets value, 0 clears it; the caller keeps the current indicator
         void fill(const Send& doc, int id, std::intptr_t pos, std::intptr_t length, std::intptr_t value)

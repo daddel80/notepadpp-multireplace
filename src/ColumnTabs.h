@@ -43,7 +43,8 @@ namespace ColumnTabs {
         std::intptr_t end;
     };
 
-    enum class SwitchedOn { Padded, StopsOnly, NothingToAlign, ReadOnly };
+    // StopsTaken: the view already holds tab stops of another plugin, Flow Tabs would overwrite them
+    enum class SwitchedOn { Padded, StopsOnly, NothingToAlign, ReadOnly, StopsTaken };
     enum class Replayed { NotOurs, Padded, Unpadded, Reset };
 
     // How far a long run is: padding in (true) or out, percent done; 100 once it has finished. Short runs report nothing

@@ -289,8 +289,8 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
         if (pMsg->message == WM_KEYDOWN && pMsg->wParam == 'H'
             && (GetKeyState(VK_CONTROL) & 0x8000)
             && (GetKeyState(VK_SHIFT) & 0x8000)) {
-            // Pickup only while the panel is visible and not frozen; otherwise let the key reach N++.
-            if (instance->_hSelf && IsWindowVisible(instance->_hSelf)
+            // Pickup only with its option on and the panel visible and not frozen; otherwise the key reaches N++
+            if (pickupSelection && instance->_hSelf && IsWindowVisible(instance->_hSelf)
                 && IsWindowEnabled(GetDlgItem(instance->_hSelf, IDC_FIND_EDIT))) {
                 instance->pickupSelectionIntoFindEdit();
                 pMsg->message = WM_NULL;
@@ -1047,30 +1047,50 @@ bool MultiReplace::createAndShowWindows() {
     return true;
 }
 
-void MultiReplace::ensureIndicatorContext()
+// The indicator of a kind: Notepad++ hands it out on its first use, then it gets its style in both views; -1 when none
+// was left. The units keep theirs, the Result Dock reads the one of Flow Tabs from the pool
+int MultiReplace::indicatorFor(EditorIndicators::Kind kind)
 {
-    HWND hSci0 = nppData._scintillaMainHandle;
-    HWND hSci1 = nppData._scintillaSecondHandle;
-    if (!hSci0) return;
-
-    std::vector<int> preferred(std::begin(kPreferredIds), std::end(kPreferredIds));
-    std::vector<int> reserved(std::begin(kReservedIds), std::end(kReservedIds));
-
-    // (Re-)init coordinator only if handles changed
-    NppStyleKit::gIndicatorCoord.ensureIndicatorsInitialized(hSci0, hSci1, preferred, reserved);
-
-    // ColumnTabs: reserve preferred or first free
-    const bool colIdValid =
-        (NppStyleKit::gColumnTabsIndicatorId >= 0) &&
-        NppStyleKit::gIndicatorCoord.isIndicatorReserved(NppStyleKit::gColumnTabsIndicatorId);
-
-    if (!colIdValid) {
-        const int wantCol = preferredColumnTabsStyleId; // -1 = auto
-        NppStyleKit::gColumnTabsIndicatorId =
-            NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ColumnTabs", wantCol);
+    using EditorIndicators::Kind;
+    EditorIndicators::Pool& pool = EditorIndicators::shared();
+    const bool first = pool.peek(kind) < 0;
+    const int id = pool.id(kind);
+    if (id < 0) return -1;
+    switch (kind) {
+    case Kind::ScopeFrame:
+        if (m_scopeFrame.indicator() == id) break;
+        m_scopeFrame.setIndicator(id);
+        applyScopeFrameStyle();
+        break;
+    case Kind::ReplaceMarks:
+        if (m_replaceMarks.indicator() == id) break;
+        m_replaceMarks.setIndicators(id, pool.id(Kind::ReplaceDeletions));
+        applyReplaceMarksStyle();
+        break;
+    case Kind::FlowTabs:
+        if (m_flowTabs.indicator() == id) break;
+        m_flowTabs.setIndicator(id);
+        for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {   // the padding marks stay invisible
+            if (hSci) ::SendMessage(hSci, SCI_INDICSETSTYLE, id, INDIC_HIDDEN);
+        }
+        break;
+    case Kind::MarkMatches:
+        if (first) applyMatchMarksStyle();
+        break;
+    case Kind::Duplicates:
+        if (first) applyDuplicateStyle();
+        break;
+    case Kind::ReplaceDeletions:
+    case Kind::Count:
+        break;
     }
-    m_flowTabs.setIndicator(NppStyleKit::gColumnTabsIndicatorId);
-    // Long runs report how far they are, the status line repaints at once; once done it shows what it showed before
+    return id;
+}
+
+// Long runs of Flow Tabs report how far they are, the status line repaints at once; once done it shows what it showed
+// before
+void MultiReplace::initFlowTabsProgress()
+{
     m_flowTabs.setProgress([this](bool padding, int percent) {
         if (percent >= 100) {
             if (m_flowTabsProgress) showStatusMessage(m_flowTabsStatusText, m_flowTabsStatusType, false, true);
@@ -1088,30 +1108,6 @@ void MultiReplace::ensureIndicatorContext()
         showStatusMessage(LM.get(padding ? L"status_tabs_aligning" : L"status_tabs_removing") + L" " + std::to_wstring(percent) + L"%",
             MessageStatus::Info, false, true);
     });
-    for (HWND hSci : { hSci0, hSci1 }) {   // the padding marks stay invisible
-        if (hSci && NppStyleKit::gColumnTabsIndicatorId >= 0)
-            ::SendMessage(hSci, SCI_INDICSETSTYLE, NppStyleKit::gColumnTabsIndicatorId, INDIC_HIDDEN);
-    }
-
-    // Selection scope frame: first free id
-    if (!NppStyleKit::gIndicatorCoord.isIndicatorReserved(m_scopeFrame.indicator())) {
-        m_scopeFrame.setIndicator(NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("SelectionFrame", -1));
-        applyScopeFrameStyle();
-    }
-
-    // Mark Replacements: first free ids, for replaced text and for deletions
-    if (!NppStyleKit::gIndicatorCoord.isIndicatorReserved(m_replaceMarks.indicator())) {
-        const int marks = NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ReplaceMarks", -1);
-        m_replaceMarks.setIndicators(marks, NppStyleKit::gIndicatorCoord.reservePreferredOrFirstIndicator("ReplaceMarksDeleted", -1));
-        applyReplaceMarksStyle();
-    }
-
-    // Registry gets the full remaining pool (no dedicated standard id)
-    auto remaining = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
-    NppStyleKit::gIndicatorReg.init(hSci0, hSci1, remaining, /*capacityHint*/100);
-
-    textStyles = remaining;
-
 }
 
 void MultiReplace::initializeListView() {
@@ -1510,6 +1506,24 @@ void MultiReplace::drawTabColorItem(const DRAWITEMSTRUCT& dis)
     if (inField && isDark && (dis.itemState & ODS_FOCUS))
         DrawFocusRect(dis.hDC, &dis.rcItem);
     RestoreDC(dis.hDC, savedDC);
+}
+
+// Notepad++ at least major.minor (NPPM_GETNPPVERSION with zero padding: 8.5.6 is 8 and 560); asked once
+static bool nppAtLeast(int major, int paddedMinor)
+{
+    static const LRESULT version = ::SendMessage(nppData._nppHandle, NPPM_GETNPPVERSION, TRUE, 0);
+    return HIWORD(version) > major || (HIWORD(version) == major && LOWORD(version) >= paddedMinor);
+}
+
+// Notepad++ 8.5.6 and later hands out the indicators MR draws with, older versions leave MR to pick them
+void MultiReplace::initEditorIndicators()
+{
+    EditorIndicators::shared().setAllocate([] {
+        if (!nppAtLeast(8, 560)) return EditorIndicators::NOT_HANDED_OUT;
+        int first = -1;
+        const bool given = ::SendMessage(nppData._nppHandle, NPPM_ALLOCATEINDICATOR, 1, reinterpret_cast<LPARAM>(&first)) != 0;
+        return given && first >= 0 ? first : EditorIndicators::NONE_LEFT;
+    });
 }
 
 // Notepad++ reports tab colors to plugins from 8.6.8 on; asked once.
@@ -5616,8 +5630,7 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             g_prevBufId = static_cast<BufferId>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
         }
 
-        ensureIndicatorContext();
-        initTextMarkerIndicators();
+        initFlowTabsProgress();
         createFonts();
         initializeCtrlMap();
         applyFonts();
@@ -11605,6 +11618,7 @@ void MultiReplace::loadScopeFromFrame() {
 }
 
 void MultiReplace::frameSelectionScope() {
+    if (!m_selectionScope.empty()) indicatorFor(EditorIndicators::Kind::ScopeFrame);   // asked for with the first frame
     if (!scopeFrameApplies()) return;
     std::vector<SelectionFrame::Span> spans;
     spans.reserve(m_selectionScope.size());
@@ -11663,10 +11677,12 @@ std::wstring MultiReplace::getSelectionScopeSuffix() {
 
 #pragma region Replacement Marks
 
-// Replacements in the editor views are marked, not those in the hidden buffer of Replace in Files
-bool MultiReplace::replaceMarksApply() const {
-    return _markReplacementsEnabled && m_replaceMarks.indicator() >= 0
-        && (_hScintilla == nppData._scintillaMainHandle || _hScintilla == nppData._scintillaSecondHandle);
+// Replacements in the editor views are marked, not those in the hidden buffer of Replace in Files; the first one asks
+// Notepad++ for the indicator
+bool MultiReplace::replaceMarksApply() {
+    return _markReplacementsEnabled
+        && (_hScintilla == nppData._scintillaMainHandle || _hScintilla == nppData._scintillaSecondHandle)
+        && indicatorFor(EditorIndicators::Kind::ReplaceMarks) >= 0;
 }
 
 // The list entry that makes the following replacements, for the calltip of their marks: its list tab and its id, the
@@ -11688,7 +11704,7 @@ void MultiReplace::markReplacement(Sci_Position newLength) {
     m_replaceMarkDocs[bufferId] = static_cast<std::intptr_t>(send(SCI_GETDOCPOINTER, 0, 0));
     if (!m_replaceMarksAnnounced) {
         m_replaceMarksAnnounced = true;   // undo brings back the marks of deleted text: the views report deletions beforehand
-        if (send(SCI_GETMODEVENTMASK, 0, 0)) ensureModEventMask();   // a Replace All does it once its run is over
+        ensureModEventMask();   // a Replace All does it once its run is over
     }
 }
 
@@ -11878,12 +11894,20 @@ void MultiReplace::showReplaceMarkTip(HWND view, ReplaceMarks::Span mark, const 
     ::SendMessage(view, SCI_CALLTIPSHOW, static_cast<WPARAM>(mark.start), reinterpret_cast<LPARAM>(tip.text.c_str()));
     ::SendMessage(view, SCI_CALLTIPSETHLT, static_cast<WPARAM>(tip.start), static_cast<LPARAM>(tip.end));   // the original stands out
     m_replaceTipView = view;
+    m_replaceTipPos = ::SendMessage(view, SCI_CALLTIPPOSSTART, 0, 0);
     m_replaceTipJump = stop != nullptr;
 }
 
-// The calltip of a mark goes with it
+// A view has one calltip: MR's is still shown while one is active where MR's started (where the caret was), Notepad++'s
+// function calltip and those of other plugins come after typing elsewhere
+bool MultiReplace::replaceTipShown(HWND view) const {
+    return view && view == m_replaceTipView && ::SendMessage(view, SCI_CALLTIPACTIVE, 0, 0)
+        && ::SendMessage(view, SCI_CALLTIPPOSSTART, 0, 0) == m_replaceTipPos;
+}
+
+// The calltip of a mark goes with it; one shown since by someone else stays
 void MultiReplace::cancelReplaceMarkTip() {
-    if (m_replaceTipView && ::SendMessage(m_replaceTipView, SCI_CALLTIPACTIVE, 0, 0))
+    if (replaceTipShown(m_replaceTipView))
         ::SendMessage(m_replaceTipView, SCI_CALLTIPCANCEL, 0, 0);
     m_replaceTipView = nullptr;
     m_replaceTipJump = false;
@@ -11986,7 +12010,6 @@ static int resolveBookmarkMarkerId()
 }
 
 void MultiReplace::handleMarkMatchesButton() {
-    ensureIndicatorContext();
     if (!validateDelimiterData()) return;
 
     // Safety: Selection mode with no selection and no stored scope -> do nothing.
@@ -12006,11 +12029,14 @@ void MultiReplace::handleMarkMatchesButton() {
         return;
     }
 
+    if (indicatorFor(EditorIndicators::Kind::MarkMatches) < 0) {
+        showStatusMessage(LM.get(L"status_no_free_indicator"), MessageStatus::Error);
+        return;
+    }
+
     int totalMatchCount = 0;
     size_t skippedDuplicates = 0;
     markedStringsCount = 0;
-    textToSlot.clear();
-    nextSlot = 0;
 
     const bool wrapAroundEnabled = (IsDlgButtonChecked(_hSelf, IDC_WRAP_AROUND_CHECKBOX) == BST_CHECKED);
 
@@ -12036,18 +12062,13 @@ void MultiReplace::handleMarkMatchesButton() {
         std::vector<size_t>& workIndices = uniqueItems.indices;
         skippedDuplicates = uniqueItems.skippedDuplicates;
 
-        // Synchronized Limit Calculation
-        int maxListSlots = calcMaxListSlots();
+        // Like Notepad++'s Mark All: no modification notices while marking, every fill would call all plugins
+        const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
+        send(SCI_SETMODEVENTMASK, 0, 0);
 
         // Clean Loop over validated unique items
         for (size_t i : workIndices) {
             const auto& item = replaceListData[i];
-
-            // Use original index 'i' for consistent coloring
-            int slot = static_cast<int>(i);
-            if (slot >= maxListSlots) slot = maxListSlots - 1;
-
-            textToSlot[item.findText] = slot;
 
             SearchContext context;
             context.findText = convertAndExtendW(item.findText, item.extended);
@@ -12067,6 +12088,7 @@ void MultiReplace::handleMarkMatchesButton() {
                 updateCountColumns(i, matchCount);
             }
         }
+        send(SCI_SETMODEVENTMASK, savedEventMask, 0);
         refreshUIListView();
     }
     else {
@@ -12085,26 +12107,34 @@ void MultiReplace::handleMarkMatchesButton() {
         context.useStoredSelections = context.isSelectionMode;
 
         const Sci_Position startPos = computeAllStartPos(context, wrapAroundEnabled, allFromCursorEnabled);
+        const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
+        send(SCI_SETMODEVENTMASK, 0, 0);
         totalMatchCount = markString(context, startPos, findText, bookmarkMarkerId);
+        send(SCI_SETMODEVENTMASK, savedEventMask, 0);
         addStringToComboBoxHistory(GetDlgItem(_hSelf, IDC_FIND_EDIT), findText);
     }
+
+    // The theme the marks were drawn for: a later theme change gives them its colors
+    const auto bufferId = static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0));
+    m_matchMarkDocs[bufferId] = { static_cast<std::intptr_t>(send(SCI_GETDOCPOINTER, 0, 0)), NppStyleKit::ThemeUtils::editorTheme(_hScintilla) };
     std::wstring msg = LM.get(L"status_occurrences_marked", { std::to_wstring(totalMatchCount) });
     if (skippedDuplicates > 0) msg += LM.get(L"status_duplicates_skipped", { std::to_wstring(skippedDuplicates) });
     showStatusMessage(msg, MessageStatus::Info);
 }
 
-// Search-and-mark loop; a non-negative bookmarkMarkerId also bookmarks
-// each match line (driven by the "+ Bookmarks" checkbox).
+// Search-and-mark loop: a match carries its text's list color, else the single color; a non-negative bookmarkMarkerId
+// also bookmarks each match line (driven by the "+ Bookmarks" checkbox).
 int MultiReplace::markString(const SearchContext& context, Sci_Position initialStart, const std::wstring& findText, int bookmarkMarkerId)
 {
     if (context.findText.empty()) return 0;
+    const int indicator = EditorIndicators::shared().peek(EditorIndicators::Kind::MarkMatches);
+    if (indicator < 0) return 0;
 
-    // Resolve indicator once before the loop
-    const int indicId = resolveIndicatorForText(findText);
-    if (indicId < 0) return 0;
-
-    // Set current indicator once - stays valid for all INDICATORFILLRANGE calls
-    ::SendMessage(_hScintilla, SCI_SETINDICATORCURRENT, indicId, 0);
+    const bool listColor = useListEnabled && useListColorsForMarking && !findText.empty();
+    if (listColor) m_matchMarkTexts.insert(findText);
+    const EditorPalette::Color color = matchMarkColor(listColor ? findText : std::wstring(), NppStyleKit::ThemeUtils::editorTheme(_hScintilla));
+    const MarkMatches::Send doc = docSend();
+    MarkMatches::Painter paint(doc, indicator);
 
     int markCount = 0;
     LRESULT pos = initialStart;
@@ -12115,7 +12145,7 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
         r = performSearchForward(context, pos))
     {
         if (r.length > 0) {
-            ::SendMessage(_hScintilla, SCI_INDICATORFILLRANGE, r.pos, r.length);
+            paint.fill(r.pos, r.length, color);
             // Companion bookmark on the match's line. SCI_MARKERADD is
             // a no-op when the line already carries the marker, so
             // multiple matches on the same line collapse to one
@@ -12138,77 +12168,65 @@ int MultiReplace::markString(const SearchContext& context, Sci_Position initialS
     return markCount;
 }
 
+// List entries beyond the Result Dock's colors share its last one
 int MultiReplace::calcMaxListSlots() const
 {
-    int editorLimit = static_cast<int>(_textMarkerIds.size());
-    int dockLimit = ResultDock::MAX_ENTRY_COLORS;
-    int effectiveLimit = (std::min)(editorLimit, dockLimit);
-    if (effectiveLimit < 1) effectiveLimit = 1;
-    return (effectiveLimit > 1) ? effectiveLimit - 1 : 1;
+    return ResultDock::MAX_ENTRY_COLORS - 1;
 }
 
-int MultiReplace::resolveIndicatorForText(const std::wstring& findText)
+// The fill a match carries: its text's list color or the single color, fitted to the theme at the shared alpha
+EditorPalette::Color MultiReplace::matchMarkColor(const std::wstring& text, const EditorPalette::Theme& theme)
 {
-    if (_textMarkerIds.empty()) return -1;
+    const COLORREF base = text.empty() ? static_cast<COLORREF>(theme.dark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT)
+        : ResultDock::generateColorFromText(text, theme.dark);
+    return EditorPalette::fillColor(base, theme.dark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT, theme);
+}
 
-    int indicId = -1;
-
-    int maxListSlots = calcMaxListSlots();
-
-    if (useListEnabled && useListColorsForMarking && !findText.empty()) {
-
-        auto it = textToSlot.find(findText);
-
-        if (it != textToSlot.end()) {
-            int slot = it->second;
-            if (slot < static_cast<int>(_textMarkerIds.size())) {
-                indicId = _textMarkerIds[slot];
-            }
-        }
-        else {
-            // New text - allocate slot
-            int currentSlot = nextSlot;
-            if (currentSlot >= maxListSlots) {
-                currentSlot = maxListSlots - 1;
-            }
-            else {
-                nextSlot++;
-            }
-            textToSlot[findText] = currentSlot;
-            indicId = _textMarkerIds[currentSlot];
-        }
-
-        // Configure indicator style once for this findText
-        if (indicId >= 0) {
-            const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(_hScintilla);
-            applyFillIndicator(_hScintilla, indicId, INDIC_ROUNDBOX, ResultDock::generateColorFromText(findText, theme.dark), theme);
-        }
+// Mark Matches in both views: one alpha per theme, the colors come with the matches
+void MultiReplace::applyMatchMarksStyle()
+{
+    const int id = EditorIndicators::shared().peek(EditorIndicators::Kind::MarkMatches);
+    if (id < 0) return;
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        if (!hSci) continue;
+        const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(hSci);
+        MarkMatches::applyStyle(viewSend(hSci), id, theme.dark ? EDITOR_MARK_ALPHA_DARK : EDITOR_MARK_ALPHA_LIGHT,
+            theme.dark ? EDITOR_OUTLINE_ALPHA_DARK : EDITOR_OUTLINE_ALPHA_LIGHT);
     }
-    else {
-        // Single mode - use the last marker
-        int singleIndex = static_cast<int>(_textMarkerIds.size()) - 1;
-        if (singleIndex >= 0) {
-            indicId = _textMarkerIds[singleIndex];
-        }
-    }
+}
 
-    return indicId;
+// The document in a view gets the colors of the view's theme for marks drawn for another theme
+void MultiReplace::recolorMatchMarks(HWND view)
+{
+    const int id = EditorIndicators::shared().peek(EditorIndicators::Kind::MarkMatches);
+    if (id < 0 || !view) return;
+    const auto document = static_cast<std::intptr_t>(::SendMessage(view, SCI_GETDOCPOINTER, 0, 0));
+    for (auto& entry : m_matchMarkDocs) {
+        MatchMarkDoc& marked = entry.second;
+        if (marked.document != document) continue;
+        const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(view);
+        if (marked.theme.background == theme.background && marked.theme.text == theme.text) return;
+        std::unordered_map<EditorPalette::Color, EditorPalette::Color> colors{ { matchMarkColor({}, marked.theme), matchMarkColor({}, theme) } };
+        for (const std::wstring& text : m_matchMarkTexts) colors[matchMarkColor(text, marked.theme)] = matchMarkColor(text, theme);
+        MarkMatches::recolor(viewSend(view), id, colors);
+        marked.theme = theme;
+        return;
+    }
 }
 
 void MultiReplace::handleClearTextMarksButton()
 {
-    // Clear our fixed marker indicators (but NOT the duplicate indicator)
+    // The marks of Mark Matches in the documents of both views, not the duplicates
+    const int id = EditorIndicators::shared().peek(EditorIndicators::Kind::MarkMatches);
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
-        if (!hSci) continue;
-        Sci_Position docLen = static_cast<Sci_Position>(::SendMessage(hSci, SCI_GETLENGTH, 0, 0));
-
-        for (int id : _textMarkerIds) {
-            if (id >= 0) {
-                ::SendMessage(hSci, SCI_SETINDICATORCURRENT, id, 0);
-                ::SendMessage(hSci, SCI_INDICATORCLEARRANGE, 0, docLen);
-            }
+        if (!hSci || id < 0) continue;
+        MarkMatches::clear(viewSend(hSci), id);
+        const auto document = static_cast<std::intptr_t>(::SendMessage(hSci, SCI_GETDOCPOINTER, 0, 0));
+        for (auto it = m_matchMarkDocs.begin(); it != m_matchMarkDocs.end();) {
+            it = it->second.document == document ? m_matchMarkDocs.erase(it) : std::next(it);
         }
     }
+    if (m_matchMarkDocs.empty()) m_matchMarkTexts.clear();   // no marks left for a theme change to recolor
 
     // N++ parity (FindReplaceDlg::clearMarks): with the bookmark option
     // checked, bookmarks are cleared too - all of them, N++ has one shared
@@ -12221,77 +12239,49 @@ void MultiReplace::handleClearTextMarksButton()
         }
     }
 
-    // Reset color mapping used by resolveIndicatorForText
-    // (This is handled by the static map being cleared when no indicators are used)
-
     markedStringsCount = 0;
-    colorToStyleMap.clear();
-
-    textToSlot.clear();
-    nextSlot = 0;
 }
 
+// The marked text of the document, a line per piece: the duplicate rows first, then the matches of each list entry in
+// the order of the list, the others in the order of the document
 void MultiReplace::handleCopyMarkedTextToClipboardButton()
 {
-
     if (!validateDelimiterData()) {
         return;
     }
 
-    bool wasLastCharMarked = false;
-    size_t markedTextCount = 0;
+    using EditorIndicators::Kind;
+    const EditorIndicators::Pool& indicators = EditorIndicators::shared();
+    const MarkMatches::Send doc = docSend();
+    std::vector<MarkMatches::Run> pieces;
+
+    if (const int duplicates = indicators.peek(Kind::Duplicates); duplicates >= 0) {
+        SciIndicators::forEachRun(doc, duplicates, [&](std::intptr_t start, std::intptr_t end, std::intptr_t value) {
+            if (value) pieces.push_back({ start, end, 0 });
+        });
+    }
+    if (const int marks = indicators.peek(Kind::MarkMatches); marks >= 0) {
+        // Grouped by color in list order: a color's place is its first list entry
+        const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(_hScintilla);
+        std::vector<EditorPalette::Color> order;
+        order.reserve(replaceListData.size());
+        for (const ReplaceItemData& item : replaceListData) order.push_back(matchMarkColor(item.findText, theme));
+        const std::vector<MarkMatches::Run> runs = MarkMatches::byColor(MarkMatches::runs(doc, marks), order);
+        pieces.insert(pieces.end(), runs.begin(), runs.end());
+    }
 
     std::string markedText;
-    std::string styleText;
-    std::string eol = getEOLStyle();
-
-    for (int style : textStyles)
-    {
-        send(SCI_SETINDICATORCURRENT, style, 0);
-        LRESULT pos = 0;
-        LRESULT nextPos = send(SCI_INDICATOREND, style, pos);
-
-        while (nextPos > pos) // check if nextPos has advanced
-        {
-            bool atEndOfIndic = send(SCI_INDICATORVALUEAT, style, pos) != 0;
-
-            if (atEndOfIndic)
-            {
-                if (!wasLastCharMarked)
-                {
-                    ++markedTextCount;
-                }
-
-                wasLastCharMarked = true;
-
-                for (LRESULT i = pos; i < nextPos; ++i)
-                {
-                    char ch = static_cast<char>(send(SCI_GETCHARAT, i, 0));
-                    styleText += ch;
-                }
-
-                markedText += styleText + eol; // Append marked text and EOL;
-                styleText.clear();
-            }
-            else
-            {
-                wasLastCharMarked = false;
-            }
-
-            pos = nextPos;
-            nextPos = send(SCI_INDICATOREND, style, pos);
+    const std::string eol = getEOLStyle();
+    for (size_t i = 0; i < pieces.size(); ++i) {
+        if (i > 0) markedText += eol;
+        const Sci_Position length = pieces[i].end - pieces[i].start;
+        if (const auto* text = reinterpret_cast<const char*>(send(SCI_GETRANGEPOINTER, pieces[i].start, length))) {
+            markedText.append(text, static_cast<size_t>(length));
         }
     }
 
-    // Remove the last EOL if necessary
-    if (!markedText.empty() && markedText.length() >= eol.length()) {
-        markedText.erase(markedText.length() - eol.length());
-    }
-
-    // Convert encoding to wide string
-    std::wstring wstr = Encoding::bytesToWString(markedText, getCurrentDocCodePage());;
-
-    copyTextToClipboard(wstr, static_cast<int>(markedTextCount));
+    const std::wstring wstr = Encoding::bytesToWString(markedText, getCurrentDocCodePage());
+    copyTextToClipboard(wstr, static_cast<int>(pieces.size()));
 }
 
 void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
@@ -12335,33 +12325,11 @@ void MultiReplace::copyTextToClipboard(const std::wstring& text, int textCount)
     showStatusMessage(LM.get(L"status_items_copied_to_clipboard", { std::to_wstring(textCount) }), MessageStatus::Success);
 }
 
-void MultiReplace::initTextMarkerIndicators()
-{
-    if (_textMarkersInitialized) return;
-
-    HWND hSci0 = nppData._scintillaMainHandle;
-    if (!hSci0) return;
-
-    _textMarkerIds.clear();
-    _duplicateIndicatorId = -1;
-
-    std::vector<int> available = NppStyleKit::gIndicatorCoord.availableIndicatorPool();
-
-    if (available.empty()) return;
-
-    // Reserve first indicator for duplicate marking (separate from text markers)
-    _duplicateIndicatorId = available.front();
-    _textMarkerIds.assign(available.begin() + 1, available.end());
-
-    _textMarkersInitialized = true;
-    updateTextMarkerStyles();
-}
-
+// A theme change: the Result Dock's list colors, Mark Matches and duplicates in both views, and the marks of the
+// documents in view get the new theme's colors
 void MultiReplace::updateTextMarkerStyles()
 {
-    if (_textMarkerIds.empty()) return;
-
-    // 1. Update List Mode colors of the ResultDock, which follows the theme of the main view
+    // List Mode colors of the ResultDock, which follows the theme of the main view
     if (useListEnabled) {
         ResultDock& dock = ResultDock::instance();
         const bool dockDark = ResultDock::contentTheme().dark;
@@ -12380,23 +12348,22 @@ void MultiReplace::updateTextMarkerStyles()
         }
     }
 
-    // Per view, fitted to its editor theme
+    applyMatchMarksStyle();
+    applyDuplicateStyle();
+    for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
+        recolorMatchMarks(hSci);
+    }
+}
+
+// The fill of duplicate rows in both views, fitted to each view's theme
+void MultiReplace::applyDuplicateStyle()
+{
+    const int id = EditorIndicators::shared().peek(EditorIndicators::Kind::Duplicates);
+    if (id < 0) return;
     for (HWND hSci : { nppData._scintillaMainHandle, nppData._scintillaSecondHandle }) {
         if (!hSci) continue;
         const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(hSci);
-
-        // 2. Update active Editor indicators based on map
-        for (const auto& [text, slot] : textToSlot) {
-            if (slot >= 0 && slot < static_cast<int>(_textMarkerIds.size()))
-                applyFillIndicator(hSci, _textMarkerIds[slot], INDIC_ROUNDBOX, ResultDock::generateColorFromText(text, theme.dark), theme);
-        }
-
-        // 3. Update Duplicate Marker (separate indicator), drawn as applyDuplicateMarks draws it
-        applyFillIndicator(hSci, _duplicateIndicatorId, INDIC_FULLBOX,
-            theme.dark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT, theme);
-
-        // 4. Update Single/Standard Marker (last available ID)
-        applyFillIndicator(hSci, _textMarkerIds.back(), INDIC_ROUNDBOX, theme.dark ? MARKER_COLOR_DARK : MARKER_COLOR_LIGHT, theme);
+        applyFillIndicator(hSci, id, INDIC_FULLBOX, theme.dark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT, theme);
     }
 }
 
@@ -12763,6 +12730,11 @@ void MultiReplace::handleColumnGridTabsButton()
         return;
     }
 
+    if (indicatorFor(EditorIndicators::Kind::FlowTabs) < 0) {
+        showStatusMessage(LM.get(L"status_no_free_indicator"), MessageStatus::Error);
+        return;
+    }
+
     if (!flowTabsIntroDontShowEnabled) {
         bool dontShow = false;
         if (!showFlowTabsIntroDialog(dontShow))
@@ -12799,6 +12771,10 @@ void MultiReplace::handleColumnGridTabsButton()
     case ColumnTabs::SwitchedOn::NothingToAlign:
         syncFlowTabsState();
         showStatusMessage(LM.get(L"status_nothing_to_align"), MessageStatus::Info);
+        break;
+    case ColumnTabs::SwitchedOn::StopsTaken:
+        syncFlowTabsState();
+        showStatusMessage(LM.get(L"status_tabs_in_use"), MessageStatus::Error);
         break;
     }
 }
@@ -13104,13 +13080,13 @@ bool MultiReplace::validateAndRescanIfNeeded()
 
 void MultiReplace::applyDuplicateMarks(bool bookmarks)
 {
-    if (_markedDuplicateLines.empty() || _duplicateIndicatorId < 0) return;
+    if (_markedDuplicateLines.empty()) return;
 
-    const int indicId = _duplicateIndicatorId;
-
-    const EditorPalette::Theme theme = NppStyleKit::ThemeUtils::editorTheme(_hScintilla);
-    applyFillIndicator(_hScintilla, indicId, INDIC_FULLBOX, theme.dark ? DUPLICATE_MARKER_COLOR_DARK : DUPLICATE_MARKER_COLOR_LIGHT, theme);
-    send(SCI_SETINDICATORCURRENT, indicId, 0);
+    const int indicId = indicatorFor(EditorIndicators::Kind::Duplicates);
+    if (indicId < 0) {
+        showStatusMessage(LM.get(L"status_no_free_indicator"), MessageStatus::Error);
+        return;
+    }
 
     int markerId = resolveBookmarkMarkerId();
 
@@ -13120,13 +13096,17 @@ void MultiReplace::applyDuplicateMarks(bool bookmarks)
         m_csvDocs.replacedBookmarks(static_cast<UINT_PTR>(::SendMessage(nppData._nppHandle, NPPM_GETCURRENTBUFFERID, 0, 0)));
     }
 
-    // Apply visual indicators and bookmarks
+    // Apply visual indicators and bookmarks; each fill reaches all plugins, which may change the current indicator
+    const SciIndicators::Send doc = docSend();
+    const SciIndicators::KeepCurrent keep(doc);
     for (size_t lineIdx : _markedDuplicateLines) {
         LRESULT lineStart = send(SCI_POSITIONFROMLINE, lineIdx, 0);
         LRESULT lineEnd = send(SCI_GETLINEENDPOSITION, lineIdx, 0);
         LRESULT lineLen = lineEnd - lineStart;
 
         if (lineLen > 0) {
+            send(SCI_SETINDICATORCURRENT, indicId, 0);
+            send(SCI_SETINDICATORVALUE, 1, 0);
             send(SCI_INDICATORFILLRANGE, lineStart, lineLen);
         }
 
@@ -13143,8 +13123,11 @@ void MultiReplace::applyDuplicateMarks(bool bookmarks)
 // The whole document: the remembered rows may belong to a scan of another document
 void MultiReplace::clearDuplicateIndicator()
 {
-    if (_duplicateIndicatorId < 0) return;
-    send(SCI_SETINDICATORCURRENT, _duplicateIndicatorId, 0);
+    const int id = EditorIndicators::shared().peek(EditorIndicators::Kind::Duplicates);
+    if (id < 0) return;
+    const SciIndicators::Send doc = docSend();
+    const SciIndicators::KeepCurrent keep(doc);
+    send(SCI_SETINDICATORCURRENT, id, 0);
     send(SCI_INDICATORCLEARRANGE, 0, send(SCI_GETLENGTH, 0, 0));
 }
 
@@ -20597,6 +20580,8 @@ void MultiReplace::onFileBeforeClose(UINT_PTR bufferId) {
     if (inMain != -1 && (inMain >> 30) != (inSub >> 30)) return;
     // Notepad++ may hand the id of a closed document to the next one it opens
     self->m_csvDocs.forget(bufferId);
+    self->m_matchMarkDocs.erase(bufferId);
+    if (self->m_matchMarkDocs.empty()) self->m_matchMarkTexts.clear();   // no marks left for a theme change to recolor
     if (bufferId == self->m_csvBuffer) {   // the panel's CSV view closes with it
         self->m_csvBuffer = 0;
         self->m_csvDocument = 0;
@@ -20647,7 +20632,7 @@ void MultiReplace::onDwellStart(SCNotification* notifyCode) {
     if (!self || !self->_markReplacementsEnabled || self->m_replaceMarks.empty()) return;
     HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
     if (hSci != nppData._scintillaMainHandle && hSci != nppData._scintillaSecondHandle) return;
-    if (::SendMessage(hSci, SCI_CALLTIPACTIVE, 0, 0) && (self->m_replaceTipView != hSci || self->m_replaceTipJump)) return;
+    if (::SendMessage(hSci, SCI_CALLTIPACTIVE, 0, 0) && (!self->replaceTipShown(hSci) || self->m_replaceTipJump)) return;
     const auto x = static_cast<WPARAM>(notifyCode->x);
     const auto y = static_cast<LPARAM>(notifyCode->y);
     const ReplaceMarks::Send sci = viewSend(hSci);
@@ -20667,7 +20652,7 @@ void MultiReplace::onDwellEnd(SCNotification* notifyCode) {
 void MultiReplace::onCallTipClick(SCNotification* notifyCode) {
     MultiReplace* self = instance;
     const HWND hSci = static_cast<HWND>(notifyCode->nmhdr.hwndFrom);
-    if (!self || !self->m_replaceTipJump || hSci != self->m_replaceTipView || hSci != currentEditorView()) return;
+    if (!self || !self->m_replaceTipJump || !self->replaceTipShown(hSci) || hSci != currentEditorView()) return;
     if (notifyCode->position == 1 || notifyCode->position == 2) self->gotoReplacement(notifyCode->position == 2);
 }
 
@@ -20679,8 +20664,16 @@ void MultiReplace::ensureModEventMask(HWND view) {
     const bool deletions = m_scopeFrameAnnounced || m_flowTabsAnnounced || m_replaceMarksAnnounced;
     const LRESULT wanted = SC_MOD_CONTAINER | (deletions ? SC_MOD_BEFOREDELETE : 0);
     const LRESULT mask = ::SendMessage(view, SCI_GETMODEVENTMASK, 0, 0);
-    if ((mask & wanted) != wanted)
-        ::SendMessage(view, SCI_SETMODEVENTMASK, (WPARAM)(mask | wanted), 0);
+    if (mask == 0) return;   // a run of MR's own with the notices off: it asks again once over
+    // Notepad++ 8.7.7 and later keeps them in its own mask, which it sets again after reloads and other plugins' requests
+    static LRESULT given = 0;
+    if ((wanted & ~given) && nppAtLeast(8, 770)) {
+        ::SendMessage(nppData._nppHandle, NPPM_ADDSCNMODIFIEDFLAGS, 0, wanted & ~given);
+        given |= wanted;
+    }
+    const LRESULT now = ::SendMessage(view, SCI_GETMODEVENTMASK, 0, 0);   // also older versions, and plugins that narrow it
+    if ((now & wanted) != wanted)
+        ::SendMessage(view, SCI_SETMODEVENTMASK, (WPARAM)(now | wanted), 0);
 }
 
 // Resolve (view, index) from BufferID. Returns false if not found in any view.
@@ -20722,6 +20715,7 @@ void MultiReplace::onDocumentSwitched()
         self->m_replaceMarks.dropStale(viewSend(view));
         self->m_replaceMarks.applyStroke(viewSend(view));
         if (self->m_replaceMarksAnnounced) self->ensureModEventMask(view);
+        self->recolorMatchMarks(view);   // drawn for a theme changed since
     }
     if (!self->isWindowOpen) return;
 
