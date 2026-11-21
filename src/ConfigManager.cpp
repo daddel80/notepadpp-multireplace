@@ -23,10 +23,10 @@
 // -----------------------------------------------------------------------------
 
 #include "ConfigManager.h"
+#include "AtomicFile.h"
 #include "Encoding.h"  
 #include "StringUtils.h" 
 #include <filesystem>
-#include <fstream>
 #include <sstream>
 #include <vector>
 #include <algorithm>
@@ -81,8 +81,7 @@ bool ConfigManager::save(const std::wstring& file) const
     std::wstring path = file.empty() ? _iniPath : file;
     if (path.empty()) return false;
 
-    std::ofstream out(std::filesystem::path(path), std::ios::binary);
-    if (!out.is_open()) return false;
+    std::ostringstream out;
 
     // UTF-8 BOM
     out.write("\xEF\xBB\xBF", 3);
@@ -136,8 +135,8 @@ bool ConfigManager::save(const std::wstring& file) const
         }
     }
 
-    out.close();
-    return !out.fail();
+    // Through a temp file: a crash or a full disk while saving leaves the previous INI intact
+    return AtomicFile::write(std::filesystem::path(path), out.str());
 }
 
 //

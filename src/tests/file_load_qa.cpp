@@ -33,13 +33,15 @@
 //      write) or a file that is gone; a hard link keeps the old file, a link to a file follows
 //   N. not writable: held open by another program that shares it for reading only, or its folder
 //      is gone; the file stays as it was, no temp file is left, the skip is counted once
+//   E. the temp file of a write has a name of its own: files that already carry the name stay as
+//      they were, and none is left behind; a symbolic link stays, its file gets the content
 //   P. a worker's pace: it gets the size before the full read and may hold it back, a stop ends it
 //   D. kind of drive: the folder of the test files is on a local drive, a drive letter that is not
 //      there counts as fast
 // Windows only. The file_search_qa replica covers the same decisions portably.
 //
 // Build (from src/tests):
-//   cl /std:c++20 /EHsc /I.. file_load_qa.cpp ..\FileLoad.cpp ..\Encoding.cpp ..\StringUtils.cpp shlwapi.lib advapi32.lib /Fe:file_load_qa.exe
+//   cl /std:c++20 /EHsc /utf-8 /I.. file_load_qa.cpp ..\FileLoad.cpp ..\Encoding.cpp ..\StringUtils.cpp shlwapi.lib advapi32.lib user32.lib /Fe:file_load_qa.exe
 //   x86_64-w64-mingw32-g++ -std=c++20 -Wall -Wextra -static -I.. -o file_load_qa.exe file_load_qa.cpp ../FileLoad.cpp ../Encoding.cpp ../StringUtils.cpp -lshlwapi
 #include <windows.h>
 #include "../PluginInterface.h"
@@ -49,6 +51,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 NppData nppData{};
@@ -66,6 +69,24 @@ static fs::path write(const std::string& name, const std::string& bytes)
     const fs::path p = g_dir / name;
     std::ofstream(p, std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     return p;
+}
+
+static std::string readAll(const fs::path& p)
+{
+    std::ifstream in(p, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+// Temp files of writes to the file name: name.mr_tmp, name.1.mr_tmp, ...
+static int tempFiles(const std::string& name)
+{
+    int count = 0;
+    for (const auto& entry : fs::directory_iterator(g_dir)) {
+        const std::string file = entry.path().filename().string();
+        if (file.size() >= name.size() + 7 && file.compare(0, name.size() + 1, name + ".") == 0
+            && file.compare(file.size() - 7, 7, ".mr_tmp") == 0) ++count;
+    }
+    return count;
 }
 
 // Expected text, converted here without the Encoding unit
@@ -217,8 +238,8 @@ int main()
         limited.setFileSizeLimitEnabled(true);
         limited.setMaxFileSizeMB(1);
         const Loaded big = load(limited, g_dir / "size3145728.txt");
-        const Loaded small = load(limited, g_dir / "size8193.txt");
-        CHECK("S3 size limit 1 MB: 3 MB too large, 8 KB loaded", big.reason == Skip::TooLarge && small.reason == Skip::None);
+        const Loaded small8k = load(limited, g_dir / "size8193.txt");
+        CHECK("S3 size limit 1 MB: 3 MB too large, 8 KB loaded", big.reason == Skip::TooLarge && small8k.reason == Skip::None);
     }
 
     std::printf("\n=== R) unreadable ===\n");
@@ -396,10 +417,37 @@ int main()
         HiddenSciGuard probe;
         CHECK("N1 shared for reading only by another program: loads", h != INVALID_HANDLE_VALUE && l.reason == Skip::None);
         CHECK("N2 but is not written and stays as it was", !written && load(probe, held).content == text8);
-        CHECK("N3 no temp file left", !fs::exists(held.wstring() + L".mr_tmp"));
+        CHECK("N3 no temp file left", tempFiles("n_held.txt") == 0);
         CHECK("N4 folder gone: not written", !g.writeFile(g_dir / "gone" / "n.txt", text8));
         g.noteSkip(Skip::Unwritable);
         CHECK("N5 counted once", g.getSkippedUnwritableCount() == 1 && g.getSkippedTotalCount() == 1);
+    }
+
+    std::printf("\n=== E) the temp file ===\n");
+    {
+        HiddenSciGuard g, probe;
+        const fs::path taken = write("e_taken.txt", text8);
+        const fs::path busy1 = write("e_taken.txt.mr_tmp", "not ours");
+        const fs::path busy2 = write("e_taken.txt.1.mr_tmp", "not ours either");
+        const bool written = g.writeFile(taken, text8 + "new");
+        CHECK("E1 the temp file's name is taken: written anyway", written && load(probe, taken).content == text8 + "new");
+        CHECK("E2 the files of that name stay as they were", readAll(busy1) == "not ours" && readAll(busy2) == "not ours either");
+        CHECK("E3 no temp file of its own is left", tempFiles("e_taken.txt") == 2);
+        const fs::path fresh = g_dir / "e_new.txt";
+        CHECK("E4 a new file", g.writeFile(fresh, text8) && load(probe, fresh).content == text8 && tempFiles("e_new.txt") == 0);
+
+        const fs::path real = write("e_real.txt", "old");
+        const fs::path link = g_dir / "e_link.txt";
+        const bool linked = (CreateSymbolicLinkW(link.c_str(), real.c_str(), 0x2 /* allow unprivileged */)
+            || CreateSymbolicLinkW(link.c_str(), real.c_str(), 0)) && GetFileAttributesW(link.c_str()) != INVALID_FILE_ATTRIBUTES;
+        if (linked) {
+            const bool linkWritten = g.writeFile(link, text8);
+            CHECK("E5 a symbolic link stays a link, the file it points to gets the content", linkWritten && fs::is_symlink(link)
+                && readAll(real) == text8 && tempFiles("e_real.txt") == 0 && tempFiles("e_link.txt") == 0);
+        }
+        else {
+            std::printf("SKIP E5 (no symbolic links without privilege here)\n");
+        }
     }
 
     std::printf("\n=== P) a worker's pace ===\n");
@@ -421,9 +469,9 @@ int main()
         FileLoad::Pace stopped;
         stopped.stop = &stop;
         const FileLoad::Result b = FileLoad::load(big, FileLoad::Options{}, content, &stopped);
-        const FileLoad::Result small = FileLoad::load(g_dir / "u8.txt", FileLoad::Options{}, content, &stopped);
+        const FileLoad::Result smallOne = FileLoad::load(g_dir / "u8.txt", FileLoad::Options{}, content, &stopped);
         CHECK("P3 a stop ends the full read: unreadable; a file within the header still loads",
-            b.skip == Skip::Unreadable && small.skip == Skip::None && content == text8);
+            b.skip == Skip::Unreadable && smallOne.skip == Skip::None && content == text8);
     }
 
     std::printf("\n=== D) kind of drive ===\n");

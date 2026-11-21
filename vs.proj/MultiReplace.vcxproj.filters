@@ -269,6 +269,7 @@
     <ClInclude Include="..\src\luaEmbedded.h" />
     <ClInclude Include="..\src\image_data.h" />
     <ClInclude Include="..\src\HiddenSciGuard.h" />
+    <ClInclude Include="..\src\AtomicFile.h" />
     <ClInclude Include="..\src\LiteralPrefilter.h" />
     <ClInclude Include="..\src\DocScope.h" />
     <ClInclude Include="..\src\TabStripLayout.h" />
@@ -297,6 +298,7 @@
     <ClInclude Include="..\src\ListHash.h" />
     <ClInclude Include="..\src\CsvLine.h" />
     <ClInclude Include="..\src\OnePassHits.h" />
+    <ClInclude Include="..\src\NumberRanges.h" />
     <ClInclude Include="..\src\NumericToken.h" />
     <ClInclude Include="..\src\NppStyleKit.h" />
     <ClInclude Include="..\src\MultiReplaceConfigDialog.h" />

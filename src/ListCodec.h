@@ -27,6 +27,8 @@
 #include "CsvListFormat.h"
 #include "ReplaceItemData.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -66,6 +68,10 @@ namespace ListCodec {
     // mirroring the historical std::stoi-based behaviour; callers decide
     // whether to skip or abort.
     ReplaceItemData rowToItemPositional(const std::vector<std::wstring>& columns);
+
+    // Entries of pasted text, at most limit. A header is optional: a first row naming the Find column maps the
+    // columns by name, unless it is an entry as MR copies it; else rows of 8..10 cells are read by position.
+    std::vector<ReplaceItemData> clipboardItems(const std::wstring& text, std::size_t limit = SIZE_MAX);
 
     // ---- Write: item -> CSV row ---------------------------------------
 

@@ -20,6 +20,7 @@
 #include "MultiReplacePanel.h"
 
 // Project headers
+#include "AtomicFile.h"
 #include "BatchUIGuard.h"
 #include "CsvLine.h"
 #include "ConfigManager.h"
@@ -4592,10 +4593,9 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
     case WM_VSCROLL:
     case WM_MOUSEWHEEL:
     case WM_HSCROLL: {
-        // Close the edit control if it exists and is visible
-        if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
-            DestroyWindow(pThis->hwndEdit);
-            pThis->hwndEdit = nullptr;
+        // The cell editor would stay behind while its row scrolls away: take over its input and close it
+        if (pThis->hwndEdit) {
+            pThis->closeEditField(true);
         }
         // Allow the default list view procedure to handle standard scrolling
         break;
@@ -4637,6 +4637,14 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
         // Check notifications from header
         if (pnmhdr->hwndFrom == ListView_GetHeader(hwnd)) {
             int code = static_cast<int>(static_cast<short>(pnmhdr->code));
+
+            // The header takes no focus, so the cell editor stays open while a click sorts the rows or a drag
+            // moves the columns: it is closed first, else its input would land in the row that moved under it
+            if (pThis->hwndEdit && (code == HDN_ITEMCLICKW || code == HDN_ITEMCLICKA
+                || code == HDN_BEGINTRACKW || code == HDN_BEGINTRACKA || code == HDN_BEGINDRAG
+                || code == HDN_DIVIDERDBLCLICKW || code == HDN_DIVIDERDBLCLICKA || code == NM_RCLICK)) {
+                pThis->closeEditField(true);
+            }
 
             if (code == HDN_ITEMCHANGED) {
                 pThis->updateListViewTooltips(); //Updating Positions of Column Tooltips
@@ -4709,10 +4717,9 @@ LRESULT CALLBACK MultiReplace::ListViewSubclassProc(HWND hwnd, UINT msg, WPARAM 
             // HDN_ITEMCHANGEDA = 0U - 300U - 1  = -301
             // Not used directly to avoid unsigned-overflow warnings.
             if (code == (int(0) - 300 - 21) || code == (int(0) - 300 - 1)) {
-                // Destroy any active edit control on header change
-                if (pThis->hwndEdit && IsWindow(pThis->hwndEdit)) {
-                    DestroyWindow(pThis->hwndEdit);
-                    pThis->hwndEdit = nullptr;
+                // Close any active cell editor on header change, keeping its input
+                if (pThis->hwndEdit) {
+                    pThis->closeEditField(true);
                 }
 
                 // Defer the tooltip update until the column resize finishes
@@ -5130,98 +5137,35 @@ void MultiReplace::copySelectedItemsToClipboard() {
     }
 }
 
-bool MultiReplace::canPasteFromClipboard() {
+std::wstring MultiReplace::clipboardText() {
     if (!IsClipboardFormatAvailable(CF_UNICODETEXT) || !OpenClipboard(nullptr)) {
-        return false;
+        return {};
     }
     struct ClipboardGuard { ~ClipboardGuard() { CloseClipboard(); } } guard;
 
-    HGLOBAL hData = GetClipboardData(CF_UNICODETEXT);
-    if (!hData) {
-        return false;
-    }
-    wchar_t* raw = static_cast<wchar_t*>(GlobalLock(hData));
+    const HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+    const wchar_t* raw = hData ? static_cast<const wchar_t*>(GlobalLock(hData)) : nullptr;
     if (!raw) {
-        return false;
+        return {};
     }
-    std::wstring content{ raw };
+    // Bounded by the block: another program may leave out the terminating zero
+    const std::wstring text(raw, wcsnlen(raw, GlobalSize(hData) / sizeof(wchar_t)));
     GlobalUnlock(hData);
+    return text;
+}
 
-    // Quote-aware split so a multi-line quoted field is judged as one
-    // record, consistent with the actual paste path. Pasteable if any
-    // record has a plausible positional column count.
-    std::vector<std::vector<std::wstring>> records = CsvListFormat::readRecords(content);
-    for (const auto& columns : records) {
-        if (columns.size() == 8 || columns.size() == 9 || columns.size() == 10) {
-            return true;
-        }
-    }
-    return false;
+bool MultiReplace::canPasteFromClipboard() {
+    // Read like the paste itself, so the menu offers exactly what Ctrl+V inserts
+    return !ListCodec::clipboardItems(clipboardText(), 1).empty();
 }
 
 void MultiReplace::pasteItemsIntoList() {
-    if (!OpenClipboard(nullptr)) return;
-
-    struct ClipboardGuard { ~ClipboardGuard() { CloseClipboard(); } } guard;
-
-    HANDLE hData = GetClipboardData(CF_UNICODETEXT);
-    if (!hData) return;
-    auto pData = static_cast<const wchar_t*>(GlobalLock(hData));
-    if (!pData) return;
-    std::wstring content(pData);
-    GlobalUnlock(hData);
-
-    std::vector<ReplaceItemData> itemsToInsert;
+    std::vector<ReplaceItemData> itemsToInsert = ListCodec::clipboardItems(clipboardText());
+    if (itemsToInsert.empty()) return;
 
     int insertPosition = ListView_GetNextItem(_replaceListView, -1, LVNI_FOCUSED);
     if (insertPosition != -1) ++insertPosition;
     else insertPosition = ListView_GetItemCount(_replaceListView);
-
-    // Read all records quote-aware (multi-line quoted fields stay intact).
-    // Peek record 0: if it looks like a header, parse name-based and skip
-    // it; otherwise treat every record as a legacy positional row.
-    std::vector<std::vector<std::wstring>> records = CsvListFormat::readRecords(content);
-
-    CsvListFormat::HeaderIndex hdr;
-    bool nameBased = false;
-    bool swapRegexExtended = false;
-    size_t firstDataRow = 0;
-    if (!records.empty()) {
-        CsvListFormat::HeaderIndex maybeHdr = CsvListFormat::buildIndex(records.front());
-        if (maybeHdr.looksLikeNames && maybeHdr.hasFind) {
-            hdr = maybeHdr;
-            nameBased = true;
-            firstDataRow = 1;
-            // Legacy pre-V5 bug swap: UseVariables/Regex before Extended. TODO: remove.
-            swapRegexExtended = ListCodec::needsRegexExtendedSwap(hdr, records.front());
-        }
-    }
-
-    for (size_t r = firstDataRow; r < records.size(); ++r) {
-        const std::vector<std::wstring>& columns = records[r];
-        // Skip blank records (an empty line yields a single empty cell).
-        if (columns.size() == 1 && columns[0].empty()) continue;
-
-        ReplaceItemData item;
-        try {
-            if (nameBased) {
-                item = ListCodec::rowToItem(hdr, columns, swapRegexExtended);
-            }
-            else {
-                // Tolerant paste: skip rows with an unexpected column count.
-                if (columns.size() < 8 || columns.size() > 10) continue;
-                item = ListCodec::rowToItemPositional(columns);
-            }
-        }
-        catch (const std::exception&) {
-            continue;
-        }
-
-        itemsToInsert.push_back(item);
-    }
-
-    // No items were collected, so nothing to insert
-    if (itemsToInsert.empty()) return;
 
     // Mark all pasted items as dirty
     std::wstring now = getCurrentTimestamp();
@@ -7852,16 +7796,15 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
 {
     // --- Replace at matches ---
     const bool useMatchList = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
-    std::unordered_set<int> matchSet;
+    std::vector<NumberRanges::Range> matchRanges;
     if (useMatchList) {
         std::wstring matchData = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
         if (matchData.empty()) {
             showStatusMessage(LM.get(L"status_missing_match_selection"), MessageStatus::Error);
             return false;
         }
-        std::vector<int> matchList = parseNumberRanges(matchData, LM.get(L"status_invalid_range_in_match_data"));
-        if (matchList.empty()) return false;
-        matchSet.insert(matchList.begin(), matchList.end());
+        matchRanges = parseNumberRanges(matchData, NumberRanges::noLimit, LM.get(L"status_invalid_range_in_match_data"));
+        if (matchRanges.empty()) return false;
     }
 
     // Compile formula entries up front like replaceAll: a syntax error
@@ -7953,7 +7896,7 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
         const int hitLine = static_cast<int>(send(SCI_LINEFROMPOSITION, hit.pos, 0));
         if (hitLine != prevLine[w]) { lineFind[w] = 0; prevLine[w] = hitLine; }
         ++lineFind[w];
-        const bool replaceThisHit = !useMatchList || (matchSet.count(findTotals[w]) != 0);
+        const bool replaceThisHit = !useMatchList || NumberRanges::contains(matchRanges, findTotals[w]);
 
         if (replaceThisHit) {
             const ReplaceItemData& item = replaceListData[w];
@@ -8551,16 +8494,15 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
     // --- Replace at matches---
     bool useMatchList = IsDlgButtonChecked(_hSelf, IDC_REPLACE_AT_MATCHES_CHECKBOX) == BST_CHECKED;
-    std::unordered_set<int> matchSet;
+    std::vector<NumberRanges::Range> matchRanges;
     if (useMatchList) {
         std::wstring sel = getTextFromDialogItem(_hSelf, IDC_REPLACE_HIT_EDIT);
         if (sel.empty()) {
             showStatusMessage(LM.get(L"status_missing_match_selection"), MessageStatus::Error);
             return false;
         }
-        std::vector<int> matchList = parseNumberRanges(sel, LM.get(L"status_invalid_range_in_match_data"));
-        if (matchList.empty()) return false;
-        matchSet.insert(matchList.begin(), matchList.end());
+        matchRanges = parseNumberRanges(sel, NumberRanges::noLimit, LM.get(L"status_invalid_range_in_match_data"));
+        if (matchRanges.empty()) return false;
     }
 
     // --- Prepare replacement text template (only if needed for engine) ---
@@ -8597,7 +8539,7 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
         if (itemIndex != SIZE_MAX) updateCountColumns(itemIndex, findCount);
 
         const bool replaceThisHit =
-            !useMatchList || (matchSet.count(findCount) != 0);
+            !useMatchList || NumberRanges::contains(matchRanges, findCount);
 
         Sci_Position nextPos; // declared before both branches use it
 
@@ -12542,6 +12484,8 @@ void MultiReplace::handleCopyColumnsToClipboard()
     std::string combinedText;
     int copiedFieldsCount = 0;
     const size_t lineCount = lineDelimiterPositions.size();
+    // Typed columns past the widest line would be skipped in every line
+    const std::vector<int> columns = CsvLine::columnsWithin(columnDelimiterData.inputColumns, maxFieldCount(0, lineCount));
 
     // Walk each known CSV line
     for (size_t i = 0; i < lineCount; ++i) {
@@ -12556,8 +12500,7 @@ void MultiReplace::handleCopyColumnsToClipboard()
 
         // Use the exact column order the user entered (inputColumns),
         // not the sorted unique set. This preserves e.g. "1,3,2".
-        for (SIZE_T colIdx = 0; colIdx < columnDelimiterData.inputColumns.size(); ++colIdx) {
-            const int column = columnDelimiterData.inputColumns[colIdx]; // 1-based column index
+        for (const int column : columns) { // 1-based column index
 
             // Guard: skip invalid or out-of-range columns.
             // Number of fields in this line = delimiterCount + 1.
@@ -13411,7 +13354,9 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         lineStarts[i - startLine] = send(SCI_POSITIONFROMLINE, i, 0);
     }
 
-    const size_t numColumns = columnDelimiterData.inputColumns.size();
+    // Typed columns past the widest line are empty in every row: left out, they change no comparison
+    const std::vector<int> columns = CsvLine::columnsWithin(columnDelimiterData.inputColumns, maxFieldCount(startLine, endLine));
+    const size_t numColumns = columns.size();
 
     for (SIZE_T i = startLine; i < endLine; ++i) {
         const size_t lineIdx = i - startLine;
@@ -13437,7 +13382,7 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
         rowData.columns.resize(numColumns);
 
         for (size_t columnIndex = 0; columnIndex < numColumns; ++columnIndex) {
-            const SIZE_T columnNumber = columnDelimiterData.inputColumns[columnIndex];
+            const SIZE_T columnNumber = columns[columnIndex];
 
             // Determine start position of this column
             LRESULT startPos;
@@ -13486,6 +13431,16 @@ std::vector<CombinedColumns> MultiReplace::extractColumnData(SIZE_T startLine, S
     // to avoid duplicate processing.
 
     return combinedData;
+}
+
+// The most fields of a line in [startLine, endLine): a line with k delimiters has k + 1
+size_t MultiReplace::maxFieldCount(SIZE_T startLine, SIZE_T endLine) const
+{
+    size_t most = 0;
+    for (SIZE_T i = startLine; i < endLine && i < lineDelimiterPositions.size(); ++i) {
+        most = (std::max)(most, lineDelimiterPositions[i].positions.size() + 1);
+    }
+    return most;
 }
 
 // The rows end before the empty last line a final line break leaves
@@ -13551,7 +13506,7 @@ void MultiReplace::sortRowsByColumn(SortDirection sortDirection)
                 const auto& ra = combinedData[ia];
                 const auto& rb = combinedData[ib];
 
-                for (size_t colIndex = 0; colIndex < columnDelimiterData.inputColumns.size(); ++colIndex) {
+                for (size_t colIndex = 0; colIndex < ra.columns.size(); ++colIndex) {
                     const int cmp = compareColumnValue(ra.columns[colIndex], rb.columns[colIndex]);
                     if (cmp != 0)
                         return (sortDirection == SortDirection::Ascending) ? (cmp < 0) : (cmp > 0);
@@ -13836,8 +13791,10 @@ bool MultiReplace::parseColumnAndDelimiterData() {
     }
 
     // Use parseNumberRanges() to process column data
-    std::vector<int> parsedColumns = parseNumberRanges(columnDataString, LM.get(L"status_invalid_range_in_column_data"));
-    if (parsedColumns.empty()) return false; // Abort if parsing failed
+    const std::vector<NumberRanges::Range> columnRanges = parseNumberRanges(columnDataString,
+        ColumnDelimiterData::kMaxColumn, LM.get(L"status_invalid_range_in_column_data"));
+    if (columnRanges.empty()) return false; // Abort if parsing failed
+    std::vector<int> parsedColumns = NumberRanges::expand(columnRanges);
 
     // Convert parsedColumns to set for uniqueness
     std::set<int> uniqueColumns(parsedColumns.begin(), parsedColumns.end());
@@ -14244,31 +14201,32 @@ void MultiReplace::styleColumnsInLine(LRESULT line, const LineInfo& lineInfo) {
         std::fill_n(styleBuffer.data(), lineLen, style);
     }
     else {
-        // For each defined column, calculate the start and end offsets within the line
+        // For each defined column, calculate the start and end offsets within the line; the columns
+        // come in ascending order, so the first one past the line's last field ends the loop
         for (SIZE_T column : columnDelimiterData.columns) {
-            if (column <= delimCount + 1) {
-                size_t start = 0;
-                size_t end = 0;
+            if (column > delimCount + 1) break;
 
-                if (column == 1) {
-                    start = 0;
-                }
-                else {
-                    start = static_cast<size_t>(lineInfo.positions[column - 2].offsetInLine) + delimLen;
-                }
+            size_t start = 0;
+            size_t end = 0;
 
-                if (column == delimCount + 1) {
-                    end = lineLen;
-                }
-                else {
-                    end = static_cast<size_t>(lineInfo.positions[column - 1].offsetInLine);
-                }
+            if (column == 1) {
+                start = 0;
+            }
+            else {
+                start = static_cast<size_t>(lineInfo.positions[column - 2].offsetInLine) + delimLen;
+            }
 
-                // Apply the style if the range is valid
-                if (start < end && end <= lineLen) {
-                    char style = static_cast<char>(hColumnStyles[(column - 1) % styleCount] & 0xFF);
-                    std::fill_n(styleBuffer.data() + start, end - start, style);
-                }
+            if (column == delimCount + 1) {
+                end = lineLen;
+            }
+            else {
+                end = static_cast<size_t>(lineInfo.positions[column - 1].offsetInLine);
+            }
+
+            // Apply the style if the range is valid
+            if (start < end && end <= lineLen) {
+                char style = static_cast<char>(hColumnStyles[(column - 1) % styleCount] & 0xFF);
+                std::fill_n(styleBuffer.data() + start, end - start, style);
             }
         }
     }
@@ -15371,75 +15329,15 @@ int MultiReplace::getFontHeight(HWND hwnd, HFONT hFont) {
     return fontHeight;  // Return the font height
 }
 
-std::vector<int> MultiReplace::parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage)
+// The ranges typed in a panel field; reports errorMessage if the text is no valid list
+std::vector<NumberRanges::Range> MultiReplace::parseNumberRanges(const std::wstring& input, int maxValue, const std::wstring& errorMessage)
 {
-    std::vector<int> result;
-    if (input.empty()) return result;  // nothing to parse
-
-    // use a hash set to filter out duplicates, but preserve insertion order in 'result'
-    std::unordered_set<int> seen;
-
-    std::wistringstream stream(input);
-    std::wstring token;
-
-    // helper to add a number only once, in the order encountered
-    auto pushUnique = [&](int n) {
-        if (seen.insert(n).second)      // if n was not already present
-            result.push_back(n);
-        };
-
-    // process each comma-separated token, either a single number or a range "start-end"
-    auto processToken = [&](const std::wstring& token) -> bool
-        {
-            if (token.empty()) return true;  // skip empty entries
-
-            try {
-                size_t dashPos = token.find(L'-');
-                if (dashPos != std::wstring::npos) {
-                    // RANGE: parse start and end values
-                    int startRange = std::stoi(token.substr(0, dashPos));
-                    int endRange = std::stoi(token.substr(dashPos + 1));
-                    if (startRange < 1 || endRange < 1)
-                        return false;
-
-                    // push each number in the range, preserving order
-                    if (endRange >= startRange) {
-                        // ascending range
-                        for (int i = startRange; i <= endRange; ++i)
-                            pushUnique(i);
-                    }
-                    else {
-                        // descending range
-                        for (int i = startRange; i >= endRange; --i)
-                            pushUnique(i);
-                    }
-                }
-                else {
-                    // SINGLE NUMBER
-                    int number = std::stoi(token);
-                    if (number < 1)
-                        return false;  // invalid value
-
-                    // add the single number
-                    pushUnique(number);
-                }
-            }
-            catch (const std::exception&) {
-                return false;  // parsing failure
-            }
-            return true;
-        };
-
-    // split the input string on commas and feed each token to our processor
-    while (std::getline(stream, token, L',')) {
-        if (!processToken(token)) {
-            showStatusMessage(errorMessage, MessageStatus::Error);
-            return {};  // abort on invalid syntax
-        }
+    std::vector<NumberRanges::Range> ranges;
+    if (!NumberRanges::parse(input, maxValue, ranges) || ranges.empty()) {
+        showStatusMessage(errorMessage, MessageStatus::Error);
+        ranges.clear();
     }
-
-    // 'result' contains the right values in the correct order
-    return result;
+    return ranges;
 }
 
 UINT MultiReplace::getCurrentDocCodePage()
@@ -15570,7 +15468,7 @@ namespace {
     // with MultiReplacePanel_FlowTabs.cpp.
 
     // Helper: emit one raw Key=Value line (no escaping).
-    void writeRawSettingsLine(std::ofstream& out, const wchar_t* key, const std::wstring& rawValue) {
+    void writeRawSettingsLine(std::ostream& out, const wchar_t* key, const std::wstring& rawValue) {
         std::wstring line = std::wstring(key) + L"=" + rawValue + L"\n";
         out << Encoding::wstringToUtf8(line);
     }
@@ -15578,16 +15476,16 @@ namespace {
     // String values are CSV-escaped so they roundtrip safely through
     // the preamble parser even if they contain '=', '\n', '"' or '\\'.
     // Matches the string-handling convention used in the INI.
-    void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, const std::wstring& value) {
+    void writeSettingsLineUtf8(std::ostream& out, const wchar_t* key, const std::wstring& value) {
         writeRawSettingsLine(out, key, StringUtils::escapeQuoted(value));
     }
 
     // Numeric values are written raw (no quotes). Same convention as the INI.
-    void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, int value) {
+    void writeSettingsLineUtf8(std::ostream& out, const wchar_t* key, int value) {
         writeRawSettingsLine(out, key, std::to_wstring(value));
     }
 
-    void writeSettingsLineUtf8(std::ofstream& out, const wchar_t* key, bool value) {
+    void writeSettingsLineUtf8(std::ostream& out, const wchar_t* key, bool value) {
         writeRawSettingsLine(out, key, std::wstring(value ? L"1" : L"0"));
     }
 
@@ -15620,7 +15518,7 @@ namespace {
     // preferences like column widths / visibility / locks / order
     // are persisted per-tab in the INI - writing them here would
     // leak one user's layout to another when the CSV is shared.
-    void writeSettingsBlock(std::ofstream& out, const TabState& tab) {
+    void writeSettingsBlock(std::ostream& out, const TabState& tab) {
         out << "[MultiReplace-Settings]\n";
 
         writeSettingsLineUtf8(out, L"FormatVersion", kSettingsFormatVersion);
@@ -15728,45 +15626,25 @@ namespace {
 bool MultiReplace::saveTabToFile(const std::wstring& filePath, const std::vector<ReplaceItemData>& list, const TabState& tab) {
     const FileFormat fmt = resolveFormat(filePath);
 
-    // Write to a temp file first, then atomically replace the target.
-    // A crash or write error mid-save then leaves the original file
-    // intact instead of a truncated / preamble-less one.
-    const std::wstring tempPath = filePath + L".tmp";
-
-    std::ofstream outFile(std::filesystem::path(tempPath), std::ios::binary);
-    if (!outFile.is_open()) {
-        return false;
-    }
-
-    outFile.write("\xEF\xBB\xBF", 3);
+    std::ostringstream content;
+    content.write("\xEF\xBB\xBF", 3);
 
     if (fmt.hasSettingsBlock) {
-        writeSettingsBlock(outFile, tab);
+        writeSettingsBlock(content, tab);
     }
 
     std::string utf8Header = Encoding::wstringToUtf8(ListCodec::headerLine(fmt.delimiter) + L"\n");
-    outFile << utf8Header;
+    content << utf8Header;
 
     for (const ReplaceItemData& item : list) {
         std::wstring line = ListCodec::itemToRow(item, true, fmt.dialect, fmt.delimiter) + L"\n";
         std::string utf8Line = Encoding::wstringToUtf8(line);
-        outFile << utf8Line;
+        content << utf8Line;
     }
 
-    outFile.close();
-    if (outFile.fail()) {
-        DeleteFileW(tempPath.c_str());  // scrap incomplete temp; original untouched
-        return false;
-    }
-
-    // Atomic replace on the same volume; MoveFileEx overwrites an
-    // existing target, which std::filesystem::rename won't do reliably
-    // on Windows.
-    if (!MoveFileExW(tempPath.c_str(), filePath.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        DeleteFileW(tempPath.c_str());
-        return false;
-    }
-    return true;
+    // Through a temp file beside the target: a crash or write error mid-save
+    // leaves the original file intact instead of a truncated / preamble-less one
+    return AtomicFile::write(std::filesystem::path(filePath), content.str());
 }
 
 bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector<ReplaceItemData>& list) {

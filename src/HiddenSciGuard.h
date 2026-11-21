@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include "AtomicFile.h"
 #include "Encoding.h"
 #include "FileLoad.h"
 #include "StringUtils.h"       // For splitFilterPatterns
@@ -312,23 +313,7 @@ public:
     // ========================================================================
 
     bool writeFile(const std::filesystem::path& fp, const std::string& data) const {
-        const std::filesystem::path tmp = fp.wstring() + L".mr_tmp";
-        {
-            std::ofstream o(tmp, std::ios::binary | std::ios::trunc);
-            if (!o) return false;
-            o.write(data.data(), data.size());
-            if (!o.good()) { o.close(); std::error_code ec; std::filesystem::remove(tmp, ec); return false; }
-        }
-
-        // ReplaceFileW keeps attributes/ACLs of the target; MoveFileExW covers new files
-        if (::ReplaceFileW(fp.c_str(), tmp.c_str(), nullptr, 0, nullptr, nullptr))
-            return true;
-        if (::MoveFileExW(tmp.c_str(), fp.c_str(), MOVEFILE_REPLACE_EXISTING))
-            return true;
-
-        std::error_code ec;
-        std::filesystem::remove(tmp, ec);
-        return false;
+        return AtomicFile::write(fp, data);
     }
 
     // ========================================================================

@@ -15,8 +15,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 // QA for CsvLine: delimiters outside quotes, and Delete Columns. Deleting columns leaves the other fields joined by
-// one delimiter each, also when the first columns go (a,b,c,d without 1,2 is c,d); the line break stays.
+// one delimiter each, also when the first columns go (a,b,c,d without 1,2 is c,d); the line break stays. Typed
+// columns past the widest line can be left out: no order between lines and no copied text changes.
 // Build: g++ -std=c++17 -Wall -Wextra -fsanitize=address,undefined -I.. csv_line_qa.cpp -o csv_line_qa
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <random>
@@ -187,6 +189,60 @@ int main()
             if (++differences <= 10)
                 std::printf("FAIL  random \"%s\" delimiter \"%s\": \"%s\" (%zu), model \"%s\" (%zu)\n", line.c_str(),
                     delimiter.c_str(), got.text.c_str(), got.fields, want.text.c_str(), want.fields);
+        }
+    }
+
+    // columnsWithin: Sort, Find Duplicates and Copy Columns leave out typed columns past the widest line
+    check(CsvLine::columnsWithin({ 3, 1, 7, 2 }, 3) == std::vector<int>{ 3, 1, 2 }, "W1 typed order kept, 7 left out");
+    check(CsvLine::columnsWithin({ 5, 6 }, 4).empty(), "W2 all past the widest line");
+    check(CsvLine::columnsWithin({}, 4).empty(), "W3 none typed");
+    check(CsvLine::columnsWithin({ 0, -1, 1 }, 1) == std::vector<int>{ 1 }, "W4 below 1 left out");
+    check(CsvLine::columnsWithin({ 16384, 1 }, 16384) == std::vector<int>{ 16384, 1 }, "W5 up to the widest line");
+
+    // Leaving them out changes no order between two lines and no copied text: random lines and column lists
+    auto cell = [](const std::vector<std::string>& line, int column) {
+        return static_cast<std::size_t>(column) <= line.size() ? line[column - 1] : std::string();
+    };
+    auto order = [&](const std::vector<std::string>& a, const std::vector<std::string>& b, const std::vector<int>& columns) {
+        for (const int column : columns) {
+            const int cmp = cell(a, column).compare(cell(b, column));
+            if (cmp != 0) return cmp < 0 ? -1 : 1;
+        }
+        return 0;
+    };
+    auto copied = [](const std::vector<std::string>& line, const std::vector<int>& columns) {
+        std::string text;
+        for (const int column : columns) {
+            if (static_cast<std::size_t>(column) <= line.size()) text += "|" + line[column - 1];
+        }
+        return text;
+    };
+    int widthDifferences = 0;
+    for (int round = 0; round < 20000; ++round) {
+        std::vector<std::vector<std::string>> lines(1 + rng() % 6);
+        std::size_t widest = 0;
+        for (auto& line : lines) {
+            line.resize(1 + rng() % 5);
+            for (auto& field : line) field = std::string(rng() % 2, static_cast<char>('a' + rng() % 2));
+            widest = std::max(widest, line.size());
+        }
+        std::vector<int> typed;
+        const int count = 1 + static_cast<int>(rng() % 8);
+        for (int k = 0; k < count; ++k) {
+            const int column = 1 + static_cast<int>(rng() % 12);
+            if (std::find(typed.begin(), typed.end(), column) == typed.end()) typed.push_back(column);
+        }
+        const std::vector<int> within = CsvLine::columnsWithin(typed, widest);
+
+        bool same = true;
+        for (const auto& a : lines) {
+            same = same && copied(a, typed) == copied(a, within);
+            for (const auto& b : lines) same = same && order(a, b, typed) == order(a, b, within);
+        }
+        ++g_checks;
+        if (!same) {
+            ++g_fail;
+            if (++widthDifferences <= 5) std::printf("FAIL  columnsWithin, random round %d\n", round);
         }
     }
 

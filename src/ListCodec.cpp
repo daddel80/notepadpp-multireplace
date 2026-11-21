@@ -89,6 +89,44 @@ namespace ListCodec {
         return item;
     }
 
+    namespace {
+        // A row as MR copies an entry: 8..10 cells, numbers in the flag cells
+        bool isEntryRow(const std::vector<std::wstring>& cells) {
+            try {
+                rowToItemPositional(cells);
+                return true;
+            }
+            catch (const std::exception&) {
+                return false;
+            }
+        }
+    }
+
+    std::vector<ReplaceItemData> clipboardItems(const std::wstring& text, std::size_t limit) {
+        std::vector<ReplaceItemData> items;
+        const std::vector<std::vector<std::wstring>> records = CsvListFormat::readRecords(text);
+        if (records.empty()) return items;
+
+        // A copied entry with "find" as one of its texts names the Find column too, but stays an entry
+        const CsvListFormat::HeaderIndex hdr = CsvListFormat::buildIndex(records.front());
+        const bool nameBased = hdr.looksLikeNames && hdr.hasFind && !isEntryRow(records.front());
+        // Lists before V5 had Regex before Extended
+        const bool swapRegexExtended = nameBased && needsRegexExtendedSwap(hdr, records.front());
+
+        for (std::size_t r = nameBased ? 1 : 0; r < records.size() && items.size() < limit; ++r) {
+            const std::vector<std::wstring>& columns = records[r];
+            if (columns.size() == 1 && columns[0].empty()) continue;  // a blank line
+            try {
+                if (nameBased) items.push_back(rowToItem(hdr, columns, swapRegexExtended));
+                else if (columns.size() >= 8 && columns.size() <= 10) items.push_back(rowToItemPositional(columns));
+            }
+            catch (const std::exception&) {
+                // a flag cell that is no number: the row is skipped
+            }
+        }
+        return items;
+    }
+
     std::wstring itemToRow(const ReplaceItemData& item, bool withLastModified,
         CsvListFormat::Dialect dialect, wchar_t delimiter) {
         // Text cells switch encoder by dialect; the 0/1 flag cells are the

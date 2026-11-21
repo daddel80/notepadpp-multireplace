@@ -28,6 +28,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\AboutDialog.h" />
+    <ClInclude Include="..\src\AtomicFile.h" />
     <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
     <ClInclude Include="..\src\CsvDocState.h" />
@@ -106,6 +107,7 @@
     <ClInclude Include="..\src\MultiReplacePanel.h" />
     <ClInclude Include="..\src\Notepad_plus_msgs.h" />
     <ClInclude Include="..\src\NppStyleKit.h" />
+    <ClInclude Include="..\src\NumberRanges.h" />
     <ClInclude Include="..\src\NumericToken.h" />
     <ClInclude Include="..\src\PluginDefinition.h" />
     <ClInclude Include="..\src\ReplaceItemData.h" />

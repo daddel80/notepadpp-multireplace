@@ -57,6 +57,8 @@
 #include "ReplaceItemData.h"
 // Content hash of a list and its baseline
 #include "ListHash.h"
+// Number lists typed in the panel: CSV columns, matches to replace
+#include "NumberRanges.h"
 // CSV list format: dialect enum used in load/save signatures
 #include "CsvListFormat.h"
 
@@ -139,6 +141,7 @@ struct SelectionRange {
 };
 
 struct ColumnDelimiterData {
+    static constexpr int kMaxColumn = 16384; // highest column a column list may name, as in spreadsheets
     std::vector<int> inputColumns; // original order of the columns
     std::set<int> columns;
     std::string extendedDelimiter;
@@ -1417,6 +1420,7 @@ private:
     MenuState checkMenuConditions(POINT ptScreen);
     void performItemAction(POINT pt, ItemAction action);
     void copySelectedItemsToClipboard();
+    static std::wstring clipboardText();
     bool canPasteFromClipboard();
     void pasteItemsIntoList();
     int searchInListData(int startIdx, const std::wstring& searchText, bool forward);
@@ -1633,6 +1637,7 @@ private:
 
 #pragma region CSV Sort
     std::vector<CombinedColumns> extractColumnData(SIZE_T startLine, SIZE_T lineCount);
+    size_t maxFieldCount(SIZE_T startLine, SIZE_T endLine) const;
     size_t csvRowsEnd() const;
     void sortRowsByColumn(SortDirection sortDirection);
     void reorderLinesInScintilla(const std::vector<size_t>& sortedIndex);
@@ -1711,7 +1716,7 @@ private:
     sptr_t send(unsigned int iMessage, uptr_t wParam = 0, sptr_t lParam = 0, bool useDirect = true) const;
     bool normalizeAndValidateNumber(std::string& str);
     int getFontHeight(HWND hwnd, HFONT hFont);
-    std::vector<int> parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
+    std::vector<NumberRanges::Range> parseNumberRanges(const std::wstring& input, int maxValue, const std::wstring& errorMessage);
     UINT getCurrentDocCodePage();
     Sci_Position advanceAfterMatch(const SearchResult& r);
     Sci_Position ensureForwardProgress(Sci_Position nextPos, const SearchResult& r);

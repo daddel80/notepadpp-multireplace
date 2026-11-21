@@ -106,4 +106,15 @@ namespace CsvLine {
         }
         return deletion;
     }
+
+    // The typed columns a line of at most fieldCount fields can have, in typed order. The others are empty in every
+    // line, so leaving them out changes no comparison and no copied text
+    inline std::vector<int> columnsWithin(const std::vector<int>& columns, std::size_t fieldCount)
+    {
+        std::vector<int> within;
+        for (const int column : columns) {
+            if (column >= 1 && static_cast<std::size_t>(column) <= fieldCount) within.push_back(column);
+        }
+        return within;
+    }
 }
