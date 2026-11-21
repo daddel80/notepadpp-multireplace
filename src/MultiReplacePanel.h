@@ -939,10 +939,10 @@ private:
     static constexpr int MIN_EDIT_FIELD_SIZE = 2; // Minimum size for Multiline Editor
     static constexpr int MAX_EDIT_FIELD_SIZE = 20; // Maximum size for Multiline Editor
 
-    static constexpr const wchar_t* symbolSortAsc = L"▼";
-    static constexpr const wchar_t* symbolSortDesc = L"▲";
-    static constexpr const wchar_t* symbolSortAscUnsorted = L"▽";
-    static constexpr const wchar_t* symbolSortDescUnsorted = L"△";
+    static constexpr const wchar_t* symbolSortAsc = L"▲";
+    static constexpr const wchar_t* symbolSortDesc = L"▼";
+    static constexpr const wchar_t* symbolSortAscUnsorted = L"△";
+    static constexpr const wchar_t* symbolSortDescUnsorted = L"▽";
     static constexpr int MAX_CAP_GROUPS = 9; // Maximum number of capture groups supported by Notepad++
 
     DPIManager* dpiMgr; // Pointer to DPIManager instance

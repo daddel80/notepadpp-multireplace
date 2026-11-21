@@ -711,8 +711,8 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
 
     // CSV Tool Buttons - grouped visually: SORT | EDIT | VIEW | ANALYZE
     // Group 1: SORT (tight spacing)
-    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(373), sy(176), sx(30), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true, FontRole::Standard };
-    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(404), sy(176), sx(30), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending"), true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_SORT_ASC_BUTTON] = { sx(373), sy(176), sx(30), sy(20), WC_BUTTON, symbolSortAsc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_ascending"), true, FontRole::Standard };
+    ctrlMap[IDC_COLUMN_SORT_DESC_BUTTON] = { sx(404), sy(176), sx(30), sy(20), WC_BUTTON, symbolSortDesc, BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_sort_descending"), true, FontRole::Standard };
     // Group 2: EDIT (gap before, tight spacing)
     ctrlMap[IDC_COLUMN_DROP_BUTTON] = { sx(441), sy(176), sx(30), sy(20), WC_BUTTON, L"✖", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_drop_columns"), true, FontRole::Normal2 };
     ctrlMap[IDC_COLUMN_COPY_BUTTON] = { sx(472), sy(176), sx(30), sy(20), WC_BUTTON, L"⧉", BS_PUSHBUTTON | WS_TABSTOP, LM.getLPCW(L"tooltip_copy_columns"), true, FontRole::Normal3 };
@@ -1710,7 +1710,7 @@ void MultiReplace::setUIElementVisibility() {
 
     // Column-mode dependent controls
     const std::vector<int> columnRadioDependentElements = {
-        IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_DROP_BUTTON,
+        IDC_COLUMN_SORT_ASC_BUTTON, IDC_COLUMN_SORT_DESC_BUTTON, IDC_COLUMN_DROP_BUTTON,
         IDC_COLUMN_COPY_BUTTON, IDC_COLUMN_HIGHLIGHT_BUTTON, IDC_COLUMN_GRIDTABS_BUTTON,
         IDC_COLUMN_DUPLICATES_BUTTON
     };
