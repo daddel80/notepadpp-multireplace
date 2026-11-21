@@ -299,7 +299,6 @@ const LangKV kEnglishPairs[] = {
 { L"msgbox_confirm_clear_list", L"Remove all $REPLACE_STRING entries from the list?<br/><br/>This can be undone with Ctrl+Z." },
 { L"msgbox_unsaved_changes_file", L"You have unsaved changes in the list: '$REPLACE_STRING'.<br/>Save the changes?" },
 { L"msgbox_unsaved_changes_tab",  L"You have unsaved changes in tab '$REPLACE_STRING'.<br/>Would you like to save them?" },
-{ L"msgbox_unsaved_changes", L"You have unsaved changes.<br/>Save the changes?" },
 { L"msgbox_file_modified_prompt", L"'$REPLACE_STRING'<br/><br/>The file has been modified by another program.<br/>Do you want to load the changes and lose unsaved modifications?" },
 { L"msgbox_reload_discard_prompt", L"'$REPLACE_STRING'<br/><br/>This list has unsaved changes.<br/>Reload from disk and lose them?" },
 { L"msgbox_no_files", L"No files matched the specified filter." },

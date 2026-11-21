@@ -336,8 +336,7 @@ void MultiReplace::markActiveTabDirty()
     // Content-based dirty detection: the tab is dirty iff the current
     // list content differs from what was last saved or loaded. Undoing
     // back to the saved state therefore clears the flag automatically.
-    const std::size_t currentHash = computeListHash(replaceListData);
-    const bool shouldBeDirty = (currentHash != tab.originalHash);
+    const bool shouldBeDirty = !tab.originalHash.matches(replaceListData);
 
     if (shouldBeDirty == tab.isDirty) return;  // no change
     tab.isDirty = shouldBeDirty;

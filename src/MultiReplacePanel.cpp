@@ -28,6 +28,7 @@
 #include "DirectoryWalk.h"
 #include "DPIManager.h"
 #include "Encoding.h"
+#include "ExtendedEscapes.h"
 #include "FileDialogUtil.h"
 #include "FileLoad.h"
 #include "FileLoadPool.h"
@@ -5050,6 +5051,10 @@ void MultiReplace::performItemAction(POINT pt, ItemAction action) {
         break;
     case ItemAction::Delete: {
         int selectedCount = ListView_GetSelectedCount(_replaceListView);
+        if (selectedCount == 0) {
+            showStatusMessage(LM.get(L"status_no_rows_selected_to_delete"), MessageStatus::Error);
+            break;
+        }
         std::wstring confirmationMessage;
 
         if (selectedCount == 1) {
@@ -12447,116 +12452,44 @@ void MultiReplace::handleDeleteColumns()
         return;
     }
 
-    int deletedFieldsCount = 0;
+    size_t deletedFieldsCount = 0;
 
-    {
+    // Deletes on the text without Flow Tabs padding; delimiters and highlighting are refreshed afterwards
+    runCsvWithFlowTabs(CsvOp::DeleteColumns, [&]() -> bool {
         // Suppress modification notifications during bulk column deletion.
         const LRESULT savedEventMask = send(SCI_GETMODEVENTMASK, 0, 0);
         send(SCI_SETMODEVENTMASK, 0, 0);
 
         ScopedUndoAction undo(*this);
 
-        SIZE_T lineCount = lineDelimiterPositions.size();
+        const SIZE_T lineCount = lineDelimiterPositions.size();
 
         // Iterate over lines from last to first.
         for (SIZE_T i = lineCount; i-- > 0; ) {
-            const auto& lineInfo = lineDelimiterPositions[i];
+            const LineInfo& lineInfo = lineDelimiterPositions[i];
+            const LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
 
-            // Get absolute start and end positions for this line.
-            LRESULT lineStartPos = send(SCI_POSITIONFROMLINE, i, 0);
-            LRESULT lineEndPos = lineStartPos + lineInfo.lineLength;
+            // A line before the last one keeps its line break
+            const LRESULT contentEnd = (i < lineCount - 1)
+                ? lineInfo.lineLength - getEOLLengthForLine(i)
+                : lineInfo.lineLength;
 
-            // Get the actual EOL length for this line
-            LRESULT eolLength = getEOLLengthForLine(i);
+            const CsvLine::ColumnDeletion deletion = CsvLine::columnDeletion(
+                columnDelimiterData.columns, lineInfo.positions.size(),
+                [&](size_t k) { return static_cast<size_t>(lineInfo.positions[k].offsetInLine); },
+                columnDelimiterData.delimiterLength, static_cast<size_t>(contentEnd));
+            deletedFieldsCount += deletion.fields;
 
-            // Vector to collect deletion ranges for the current line.
-            std::vector<std::pair<LRESULT, LRESULT>> deletionRanges;
-
-            // Iterate over columns using the set's reverse_iterator.
-            for (auto it = columnDelimiterData.columns.rbegin(); it != columnDelimiterData.columns.rend(); ++it) {
-                SIZE_T column = *it;
-
-                // Only process columns that exist in this line.
-                if (column > lineInfo.positions.size() + 1)
-                    continue;
-
-                LRESULT startPos = 0, endPos = 0;
-                // Calculate the absolute start position:
-                if (column == 1) {
-                    startPos = lineStartPos;
-                }
-                else if (column - 2 < lineInfo.positions.size()) {
-                    startPos = lineStartPos + lineInfo.positions[column - 2].offsetInLine;
-                }
-                else {
-                    continue;  // Skip if the column index is invalid for this line.
-                }
-
-                // Calculate the absolute end position:
-                if (column - 1 < lineInfo.positions.size()) {
-                    if (column == 1) {
-                        // Deleting the first column also deletes its following delimiter.
-                        endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine
-                            + columnDelimiterData.delimiterLength;
-                    }
-                    else {
-                        endPos = lineStartPos + lineInfo.positions[column - 1].offsetInLine;
-                    }
-                }
-                else {
-                    // Last column: delete until the end of the line.
-                    // Non-last lines: subtract EOL length to keep the line break.
-                    if (i < lineCount - 1)
-                        endPos = lineEndPos - eolLength;
-                    else
-                        endPos = lineEndPos;
-                }
-
-                deletionRanges.push_back({ startPos, endPos });
-            }
-
-            // Merge contiguous/overlapping deletion ranges for this line.
-            if (!deletionRanges.empty()) {
-                // Sort ranges by start position.
-                std::sort(deletionRanges.begin(), deletionRanges.end(),
-                    [](const std::pair<LRESULT, LRESULT>& a, const std::pair<LRESULT, LRESULT>& b) {
-                        return a.first < b.first;
-                    });
-                std::vector<std::pair<LRESULT, LRESULT>> mergedRanges;
-                auto currentRange = deletionRanges[0];
-                for (size_t j = 1; j < deletionRanges.size(); ++j) {
-                    const auto& nextRange = deletionRanges[j];
-                    // Merge if the next range starts at/before the current end.
-                    if (nextRange.first <= currentRange.second) {
-                        currentRange.second = std::max(currentRange.second, nextRange.second);
-                    }
-                    else {
-                        mergedRanges.push_back(currentRange);
-                        currentRange = nextRange;
-                    }
-                }
-                mergedRanges.push_back(currentRange);
-
-                // Execute the deletions for all merged ranges in reverse order.
-                // Right-to-left deletion keeps absolute positions stable.
-                for (auto it = mergedRanges.rbegin(); it != mergedRanges.rend(); ++it) {
-                    LRESULT lengthToDelete = it->second - it->first;
-                    if (lengthToDelete > 0) {
-                        send(SCI_DELETERANGE, it->first, lengthToDelete, false);
-                        ++deletedFieldsCount;
-                    }
-                }
+            // Right-to-left deletion keeps absolute positions stable.
+            for (auto it = deletion.ranges.rbegin(); it != deletion.ranges.rend(); ++it) {
+                send(SCI_DELETERANGE, lineStartPos + static_cast<LRESULT>(it->begin),
+                    static_cast<LRESULT>(it->end - it->begin), false);
             }
         }
 
         send(SCI_SETMODEVENTMASK, savedEventMask, 0);
-    }
-
-    // Rescan delimiters and refresh column highlighting (suppressed during bulk deletion)
-    findAllDelimitersInDocument();
-    if (isColumnHighlighted) {
-        reapplyColumnHighlighting();
-    }
+        return true;
+        });
 
     // Display a status message with the number of deleted fields.
     showStatusMessage(LM.get(L"status_deleted_fields_count", { std::to_wstring(deletedFieldsCount) }), MessageStatus::Success);
@@ -14772,106 +14705,12 @@ void MultiReplace::displayLogChangesInMessageBox() {
 
 #pragma region Utilities
 
-static inline bool decodeNumericEscape(const std::wstring& src, size_t pos, int  base, int digits, wchar_t& out)
-{
-    if (pos + digits > src.size())           // not enough characters
-        return false;
-
-    unsigned value = 0;
-    for (int k = 0; k < digits; ++k)
-    {
-        wchar_t ch = src[pos + k];
-        unsigned v;
-
-        if (ch >= L'0' && ch <= L'9') v = ch - L'0';
-        else if (ch >= L'A' && ch <= L'F') v = (ch - L'A') + 10;
-        else if (ch >= L'a' && ch <= L'f') v = (ch - L'a') + 10;
-        else return false;                  // invalid digit
-
-        if (v >= static_cast<unsigned>(base))
-            return false;                   // digit not allowed in this base
-
-        value = value * base + v;
-    }
-
-    if (value > 0xFFFF)                     // outside BMP range
-        return false;
-
-    out = static_cast<wchar_t>(value);
-    return true;
-}
-
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended, UINT targetCodepage) const
 {
     if (!extended)                          // fast path - no escapes
         return Encoding::wstringToBytes(input, targetCodepage);
 
-    std::wstring out;
-    out.reserve(input.size());
-
-    for (size_t i = 0; i < input.size(); ++i)
-    {
-        wchar_t ch = input[i];
-
-        if (ch != L'\\' || i + 1 >= input.size())
-        {
-            out.push_back(ch);
-            continue;
-        }
-
-        wchar_t esc = input[++i];           // escape designator
-        wchar_t decoded;
-
-        switch (esc)
-        {
-        case L'r': out.push_back(L'\r');                    break;
-        case L'n': out.push_back(L'\n');                    break;
-        case L't': out.push_back(L'\t');                    break;
-        case L'\\':out.push_back(L'\\');                    break;
-        case L'0': out.push_back(L'\0');                    break;
-
-        case L'o': // \oNNN  (octal)
-            if (decodeNumericEscape(input, i + 1, 8, 3, decoded))
-            {
-                out.push_back(decoded); i += 3; break;
-            }
-            [[fallthrough]];                                // literal fallback
-
-        case L'b': // \bNNNNNNNN  (binary, 8 digits)
-            if (decodeNumericEscape(input, i + 1, 2, 8, decoded))
-            {
-                out.push_back(decoded); i += 8; break;
-            }
-            [[fallthrough]];
-
-        case L'd': // \dNNN  (decimal)
-            if (decodeNumericEscape(input, i + 1, 10, 3, decoded))
-            {
-                out.push_back(decoded); i += 3; break;
-            }
-            [[fallthrough]];
-
-        case L'x': // \xHH   (hex-byte)
-            if (decodeNumericEscape(input, i + 1, 16, 2, decoded))
-            {
-                out.push_back(decoded); i += 2; break;
-            }
-            [[fallthrough]];
-
-        case L'u': // \uXXXX (Unicode BMP)
-            if (decodeNumericEscape(input, i + 1, 16, 4, decoded))
-            {
-                out.push_back(decoded); i += 4; break;
-            }
-            [[fallthrough]];
-
-        default:  // unknown or invalid sequence -> keep literally
-            out.append({ L'\\', esc });
-            break;
-        }
-    }
-
-    return Encoding::wstringToBytes(out, targetCodepage);
+    return Encoding::wstringToBytes(ExtendedEscapes::expand(input), targetCodepage);
 }
 
 std::string MultiReplace::convertAndExtendW(const std::wstring& input, bool extended)
@@ -14970,6 +14809,7 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
     for (const auto& [index, _] : originalDataList) {
         updateListViewItem(index);
     }
+    markActiveTabDirty();
 
     // Create Undo/Redo actions
     UndoRedoAction action;
@@ -14981,15 +14821,17 @@ void MultiReplace::setSelections(bool select, bool onlySelected) {
             updateListViewItem(index);
         }
         updateHeaderSelection();
+        markActiveTabDirty();
         };
 
     // Redo action: Apply the new selection status
-    action.redoAction = [this, originalDataList]() {
-        for (const auto& [index, data] : originalDataList) {
-            replaceListData[index].isEnabled = !data.isEnabled;
+    action.redoAction = [this, originalDataList, select]() {
+        for (const auto& [index, _] : originalDataList) {
+            replaceListData[index].isEnabled = select;
             updateListViewItem(index);
         }
         updateHeaderSelection();
+        markActiveTabDirty();
         };
 
     // Push the action onto the undoStack
@@ -15025,6 +14867,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
     if (originalDataList.empty()) return;
 
     for (const auto& [index, _] : originalDataList) updateListViewItem(index);
+    markActiveTabDirty();
 
     std::wstring optionName;
     switch (option) {
@@ -15041,6 +14884,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
             replaceListData[index] = data;
             updateListViewItem(index);
         }
+        markActiveTabDirty();
         };
     action.redoAction = [this, originalDataList, option, value]() {
         for (const auto& [index, _] : originalDataList) {
@@ -15059,6 +14903,7 @@ void MultiReplace::setOptionForSelection(SearchOption option, bool value) {
             }
             updateListViewItem(index);
         }
+        markActiveTabDirty();
         };
     URM.push(action.undoAction, action.redoAction, (value ? L"Set " : L"Clear ") + optionName);
 }
@@ -15622,17 +15467,6 @@ Sci_Position MultiReplace::ensureForwardProgress(Sci_Position candidate, const S
     return (next > docLen) ? docLen : next;
 }
 
-std::size_t MultiReplace::computeListHash(const std::vector<ReplaceItemData>& list) {
-    std::size_t combinedHash = 0;
-    ReplaceItemDataHasher hasher;
-
-    for (const auto& item : list) {
-        combinedHash ^= hasher(item) + golden_ratio_constant + (combinedHash << 6) + (combinedHash >> 2);
-    }
-
-    return combinedHash;
-}
-
 void MultiReplace::setTextInDialogItem(HWND hDlg, int itemID, const std::wstring& text) {
     ::SetDlgItemTextW(hDlg, itemID, text.c_str());
 }
@@ -15960,7 +15794,7 @@ bool MultiReplace::saveListToCsv(const std::wstring& filePath, const std::vector
 
     // Update the file path and original hash after a successful save
     listFilePath = filePath;
-    originalListHash = computeListHash(list);
+    originalListHash = ListHash::baselineOf(list);
 
     // Clear dirty flags - list is now in sync with file
     for (auto& item : replaceListData) {
@@ -16017,7 +15851,7 @@ void MultiReplace::saveAllTabs()
         const std::vector<ReplaceItemData>& data = isActive ? replaceListData : tab.data;
 
         // Not dirty - skip.
-        if (computeListHash(data) == tab.originalHash) continue;
+        if (tab.originalHash.matches(data)) continue;
 
         std::wstring targetPath = tab.filePath;
 
@@ -16037,7 +15871,7 @@ void MultiReplace::saveAllTabs()
         }
 
         tab.filePath = targetPath;
-        tab.originalHash = computeListHash(data);
+        tab.originalHash = ListHash::baselineOf(data);
 
         try {
             std::wstring stem = std::filesystem::path(targetPath).stem().wstring();
@@ -16082,75 +15916,16 @@ void MultiReplace::saveAllTabs()
     }
 }
 
-// 3-button Save/Don't save/Cancel prompt; tabIndex < 0 = active tab.
+// 3-button Save/Don't save/Cancel prompt for the tab at tabIndex.
 int MultiReplace::checkForUnsavedChanges(int tabIndex) {
-    // Path A: active tab / legacy single-tab mode - use globals.
-    if (tabIndex < 0) {
-        std::size_t currentListHash = computeListHash(replaceListData);
-
-        if (currentListHash != originalListHash) {
-
-            std::wstring message;
-            if (!listFilePath.empty()) {
-                // Get the shortened file path and build the message
-                std::wstring shortenedFilePath = getShortenedFilePath(listFilePath, 500);
-                message = LM.get(L"msgbox_unsaved_changes_file", { shortenedFilePath });
-            }
-            else {
-                // If no file is associated, use the alternative message
-                message = LM.get(L"msgbox_unsaved_changes");
-            }
-
-            // Show the MessageBox with the appropriate message
-            int result = MessageBox(
-                nppData._nppHandle,
-                message.c_str(),
-                LM.get(L"msgbox_title_save_list").c_str(),
-                MB_ICONWARNING | MB_YESNOCANCEL
-            );
-
-            if (result == IDYES) {
-                if (!listFilePath.empty()) {
-                    // On save failure we return IDCANCEL so the caller
-                    // aborts its destructive action (clear/load/close)
-                    // and the user's unsaved data is not silently lost.
-                    if (!saveListToCsv(listFilePath, replaceListData)) return IDCANCEL;
-                    return IDYES;  // Proceed if saved successfully
-                }
-                else {
-                    std::wstring filePath = promptSaveListToCsv();
-
-                    if (!filePath.empty()) {
-                        if (!saveListToCsv(filePath, replaceListData)) return IDCANCEL;
-                        return IDYES;  // Proceed with clear after save
-                    }
-                    else {
-                        return IDCANCEL;  // Cancel if no file was selected
-                    }
-                }
-            }
-            else if (result == IDNO) {
-                return IDNO;  // Allow proceeding without saving
-            }
-            else if (result == IDCANCEL) {
-                return IDCANCEL;  // Cancel the action
-            }
-        }
-        return IDYES;  // No unsaved changes, allow proceeding
-    }
-
-    // Path B: specific tab (may or may not be the active one).
-    if (tabIndex >= static_cast<int>(_tabs.size())) return IDYES;
+    if (tabIndex < 0 || tabIndex >= static_cast<int>(_tabs.size())) return IDYES;
     TabState* tab = _tabs[tabIndex].get();
 
     // For the active tab the live data holds the most recent edits;
     // for inactive tabs the stored tab.data is authoritative.
     const bool isActive = (tabIndex == _activeTabIndex);
-    const std::size_t liveHash = isActive
-        ? computeListHash(replaceListData)
-        : computeListHash(tab->data);
 
-    if (liveHash == tab->originalHash) return IDYES;  // not dirty, proceed
+    if (tab->originalHash.matches(isActive ? replaceListData : tab->data)) return IDYES;  // not dirty, proceed
 
     // Message identifies the tab by filePath, or by tab name for
     // untitled tabs, so the user knows which tab is being asked about.
@@ -16199,7 +15974,7 @@ int MultiReplace::checkForUnsavedChanges(int tabIndex) {
     // Named inactive tab: same pattern as saveAllTabs - format follows the
     // file extension, mirror baseline/dirty state onto the tab.
     if (saveTabToFile(tab->filePath, tab->data, *tab)) {
-        tab->originalHash = computeListHash(tab->data);
+        tab->originalHash = ListHash::baselineOf(tab->data);
         for (auto& item : tab->data) item.isDirty = false;
         clearTabDirty(tabIndex);
         rebuildTabControl();
@@ -16400,7 +16175,7 @@ void MultiReplace::loadListFromCsvIntoNewTab(const std::wstring& filePath)
     tab->id = _nextTabId++;
     tab->filePath = filePath;
     tab->data = std::move(loaded);
-    tab->originalHash = computeListHash(tab->data);
+    tab->originalHash = ListHash::baselineOf(tab->data);
 
     _tabs.push_back(std::move(tab));
     _activeTabIndex = static_cast<int>(_tabs.size()) - 1;
@@ -16770,9 +16545,8 @@ void MultiReplace::loadSettingsToPanelUI() {
     // (ensurePrimaryTabExists) call applyDefaultColumnState themselves
     // for the very first tab.
 
-    // Load file path and original hash
+    // Load file path; the hash V5 stored beside it is read in migrateLegacyList
     listFilePath = CFG.readString(L"File", L"ListFilePath", L"");
-    originalListHash = CFG.readSizeT(L"File", L"OriginalListHash", 0);
 
     if (selection) {
         CheckRadioButton(_hSelf, IDC_ALL_TEXT_RADIO, IDC_COLUMN_MODE_RADIO, IDC_SELECTION_RADIO);
@@ -16877,7 +16651,7 @@ void MultiReplace::loadSettings() {
             // Create an untitled primary tab so the UI has data.
             replaceListData.clear();
             listFilePath.clear();
-            originalListHash = computeListHash(replaceListData);
+            originalListHash = ListHash::baselineOf(replaceListData);
             ensurePrimaryTabExists();
         }
     }
@@ -16937,7 +16711,7 @@ void MultiReplace::ensurePrimaryTabExists()
     // Legacy users may have had unsaved edits when they shut down; if
     // so, data hash will differ from the persisted originalListHash.
     // Reflect that so the bullet indicator shows up.
-    tab->isDirty = (computeListHash(tab->data) != tab->originalHash);
+    tab->isDirty = !tab->originalHash.matches(tab->data);
 
     _tabs.push_back(std::move(tab));
     _activeTabIndex = 0;
@@ -17154,17 +16928,6 @@ void MultiReplace::writeTabsToConfig()
     // stored widths don't load stale next session.
     recomputeStoredWidthsForLazyTabs();
 
-    // Untitled tabs have no saved file as reference - their baseline
-    // is the snapshot itself. Without this, they would come back
-    // dirty after every restart. Named tabs keep their existing
-    // baseline so unsaved edits survive correctly.
-    for (auto& tabPtr : _tabs) {
-        TabState& t = *tabPtr;
-        if (t.filePath.empty()) {
-            t.originalHash = computeListHash(t.data);
-        }
-    }
-
     // Rewritten whole, so keys of tabs closed since the last save don't linger
     CFG.eraseSection(L"Tabs");
     CFG.writeInt(L"Tabs", L"Count", static_cast<int>(_tabs.size()));
@@ -17181,18 +16944,18 @@ void MultiReplace::writeTabsToConfig()
         std::wstring snapshotName = L"tab" + std::to_wstring(i) + L".mrtab";
         CFG.writeString(L"Tabs", prefix + L"_Snapshot", snapshotName);
 
-        // Persisted baseline hash so dirty state survives a restart.
-        // Without this, reopen would set the baseline from the snapshot
-        // data itself and silently mark every tab clean. 16-char hex.
+        // Persisted baseline so the dirty state survives a restart: _BaselineHash
+        // in the hash the versions before 6.3 read, _ListHash in the current one.
         {
             wchar_t hashBuf[32];
             swprintf_s(hashBuf, L"%016llX",
-                static_cast<unsigned long long>(t.originalHash));
+                static_cast<unsigned long long>(t.originalHash.legacy));
             CFG.writeString(L"Tabs", prefix + L"_BaselineHash", hashBuf);
+            CFG.writeString(L"Tabs", prefix + L"_ListHash", ListHash::toText(t.originalHash));
         }
 
-        // Persisted across restarts so unsaved data edits don't get
-        // silently cleared by recomputing the baseline from snapshot.
+        // The dirty state for the versions before 6.3: they set the baseline of
+        // an untitled tab to its list at exit, and only this flag keeps it dirty.
         CFG.writeBool(L"Tabs", prefix + L"_IsDirty", t.isDirty);
 
         // Search options
@@ -17408,6 +17171,7 @@ void MultiReplace::loadTabsFromConfig()
             const std::wstring hashStr =
                 CFG.readString(L"Tabs", prefix + L"_BaselineHash", L"");
             bool haveBaseline = false;
+            std::uint64_t legacyHash = 0;
             if (!hashStr.empty()) {
                 try {
                     size_t consumed = 0;
@@ -17416,17 +17180,33 @@ void MultiReplace::loadTabsFromConfig()
                     // partial match (e.g. "ABC XYZ" -> 0xABC) would
                     // silently accept a wrong hash, so we reject.
                     if (consumed == hashStr.size()) {
-                        tab->originalHash = static_cast<std::size_t>(parsed);
+                        legacyHash = parsed;
                         haveBaseline = true;
                     }
                 }
                 catch (...) { /* malformed - fall through */ }
             }
+            if (haveBaseline) {
+                // _ListHash counts while it belongs to that legacy hash; else a version
+                // before 6.3 wrote the baseline and it is worked out from list and file.
+                tab->originalHash = ListHash::fromIni(
+                    CFG.readString(L"Tabs", prefix + L"_ListHash", L""), legacyHash, tab->data,
+                    [&](std::vector<ReplaceItemData>& fileData) {
+                        if (tab->filePath.empty()) return false;
+                        try {
+                            loadListFromCsvSilent(tab->filePath, fileData, nullptr);
+                            return true;
+                        }
+                        catch (const CsvLoadException&) {
+                            return false;   // left to the file check at startup
+                        }
+                    });
+            }
             if (!haveBaseline && !tab->filePath.empty()) {
                 try {
                     std::vector<ReplaceItemData> fileData;
                     loadListFromCsvSilent(tab->filePath, fileData, nullptr);
-                    tab->originalHash = computeListHash(fileData);
+                    tab->originalHash = ListHash::baselineOf(fileData);
                     haveBaseline = true;
                 }
                 catch (const CsvLoadException&) {
@@ -17437,18 +17217,20 @@ void MultiReplace::loadTabsFromConfig()
                 }
             }
             if (!haveBaseline) {
-                tab->originalHash = computeListHash(tab->data);
+                tab->originalHash = ListHash::baselineOf(tab->data);
             }
 
-            // Either a hash diff or the persisted flag is enough to mark dirty.
-            const bool persistedDirty = CFG.readBool(L"Tabs", prefix + L"_IsDirty", false);
-            tab->isDirty = persistedDirty
-                || (computeListHash(tab->data) != tab->originalHash);
+            // Untitled: a version before 6.3 may have set the baseline to the list at exit
+            if (tab->filePath.empty()) {
+                tab->originalHash = ListHash::untitledBaseline(tab->originalHash, tab->data,
+                    CFG.readBool(L"Tabs", prefix + L"_IsDirty", false));
+            }
+            tab->isDirty = !tab->originalHash.matches(tab->data);
         }
         catch (const CsvLoadException&) {
             // Missing or corrupt snapshot - keep tab with empty data.
             tab->data.clear();
-            tab->originalHash = computeListHash(tab->data);
+            tab->originalHash = ListHash::baselineOf(tab->data);
             tab->isDirty = false;
         }
 
@@ -17483,6 +17265,9 @@ void MultiReplace::migrateLegacyList()
         catch (const CsvLoadException&) { replaceListData.clear(); }
     }
 
+    // [v5-legacy] The baseline V5 stored for this list, in the hash of that time
+    originalListHash = ListHash::rebase(CFG.readSizeT(L"File", L"OriginalListHash", 0), replaceListData, nullptr);
+
     // Wrap the (possibly loaded) state into a primary tab so further
     // code paths uniformly use the tab model. snapshots/ is created
     // on the next save.
@@ -17501,8 +17286,8 @@ void MultiReplace::migrateLegacyList()
                 loadListFromCsvSilent(_tabs[0]->filePath, fileData);
                 if (_tabs[0]->data.empty())
                     _tabs[0]->data = fileData;
-                _tabs[0]->originalHash = computeListHash(fileData);
-                _tabs[0]->isDirty = (computeListHash(_tabs[0]->data) != _tabs[0]->originalHash);
+                _tabs[0]->originalHash = ListHash::baselineOf(fileData);
+                _tabs[0]->isDirty = !_tabs[0]->originalHash.matches(_tabs[0]->data);
             }
             catch (const CsvLoadException&) {}
         }
@@ -17545,8 +17330,7 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
         std::vector<ReplaceItemData> tempListFromFile;
         loadListFromCsvSilent(tab.filePath, tempListFromFile, nullptr);
 
-        std::size_t newFileHash = computeListHash(tempListFromFile);
-        if (newFileHash != tab.originalHash) {
+        if (!tab.originalHash.matches(tempListFromFile)) {
             std::wstring shortenedFilePath = getShortenedFilePath(tab.filePath, 500);
             std::wstring message = LM.get(L"msgbox_file_modified_prompt", { shortenedFilePath });
 
@@ -17555,7 +17339,7 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
                 MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND);
             if (response == IDYES) {
                 tab.data = tempListFromFile;
-                tab.originalHash = newFileHash;
+                tab.originalHash = ListHash::baselineOf(tempListFromFile);
                 // Reloaded from disk = in sync = not dirty. Use the
                 // centralized clear so the tab-control repaints the
                 // dirty indicator away.
@@ -17566,7 +17350,7 @@ void MultiReplace::checkSingleTabForFileChange(int tabIndex)
     catch (const CsvLoadException&) {
         // File no longer accessible - silently clear reference, keep tab data.
         tab.filePath.clear();
-        tab.originalHash = computeListHash(tab.data);
+        tab.originalHash = ListHash::baselineOf(tab.data);
         // The tab now has no external baseline to be dirty against,
         // so clear the flag through the centralized helper (also
         // refreshes the bullet indicator).
@@ -18616,7 +18400,7 @@ void MultiReplace::addNewTab()
     // loadListFromCsvIntoNewTab). Sort order is not inherited by design.
     inheritLayoutFromActiveTab(*tab);
 
-    tab->originalHash = computeListHash(tab->data);
+    tab->originalHash = ListHash::baselineOf(tab->data);
 
     _tabs.push_back(std::move(tab));
     _activeTabIndex = static_cast<int>(_tabs.size()) - 1;
@@ -18789,7 +18573,7 @@ void MultiReplace::onTabDuplicate(int tabIndex)
     copy->name = src.name + L" " + LM.get(L"tab_duplicate_suffix");
     copy->filePath.clear();
     copy->snapshotPath.clear();
-    copy->originalHash = computeListHash(copy->data);
+    copy->originalHash = ListHash::baselineOf(copy->data);
     // Fresh AutoCache tab - not inheriting the source's dirty state.
     // Any edits will re-mark dirty through markActiveTabDirty.
     copy->isDirty = false;
@@ -18998,10 +18782,10 @@ void MultiReplace::onTabCloseAll()
     // Mark the surviving tab as "no unsaved changes" so the subsequent
     // onTabClose below does not re-prompt the user. We just asked.
     if (_activeTabIndex == 0) {
-        _tabs[0]->originalHash = computeListHash(replaceListData);
+        _tabs[0]->originalHash = ListHash::baselineOf(replaceListData);
     }
     else {
-        _tabs[0]->originalHash = computeListHash(_tabs[0]->data);
+        _tabs[0]->originalHash = ListHash::baselineOf(_tabs[0]->data);
     }
 
     addNewTab();           // creates new tab at index 1, makes it active
@@ -19093,7 +18877,7 @@ void MultiReplace::onTabSave(int tabIndex)
         return;
     }
 
-    tab.originalHash = computeListHash(listToSave);
+    tab.originalHash = ListHash::baselineOf(listToSave);
 
     if (isActive) {
         originalListHash = tab.originalHash;
@@ -19142,7 +18926,7 @@ void MultiReplace::onTabSaveAs(int tabIndex)
 
     TabState& tab = *_tabs[tabIndex];
     tab.filePath = chosen;
-    tab.originalHash = computeListHash(listToSave);
+    tab.originalHash = ListHash::baselineOf(listToSave);
 
     try {
         std::wstring stem = std::filesystem::path(chosen).stem().wstring();
@@ -19252,7 +19036,7 @@ void MultiReplace::onTabReload(int tabIndex)
     unsortedOrder.clear();
     updateHeaderSortDirection();
     tab.data = replaceListData;
-    tab.originalHash = computeListHash(fileList);
+    tab.originalHash = ListHash::baselineOf(fileList);
     originalListHash = tab.originalHash;
 
     ListView_SetItemCountEx(_replaceListView, static_cast<int>(replaceListData.size()), LVSICF_NOINVALIDATEALL);
@@ -19524,7 +19308,7 @@ void MultiReplace::renameTabFile(int tabIndex)
     std::filesystem::remove(oldPath, ec);
 
     tab.filePath = chosen;
-    tab.originalHash = computeListHash(listToSave);
+    tab.originalHash = ListHash::baselineOf(listToSave);
     for (auto& item : tab.data) item.isDirty = false;
 
     try {

@@ -21,12 +21,7 @@
 
 namespace StringUtils {
 
-    // Keep the mode used by MultiReplace.
-    enum class ReplaceMode { Normal, Extended, Regex };
-
     // ---- String helpers extracted from MultiReplacePanel ----
-    std::wstring sanitizeSearchPattern(const std::wstring& raw);
-
     // Wrap value in double quotes; escape ", \r, \n, \\ so the result
     // round-trips through unescapeQuoted. Used by the INI cache, the
     // settings block of MR list files, and the body of CSV cells.
@@ -61,20 +56,6 @@ namespace StringUtils {
     // so on write it is literalized so it cannot split a CSV row.
     std::wstring newlinesToCrlf(const std::wstring& value);
     std::wstring newlinesForPlainCsv(const std::wstring& value);
-
-    bool        normalizeAndValidateNumber(std::string& str);
-
-    std::string escapeForRegex(const std::string& input);
-
-    // Escape special regex/sed characters. In extended mode, preserves valid escape sequences.
-    std::string escapeSpecialChars(const std::string& input, bool extended);
-
-    // Translate escape sequences (\n, \r, \t, \xHH, \oOOO, \dDDD, \bBBBBBBBB, \uHHHH) to their values.
-    // \n and \r become __NEWLINE__ and __CARRIAGERETURN__ placeholders.
-    std::string translateEscapes(const std::string& input);
-
-    // Replace '\n' / '\r' according to the active mode (Normal / Extended / Regex)
-    std::string replaceNewline(const std::string& input, ReplaceMode mode);
 
     std::wstring trim(const std::wstring& str);
 

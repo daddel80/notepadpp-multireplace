@@ -18,8 +18,10 @@
 
 #include <cstddef>
 #include <string_view>
+#include <vector>
 
-// Where the delimiters of one CSV line are: outside quotes, and every quote character toggles quoting
+// One CSV line: where its delimiters are (outside quotes, every quote character toggles quoting) and what deleting
+// columns takes out of it
 namespace CsvLine {
 
     // Calls onDelimiter(offset) for each delimiter, left to right
@@ -63,5 +65,45 @@ namespace CsvLine {
             }
             ++pos;
         }
+    }
+
+    struct Range {
+        std::size_t begin = 0;
+        std::size_t end = 0;
+    };
+
+    struct ColumnDeletion {
+        std::vector<Range> ranges;   // ascending, touching ranges merged
+        std::size_t fields = 0;      // deleted fields; an empty line has none
+    };
+
+    // Text to delete for the 1-based columns (ascending) of a line; delimiterAt(k) is the offset of delimiter k.
+    // A column goes with its leading delimiter, or with its trailing one while no kept column precedes it
+    template <class Columns, class DelimiterAt>
+    ColumnDeletion columnDeletion(const Columns& columns, std::size_t delimiterCount, DelimiterAt&& delimiterAt,
+        std::size_t delimiterLength, std::size_t contentEnd)
+    {
+        ColumnDeletion deletion;
+        std::size_t deletedBefore = 0;
+        for (const auto value : columns) {
+            if (value < 1) continue;
+            const std::size_t column = static_cast<std::size_t>(value);
+            if (column > delimiterCount + 1) break;
+
+            const bool last = column == delimiterCount + 1;
+            const std::size_t contentBegin = (column == 1) ? 0 : delimiterAt(column - 2) + delimiterLength;
+            const Range range = (deletedBefore == column - 1)
+                ? Range{ contentBegin, last ? contentEnd : delimiterAt(column - 1) + delimiterLength }
+                : Range{ delimiterAt(column - 2), last ? contentEnd : delimiterAt(column - 1) };
+            ++deletedBefore;
+            if (delimiterCount > 0 || contentEnd > 0) ++deletion.fields;
+
+            if (range.end <= range.begin) continue;
+            if (!deletion.ranges.empty() && deletion.ranges.back().end == range.begin)
+                deletion.ranges.back().end = range.end;
+            else
+                deletion.ranges.push_back(range);
+        }
+        return deletion;
     }
 }

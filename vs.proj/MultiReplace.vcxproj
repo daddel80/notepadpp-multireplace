@@ -33,6 +33,7 @@
     <ClInclude Include="..\src\CsvDocState.h" />
     <ClInclude Include="..\src\LineOrder.h" />
     <ClInclude Include="..\src\ListOrder.h" />
+    <ClInclude Include="..\src\ListHash.h" />
     <ClInclude Include="..\src\CsvLine.h" />
     <ClInclude Include="..\src\OnePassHits.h" />
     <ClInclude Include="..\src\ConfigManager.h" />
@@ -47,6 +48,7 @@
     <ClInclude Include="..\src\MarkMatches.h" />
     <ClInclude Include="..\src\SciIndicators.h" />
     <ClInclude Include="..\src\Encoding.h" />
+    <ClInclude Include="..\src\ExtendedEscapes.h" />
     <ClInclude Include="..\src\engine\EngineFactory.h" />
     <ClInclude Include="..\src\engine\EngineTypes.h" />
     <ClInclude Include="..\src\engine\ExprTkEngine.h" />

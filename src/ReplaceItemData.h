@@ -22,7 +22,6 @@
 #pragma once
 
 #include <cstddef>
-#include <functional>
 #include <string>
 
 struct ReplaceItemData
@@ -52,21 +51,5 @@ struct ReplaceItemData
             formulaSupport == rhs.formulaSupport &&
             extended == rhs.extended &&
             regex == rhs.regex;
-    }
-};
-
-// Hash function for ReplaceItemData
-struct ReplaceItemDataHasher {
-    std::size_t operator()(const ReplaceItemData& item) const {
-        std::size_t hash = std::hash<bool>{}(item.isEnabled);
-        hash ^= std::hash<std::wstring>{}(item.findText) << 1;
-        hash ^= std::hash<std::wstring>{}(item.replaceText) << 1;
-        hash ^= std::hash<bool>{}(item.wholeWord) << 1;
-        hash ^= std::hash<bool>{}(item.matchCase) << 1;
-        hash ^= std::hash<bool>{}(item.formulaSupport) << 1;
-        hash ^= std::hash<bool>{}(item.extended) << 1;
-        hash ^= std::hash<bool>{}(item.regex) << 1;
-        hash ^= std::hash<std::wstring>{}(item.comments) << 1;
-        return hash;
     }
 };

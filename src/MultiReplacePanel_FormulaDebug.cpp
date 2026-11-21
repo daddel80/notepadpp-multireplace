@@ -78,7 +78,8 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
         if (type == L"Number") {
             try {
                 double num = std::stod(value);
-                if (num == std::floor(num)) {
+                // Whole numbers print without decimals while they fit long long
+                if (num == std::floor(num) && std::fabs(num) < 9.2e18) {
                     value = std::to_wstring(static_cast<long long>(num));
                 }
                 else {

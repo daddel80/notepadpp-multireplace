@@ -55,6 +55,8 @@
 
 // List row data model
 #include "ReplaceItemData.h"
+// Content hash of a list and its baseline
+#include "ListHash.h"
 // CSV list format: dialect enum used in load/save signatures
 #include "CsvListFormat.h"
 
@@ -254,7 +256,7 @@ struct TabState {
 
     // List data
     std::vector<ReplaceItemData> data;
-    std::size_t                  originalHash = 0;
+    ListHash::Baseline           originalHash;
 
     // Dirty indicator (runtime-only, drives the tab's dirty marker).
     // Set on any edit, cleared only by save/load - a manual revert
@@ -1109,8 +1111,7 @@ private:
     int _tandemHostShrinkPx = 0;
 
     std::wstring listFilePath = L"";
-    const std::size_t golden_ratio_constant = 0x9e3779b9; // 2^32 / φ, used for hashing
-    std::size_t originalListHash = 0;
+    ListHash::Baseline originalListHash;
     int useListOnHeight = MIN_HEIGHT;      // Default height when "Use List" is on
     int checkMarkWidth_scaled;
     int crossWidth_scaled;
@@ -1712,7 +1713,6 @@ private:
     int getFontHeight(HWND hwnd, HFONT hFont);
     std::vector<int> parseNumberRanges(const std::wstring& input, const std::wstring& errorMessage);
     UINT getCurrentDocCodePage();
-    std::size_t computeListHash(const std::vector<ReplaceItemData>& list);
     Sci_Position advanceAfterMatch(const SearchResult& r);
     Sci_Position ensureForwardProgress(Sci_Position nextPos, const SearchResult& r);
     void forceWrapRecalculation();
@@ -1732,7 +1732,7 @@ private:
 
 #pragma region INI
     void saveSettings();
-    int checkForUnsavedChanges(int tabIndex = -1);
+    int checkForUnsavedChanges(int tabIndex);
     void loadSettings();
     void syncHistoryToCache(HWND hComboBox, const std::wstring& keyPrefix);
 
