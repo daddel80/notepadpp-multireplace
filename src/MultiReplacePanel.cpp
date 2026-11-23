@@ -312,11 +312,11 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
             }
         }
 
-        // Arrow nav in a Find/Replace/Filter/Dir combo edit: remember unsaved
-        // typed text (never inserted into the list) so arrow-up past the top
-        // entry restores it. Only the top edge is special.
+        // History keys in a Find/Replace/Filter/Dir combo edit. Arrows remember unsaved
+        // typed text (never inserted into the list) so arrow-up past the top entry
+        // restores it; only the top edge is special.
         if (pMsg->message == WM_KEYDOWN
-            && (pMsg->wParam == VK_DOWN || pMsg->wParam == VK_UP)
+            && (pMsg->wParam == VK_DOWN || pMsg->wParam == VK_UP || pMsg->wParam == VK_DELETE)
             && !(GetKeyState(VK_MENU) & 0x8000)
             && !(GetKeyState(VK_CONTROL) & 0x8000)) {
             HWND hFocus = GetFocus();
@@ -328,6 +328,20 @@ LRESULT CALLBACK MultiReplace::MsgFilterHookProc(int nCode, WPARAM wParam, LPARA
                     continue;
 
                 const LRESULT cursel = SendMessage(hCombo, CB_GETCURSEL, 0, 0);
+
+                if (pMsg->wParam == VK_DELETE) {
+                    // In the open list Delete removes the highlighted entry, as in Notepad++; otherwise it edits the text
+                    if (cursel == CB_ERR || !SendMessage(hCombo, CB_GETDROPPEDSTATE, 0, 0))
+                        break;
+                    const LRESULT remaining = SendMessage(hCombo, CB_DELETESTRING, static_cast<WPARAM>(cursel), 0);
+                    SendMessage(hCombo, CB_SHOWDROPDOWN, FALSE, 0);   // reopened, the list fits the entries left
+                    if (remaining > 0) {
+                        SendMessage(hCombo, CB_SETCURSEL, static_cast<WPARAM>(std::min(cursel, remaining - 1)), 0);
+                        SendMessage(hCombo, CB_SHOWDROPDOWN, TRUE, 0);
+                    }
+                    pMsg->message = WM_NULL;
+                    return 1;
+                }
 
                 if (pMsg->wParam == VK_DOWN && cursel == CB_ERR) {
                     // Remember unsaved text before navigation overwrites it.
