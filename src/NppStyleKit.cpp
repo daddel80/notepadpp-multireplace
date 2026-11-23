@@ -15,13 +15,12 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #include "NppStyleKit.h"
+#include "DocScope.h"
 #include "Notepad_plus_msgs.h"
 #include "Scintilla.h"
+#include "menuCmdID.h"
 
 #include <shlwapi.h>
-
-#include <algorithm>
-#include <iterator>
 
 namespace NppStyleKit {
 
@@ -79,20 +78,76 @@ namespace NppStyleKit {
     }
 
     // ---------- ColorTools ----------
-    COLORREF ColorTools::tabColorSwatch(int colorId, bool darkMode)
-    {
-        // Default tab colors of Notepad++ (stylers.model.xml, the same in every bundled theme)
-        static constexpr COLORREF kLight[] = { RGB(0xF3, 0xF0, 0xCB), RGB(0xDB, 0xF3, 0xCB), RGB(0xCB, 0xDB, 0xF3), RGB(0xF3, 0xDB, 0xCB), RGB(0xF3, 0xCB, 0xEE) };
-        static constexpr COLORREF kDark[]  = { RGB(0x80, 0x78, 0x48), RGB(0x56, 0x80, 0x48), RGB(0x50, 0x70, 0x94), RGB(0x80, 0x48, 0x49), RGB(0x75, 0x48, 0x80) };
-        if (colorId < 0 || colorId >= static_cast<int>(std::size(kLight)))
-            return CLR_INVALID;
+    namespace {
+        // The menu below menu (depth levels down) that holds the item id itself
+        HMENU findMenuHolding(HMENU menu, UINT id, int depth)
+        {
+            const int count = ::GetMenuItemCount(menu);
+            for (int pos = 0; pos < count; ++pos)
+                if (::GetMenuItemID(menu, pos) == id) return menu;
+            if (depth > 0) {
+                for (int pos = 0; pos < count; ++pos) {
+                    const HMENU sub = ::GetSubMenu(menu, pos);
+                    const HMENU found = sub ? findMenuHolding(sub, id, depth - 1) : nullptr;
+                    if (found) return found;
+                }
+            }
+            return nullptr;
+        }
 
-        // Lightness and saturation as Notepad++ sets them for its menu swatches
-        WORD hue = 0, lightness = 0, saturation = 0;
-        ::ColorRGBToHLS((darkMode ? kDark : kLight)[colorId], &hue, &lightness, &saturation);
-        lightness = darkMode ? 146 : 140;
-        saturation = static_cast<WORD>((std::min)(240, saturation + (darkMode ? 100 : 30)));
-        return ::ColorHLSToRGB(hue, lightness, saturation);
+        // The color inside the black frame of a Notepad++ menu color sample
+        COLORREF sampleColor(HBITMAP sample)
+        {
+            BITMAP info{};
+            if (!sample || ::GetObject(sample, sizeof(info), &info) == 0 || info.bmWidth < 3 || info.bmHeight < 3)
+                return CLR_INVALID;
+            COLORREF color = CLR_INVALID;
+            if (const HDC hdc = ::CreateCompatibleDC(nullptr)) {
+                if (const HGDIOBJ old = ::SelectObject(hdc, sample)) {
+                    color = ::GetPixel(hdc, info.bmWidth / 2, info.bmHeight / 2);
+                    ::SelectObject(hdc, old);
+                }
+                ::DeleteDC(hdc);
+            }
+            return color;
+        }
+    }
+
+    std::vector<COLORREF> ColorTools::nppTabColors(HWND hNpp)
+    {
+        // View > Tab holds the Apply Color items; kept while Notepad++ keeps that menu
+        static HMENU tabMenu = nullptr;
+        if (!tabMenu || !::IsMenu(tabMenu) || findMenuHolding(tabMenu, IDM_VIEW_TAB_COLOUR_1, 0) != tabMenu) {
+            const auto mainMenu = reinterpret_cast<HMENU>(::SendMessage(hNpp, NPPM_GETMENUHANDLE, NPPMAINMENU, 0));
+            tabMenu = mainMenu ? findMenuHolding(mainMenu, IDM_VIEW_TAB_COLOUR_1, 3) : nullptr;
+        }
+        if (!tabMenu) return {};
+
+        // Notepad++ hangs the same sample on both check marks of an Apply Color item
+        std::vector<DocScope::ColorMenuItem> items;
+        std::vector<HBITMAP> samples;
+        const int count = ::GetMenuItemCount(tabMenu);
+        for (int pos = 0; pos < count; ++pos) {
+            MENUITEMINFOW mii{};
+            mii.cbSize = sizeof(mii);
+            mii.fMask = MIIM_ID | MIIM_FTYPE | MIIM_SUBMENU | MIIM_CHECKMARKS;
+            DocScope::ColorMenuItem item;
+            HBITMAP sample = nullptr;
+            if (::GetMenuItemInfoW(tabMenu, static_cast<UINT>(pos), TRUE, &mii)) {
+                sample = mii.hbmpUnchecked ? mii.hbmpUnchecked : mii.hbmpChecked;
+                item = { mii.wID, (mii.fType & MFT_SEPARATOR) != 0 || mii.hSubMenu != nullptr, sample != nullptr };
+            }
+            else {
+                item.other = true;
+            }
+            items.push_back(item);
+            samples.push_back(sample);
+        }
+
+        std::vector<COLORREF> colors;
+        for (const size_t pos : DocScope::colorMenuPositions(items, IDM_VIEW_TAB_COLOUR_1, IDM_VIEW_TAB_COLOUR_5, IDM_VIEW_TAB_COLOUR_NONE))
+            colors.push_back(sampleColor(samples[pos]));
+        return colors;
     }
 
 } // namespace NppStyleKit

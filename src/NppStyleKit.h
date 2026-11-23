@@ -18,6 +18,8 @@
 
 #include <windows.h>
 
+#include <vector>
+
 #include "EditorPalette.h"
 
 namespace NppStyleKit {
@@ -38,8 +40,9 @@ namespace NppStyleKit {
 
     // ---------- Colors ----------
     namespace ColorTools {
-        // Swatch of Notepad++ tab color 0..4 as its Apply Color menu shows it; CLR_INVALID otherwise.
-        COLORREF tabColorSwatch(int colorId, bool darkMode);
+        // Notepad++'s tab colors by id, each as the sample on its Apply Color menu item (CLR_INVALID without one).
+        // Read from that menu, so a theme change or a color Notepad++ adds shows up here as well.
+        std::vector<COLORREF> nppTabColors(HWND hNpp);
     }
 
 } // namespace NppStyleKit

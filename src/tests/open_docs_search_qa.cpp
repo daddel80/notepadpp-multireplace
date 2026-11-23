@@ -39,7 +39,8 @@
 //      run from buffer path and tab color, without activating a tab, and the run visits exactly
 //      those, in the order the two view loops visited them before. Name filter and tab color apply
 //      together, an empty scope stops before the run, Notepad++ before 8.6.8 is not asked for
-//      colors, and a document that fails ends the run in both views.
+//      colors, and a document that fails ends the run in both views. The Tab color entries follow
+//      the colors of Notepad++'s Apply Color menu (DocScope::colorMenuPositions).
 //
 // Mirrors the panel/guard logic verbatim where mirrorable; Scintilla calls
 // are replaced by a reference-counting mock that asserts protocol violations.
@@ -985,31 +986,93 @@ int main() {
     std::printf("\n=== S11 scope of a Docs run: decided before the run, name filter and tab color ===\n\n");
     {
         using namespace DocScope;
+        constexpr int NPP = 5;                                                     // the colors of Notepad++ today
         bool roundTrip = true;
-        for (int c = 0; c < CHOICE_COUNT; ++c) roundTrip = roundTrip && choiceFromMask(maskFromChoice(c)) == c;
+        for (int c = 0; c < choiceCount(NPP); ++c) roundTrip = roundTrip && choiceFromMask(maskFromChoice(c, NPP), NPP) == c;
         CHECK("S11 dropdown: every entry maps to its mask and back", roundTrip);
-        CHECK("S11 dropdown: Any = 0, Marked = all five colors, Color 1 = id 0, Color 5 = id 4",
-              maskFromChoice(CHOICE_ANY) == 0 && maskFromChoice(CHOICE_MARKED) == 0x1Fu
-              && maskFromChoice(2) == 1u && maskFromChoice(6) == 16u);
+        CHECK("S11 dropdown: Any = 0, Marked = every color, Color 1 = id 0, Color 5 = id 4, seven entries",
+              maskFromChoice(CHOICE_ANY, NPP) == 0 && maskFromChoice(CHOICE_MARKED, NPP) == ALL_COLORS
+              && maskFromChoice(2, NPP) == 1u && maskFromChoice(6, NPP) == 16u && choiceCount(NPP) == 7);
         bool swatchIsMask = true;
-        for (int c = 0; c < CHOICE_COUNT; ++c)
-            if (colorFromChoice(c) >= 0) swatchIsMask = swatchIsMask && maskFromChoice(c) == 1u << colorFromChoice(c);
+        for (int c = 0; c < choiceCount(NPP); ++c)
+            if (colorFromChoice(c, NPP) >= 0) swatchIsMask = swatchIsMask && maskFromChoice(c, NPP) == 1u << colorFromChoice(c, NPP);
         CHECK("S11 dropdown: the swatch of a color entry is the color its mask selects", swatchIsMask);
-        CHECK("S11 dropdown: no swatch for Any, Marked and out-of-range choices",
-              colorFromChoice(CHOICE_ANY) == -1 && colorFromChoice(CHOICE_MARKED) == -1
-              && colorFromChoice(-1) == -1 && colorFromChoice(CHOICE_COUNT) == -1
-              && colorFromChoice(2) == 0 && colorFromChoice(6) == 4);
-        CHECK("S11 INI: a mask without an entry, out-of-range choices and CB_ERR fall back to Any",
-              choiceFromMask(3u) == CHOICE_ANY && choiceFromMask(0xFFFFFFFFu) == CHOICE_ANY
-              && maskFromChoice(-1) == 0 && maskFromChoice(CHOICE_COUNT) == 0);
+        CHECK("S11 dropdown: no single color for Any, Marked and out-of-range choices",
+              colorFromChoice(CHOICE_ANY, NPP) == -1 && colorFromChoice(CHOICE_MARKED, NPP) == -1
+              && colorFromChoice(-1, NPP) == -1 && colorFromChoice(choiceCount(NPP), NPP) == -1
+              && colorFromChoice(2, NPP) == 0 && colorFromChoice(6, NPP) == 4);
+        CHECK("S11 dropdown: a sixth color of Notepad++ is an eighth entry with id 5, mask and back",
+              choiceCount(6) == 8 && colorFromChoice(7, 6) == 5 && maskFromChoice(7, 6) == 32u
+              && choiceFromMask(32u, 6) == 7 && colorFromChoice(7, NPP) == -1);
+        CHECK("S11 dropdown: no colors leave Any and Marked, counts stay within 0 to 32",
+              choiceCount(0) == 2 && colorFromChoice(2, 0) == -1 && maskFromChoice(CHOICE_MARKED, 0) == ALL_COLORS
+              && choiceCount(-3) == 2 && choiceCount(99) == 2 + MAX_COLORS
+              && maskFromChoice(2 + 31, 99) == 0x80000000u && choiceFromMask(0x80000000u, 99) == 2 + 31);
+        CHECK("S11 INI: several colors are Marked, 31 of five colors too, and Marked comes back from the INI's -1",
+              choiceFromMask(31u, NPP) == CHOICE_MARKED && choiceFromMask(3u, NPP) == CHOICE_MARKED
+              && choiceFromMask(static_cast<unsigned>(static_cast<int>(ALL_COLORS)), NPP) == CHOICE_MARKED
+              && static_cast<int>(ALL_COLORS) == -1);
+        CHECK("S11 INI: a color past the list, out-of-range choices and CB_ERR fall back to Any",
+              choiceFromMask(1u << 5, NPP) == CHOICE_ANY && choiceFromMask(0x80000000u, NPP) == CHOICE_ANY
+              && maskFromChoice(-1, NPP) == 0 && maskFromChoice(choiceCount(NPP), NPP) == 0);
         CHECK("S11 colors: mask 0 takes every tab, an uncolored one too",
               colorMatches(0, -1) && colorMatches(0, 0) && colorMatches(0, 4));
-        CHECK("S11 colors: Marked takes ids 0 to 4, never an uncolored tab or an unknown id",
-              colorMatches(ALL_COLORS, 0) && colorMatches(ALL_COLORS, 4)
-              && !colorMatches(ALL_COLORS, -1) && !colorMatches(ALL_COLORS, 5));
+        CHECK("S11 colors: Marked takes every color id, one Notepad++ adds later too, never an uncolored tab",
+              colorMatches(ALL_COLORS, 0) && colorMatches(ALL_COLORS, 4) && colorMatches(ALL_COLORS, 5)
+              && colorMatches(ALL_COLORS, 31) && !colorMatches(ALL_COLORS, -1) && !colorMatches(ALL_COLORS, 32));
         CHECK("S11 colors: one color takes only its id",
-              colorMatches(maskFromChoice(3), 1) && !colorMatches(maskFromChoice(3), 0)
-              && !colorMatches(maskFromChoice(3), -1));
+              colorMatches(maskFromChoice(3, NPP), 1) && !colorMatches(maskFromChoice(3, NPP), 0)
+              && !colorMatches(maskFromChoice(3, NPP), -1));
+
+        // Notepad++'s View > Tab menu with the ids of its menuCmdID.h: 1st to 9th Tab, First, Last, Next and
+        // Previous Tab, the four moves, then Apply Color 1 to 5 with their samples and Remove Color
+        constexpr unsigned C1 = 44111, C5 = 44115, NONE = 44110, SEP = 0;
+        auto tabMenu = [&](bool samples) {
+            std::vector<ColorMenuItem> items;
+            for (unsigned id = 44086; id <= 44094; ++id) items.push_back({ id, false, false });
+            items.push_back({ SEP, true, false });
+            for (const unsigned id : { 44116u, 44117u, 44095u, 44096u }) items.push_back({ id, false, false });
+            items.push_back({ SEP, true, false });
+            for (const unsigned id : { 10005u, 10006u, 44098u, 44099u }) items.push_back({ id, false, false });
+            items.push_back({ SEP, true, false });
+            for (unsigned id = C1; id <= C5; ++id) items.push_back({ id, false, samples });
+            items.push_back({ NONE, false, false });
+            return items;
+        };
+        auto positions = [&](const std::vector<ColorMenuItem>& items) { return colorMenuPositions(items, C1, C5, NONE); };
+        const std::vector<size_t> today = positions(tabMenu(true));
+        CHECK("S11 menu: the five Apply Color items of Notepad++ in their order, Remove Color left out",
+              today == std::vector<size_t>({ 20, 21, 22, 23, 24 }));
+        CHECK("S11 menu: without samples the five known ids still count",
+              positions(tabMenu(false)) == today);
+        std::vector<ColorMenuItem> sixth = tabMenu(true);
+        sixth.insert(sixth.begin() + 25, { 44200, false, true });                     // after Color 5
+        std::vector<ColorMenuItem> sixthLast = tabMenu(true);
+        sixthLast.push_back({ 44200, false, true });                                  // after Remove Color
+        CHECK("S11 menu: a color Notepad++ adds with a sample of its own joins the list, before or after Remove Color",
+              positions(sixth) == std::vector<size_t>({ 20, 21, 22, 23, 24, 25 })
+              && positions(sixthLast) == std::vector<size_t>({ 20, 21, 22, 23, 24, 26 }));
+        std::vector<ColorMenuItem> moreItems = tabMenu(true);
+        moreItems.push_back({ SEP, true, false });
+        moreItems.push_back({ 44300, false, true });
+        std::vector<ColorMenuItem> plainItem = tabMenu(true);
+        plainItem.insert(plainItem.begin() + 25, { 44301, false, false });
+        plainItem.push_back({ 44302, false, true });
+        std::vector<ColorMenuItem> subMenu = tabMenu(true);
+        subMenu.insert(subMenu.begin() + 23, { 0, true, true });
+        CHECK("S11 menu: the list ends at a separator, a submenu or an item without sample and unknown id",
+              positions(moreItems) == today && positions(plainItem) == today
+              && positions(subMenu) == std::vector<size_t>({ 20, 21, 22 }));
+        std::vector<ColorMenuItem> sampleBefore = tabMenu(true);
+        sampleBefore[3].sample = true;
+        CHECK("S11 menu: an item before Apply Color 1 never counts, even with a sample", positions(sampleBefore) == today);
+        std::vector<ColorMenuItem> noColors = tabMenu(true);
+        noColors.erase(noColors.begin() + 20, noColors.begin() + 25);
+        CHECK("S11 menu: no Apply Color 1, no colors; an empty menu, none either",
+              positions(noColors).empty() && positions({}).empty());
+        std::vector<ColorMenuItem> many = { { C1, false, true } };
+        for (unsigned i = 0; i < 40; ++i) many.push_back({ 45000 + i, false, true });
+        CHECK("S11 menu: at most 32 colors, the room of the mask", positions(many).size() == static_cast<size_t>(MAX_COLORS));
         CHECK("S11 version gate: 8.6.8 and later (zero-padded), 8.5.4 and 8.6.7 not",
               tabColorsAvailable(8, 680) && tabColorsAvailable(8, 964) && tabColorsAvailable(9, 0)
               && !tabColorsAvailable(8, 679) && !tabColorsAvailable(8, 540) && !tabColorsAvailable(7, 999));
@@ -1032,13 +1095,13 @@ int main() {
 
         {
             NppTabsM npp = editor();
-            PanelM p; p.colorMask = maskFromChoice(3);                                     // Color 2 = id 1
+            PanelM p; p.colorMask = maskFromChoice(3, NPP);                                // Color 2 = id 1
             const DocsRunM r = runNowM(npp, p);
             CHECK("S11 tab color only: the green tabs, saved and unsaved", names(r) == L"c.txt,new 1" && r.excluded == 5);
         }
         {
             NppTabsM npp = editor();
-            PanelM p; p.colorMask = maskFromChoice(2); p.filter = L"*.cpp";                // Color 1 and *.cpp
+            PanelM p; p.colorMask = maskFromChoice(2, NPP); p.filter = L"*.cpp";           // Color 1 and *.cpp
             const DocsRunM r = runNowM(npp, p);
             CHECK("S11 tab color and name filter apply together (clone counted per view)",
                   names(r) == L"a.cpp,a.cpp" && r.searched == 2 && r.excluded == 5);
@@ -1053,7 +1116,7 @@ int main() {
         }
         {
             NppTabsM npp = editor();
-            PanelM p; p.colorMask = maskFromChoice(3); p.filter = L"*.txt";
+            PanelM p; p.colorMask = maskFromChoice(3, NPP); p.filter = L"*.txt";
             CHECK("S11 unsaved tab: its name is its tab name ('new 1' fails *.txt)", names(runNowM(npp, p)) == L"c.txt");
             NppTabsM npp2 = editor();
             p.filter = L"new*";
@@ -1061,14 +1124,14 @@ int main() {
         }
         {
             NppTabsM npp = editor();
-            PanelM p; p.colorMask = maskFromChoice(6);                                     // Color 5: none
+            PanelM p; p.colorMask = maskFromChoice(6, NPP);                                // Color 5: none
             const DocsRunM r = runNowM(npp, p);
             CHECK("S11 empty scope: stopped before the run, no tab activated", r.stopped && npp.activations.empty() && r.excluded == 7);
         }
         {
             NppTabsM npp = editor();
             npp.tabColors = false;                                                         // before 8.6.8
-            PanelM p; p.colorMask = maskFromChoice(3);
+            PanelM p; p.colorMask = maskFromChoice(3, NPP);
             const DocsRunM r = runNowM(npp, p);
             CHECK("S11 Notepad++ before 8.6.8: no color asked, the color is ignored",
                   npp.colorQueries == 0 && r.searched == 7 && r.excluded == 0);

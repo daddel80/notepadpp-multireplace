@@ -162,7 +162,7 @@
 #define IDC_DELIMITER_STATIC            5466
 #define IDC_QUOTECHAR_STATIC            5467
 
-// Replace-in-Files frame (5469-5482)
+// Replace-in-Files frame (5469-5483)
 #define IDC_FILE_OPS_GROUP              5469
 #define IDC_FILTER_EDIT                 5470
 #define IDC_FILTER_HELP                 5471
@@ -177,6 +177,7 @@
 #define IDC_DIR_PROGRESS_BAR            5480
 #define IDC_TAB_COLOR_STATIC            5481
 #define IDC_TAB_COLOR_COMBO             5482
+#define IDC_TAB_COLOR_SWATCH            5483
 
 
 

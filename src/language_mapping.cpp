@@ -69,6 +69,7 @@ const LangKV kEnglishPairs[] = {
 { L"panel_tab_color_3", L"Color 3" },
 { L"panel_tab_color_4", L"Color 4" },
 { L"panel_tab_color_5", L"Color 5" },
+{ L"panel_tab_color_n", L"Color $REPLACE_STRING" },
 { L"panel_directory", L"Directory:" },
 { L"panel_filter", L"Filter:" },
 { L"panel_in_subfolders", L"In all sub-folders" },

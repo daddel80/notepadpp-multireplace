@@ -841,9 +841,12 @@ void MultiReplace::positionAndResizeControls(int windowWidth, int windowHeight)
     ctrlMap[IDC_HIDDENFILES_CHECKBOX] = { sx(96) + fileFieldWidth + sx(32), sy(257), sx(136), sy(13), WC_BUTTON, LM.getLPCW(L"panel_in_hidden_folders"),BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
     ctrlMap[IDC_ALL_DOCS_CHECKBOX] = { sx(96) + fileFieldWidth + sx(32), sy(230), sx(136), sy(13), WC_BUTTON, LM.getLPCW(L"panel_all_documents"), BS_AUTOCHECKBOX | WS_TABSTOP, nullptr, false, FontRole::Standard };
 
-    // Docs mode uses the Directory row for the tab color; a pure choice list, so only as wide as its entries
+    // Docs mode uses the Directory row for the tab color; a pure choice list, so only as wide as its entries.
+    // The chosen color is a control of its own beside it: in dark mode Notepad++ paints the closed field itself.
+    const int tabColorWidth = std::min(fileFieldWidth, tabColorComboWidth());
     ctrlMap[IDC_TAB_COLOR_STATIC] = { sx(15),  sy(257), sx(75),  sy(19), WC_STATIC, LM.getLPCW(L"panel_tab_color"), SS_RIGHT, nullptr, false, FontRole::Standard };
-    ctrlMap[IDC_TAB_COLOR_COMBO] = { sx(96),  sy(257), std::min(fileFieldWidth, tabColorComboWidth()),  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP, LM.getLPCW(L"tooltip_tab_color"), false, FontRole::Normal1 };
+    ctrlMap[IDC_TAB_COLOR_COMBO] = { sx(96),  sy(257), tabColorWidth,  sy(160), WC_COMBOBOX, nullptr, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP, LM.getLPCW(L"tooltip_tab_color"), false, FontRole::Normal1 };
+    ctrlMap[IDC_TAB_COLOR_SWATCH] = { sx(96) + tabColorWidth + sx(4), sy(257), sx(20), sy(20), WC_STATIC, nullptr, SS_OWNERDRAW, nullptr, false, FontRole::Standard };
 }
 
 HFONT MultiReplace::font(FontRole role) const {
@@ -914,15 +917,68 @@ namespace {
         { IDC_ALL_DOCS_CHECKBOX,     FilesPanelMode::Docs  },
         { IDC_TAB_COLOR_STATIC,      FilesPanelMode::Docs  },
         { IDC_TAB_COLOR_COMBO,       FilesPanelMode::Docs  },
+        { IDC_TAB_COLOR_SWATCH,      FilesPanelMode::Docs  },
     };
 
-    // Tab color dropdown entries in DocScope's choice order
-    constexpr const wchar_t* kTabColorChoiceKeys[] = {
-        L"panel_tab_color_any", L"panel_tab_color_marked",
-        L"panel_tab_color_1", L"panel_tab_color_2", L"panel_tab_color_3",
-        L"panel_tab_color_4", L"panel_tab_color_5"
-    };
-    static_assert(static_cast<int>(std::size(kTabColorChoiceKeys)) == DocScope::CHOICE_COUNT, "one text per dropdown entry");
+    // Name of a tab color: "Color 1" to "Color 5" as each language has them, a color Notepad++ adds by the pattern
+    std::wstring tabColorName(int colorId)
+    {
+        const std::wstring number = std::to_wstring(colorId + 1);
+        const std::wstring key = L"panel_tab_color_" + number;
+        return LM.has(key) ? LM.get(key) : LM.get(L"panel_tab_color_n", { number });
+    }
+
+    // Tab color dropdown entries in DocScope's choice order: Any, Marked, then the colors of Notepad++
+    std::vector<std::wstring> tabColorChoiceTexts(int colorCount)
+    {
+        std::vector<std::wstring> texts = { LM.get(L"panel_tab_color_any"), LM.get(L"panel_tab_color_marked") };
+        for (int colorId = 0; colorId < DocScope::clampColorCount(colorCount); ++colorId)
+            texts.push_back(tabColorName(colorId));
+        return texts;
+    }
+
+    // The colors the dropdown lists: its entries after Any and Marked
+    int tabColorsInCombo(HWND hCombo)
+    {
+        const LRESULT entries = hCombo ? SendMessage(hCombo, CB_GETCOUNT, 0, 0) : 0;
+        return entries > DocScope::FIRST_COLOR_CHOICE ? static_cast<int>(entries) - DocScope::FIRST_COLOR_CHOICE : 0;
+    }
+
+    // What an entry shows as its sample: its color, every color for Marked, nothing for Any
+    std::vector<COLORREF> tabColorSample(int choice, int colorCount)
+    {
+        const int colorId = DocScope::colorFromChoice(choice, colorCount);
+        if (colorId < 0 && choice != DocScope::CHOICE_MARKED) return {};
+        std::vector<COLORREF> colors = NppStyleKit::ColorTools::nppTabColors(nppData._nppHandle);
+        if (colorId < 0) return colors;
+        if (colorId >= static_cast<int>(colors.size())) return {};
+        return { colors[static_cast<size_t>(colorId)] };
+    }
+
+    // A sample as on Notepad++'s menu: black frame, the color inside, several colors side by side.
+    // dimTo blends frame and colors into that color, CLR_INVALID leaves them as they are.
+    void drawTabColorSample(HDC hdc, RECT box, std::vector<COLORREF> colors, COLORREF dimTo)
+    {
+        colors.erase(std::remove(colors.begin(), colors.end(), CLR_INVALID), colors.end());
+        if (colors.empty() || box.right - box.left < 3 || box.bottom - box.top < 3) return;
+
+        auto dim = [dimTo](COLORREF color) {
+            if (dimTo == CLR_INVALID) return color;
+            return RGB((GetRValue(color) + GetRValue(dimTo)) / 2, (GetGValue(color) + GetGValue(dimTo)) / 2,
+                (GetBValue(color) + GetBValue(dimTo)) / 2);
+        };
+        const HBRUSH brush = static_cast<HBRUSH>(GetStockObject(DC_BRUSH));
+        SetDCBrushColor(hdc, dimTo == CLR_INVALID ? RGB(0, 0, 0) : dimTo);
+        FillRect(hdc, &box, brush);
+        InflateRect(&box, -1, -1);
+        const int width = box.right - box.left;
+        const int count = static_cast<int>(colors.size());
+        for (int i = 0; i < count; ++i) {
+            const RECT stripe = { box.left + width * i / count, box.top, box.left + width * (i + 1) / count, box.bottom };
+            SetDCBrushColor(hdc, dim(colors[static_cast<size_t>(i)]));
+            FillRect(hdc, &stripe, brush);
+        }
+    }
 }
 
 bool MultiReplace::createAndShowWindows() {
@@ -1370,6 +1426,8 @@ void MultiReplace::updateFilterControlsState()
     const bool byColor = inDocsMode && filtered && tabColorsSupported();
     EnableWindow(GetDlgItem(_hSelf, IDC_TAB_COLOR_STATIC), byColor);
     EnableWindow(GetDlgItem(_hSelf, IDC_TAB_COLOR_COMBO), byColor);
+    EnableWindow(GetDlgItem(_hSelf, IDC_TAB_COLOR_SWATCH), byColor);
+    redrawTabColorSwatch();
 }
 
 // The filter field keeps one text per mode: the outgoing mode keeps what was typed.
@@ -1391,16 +1449,21 @@ void MultiReplace::showFilesPanelMode(bool inDocsMode, bool inFilesMode)
     updateFilterControlsState();
 }
 
-// The Tab color entries in DocScope's choice order; selects the stored mask.
+// The Tab color entries in DocScope's choice order, one per color of Notepad++'s Apply Color menu;
+// selects the stored mask, which falls back to Any without an entry.
 void MultiReplace::fillTabColorCombo()
 {
     HWND hCombo = GetDlgItem(_hSelf, IDC_TAB_COLOR_COMBO);
     if (!hCombo) return;
 
+    const int colorCount = static_cast<int>(NppStyleKit::ColorTools::nppTabColors(nppData._nppHandle).size());
     SendMessage(hCombo, CB_RESETCONTENT, 0, 0);
-    for (const wchar_t* key : kTabColorChoiceKeys)
-        SendMessage(hCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(LM.getW(key)));
-    SendMessage(hCombo, CB_SETCURSEL, static_cast<WPARAM>(DocScope::choiceFromMask(_docsTabColorMask)), 0);
+    for (const std::wstring& text : tabColorChoiceTexts(colorCount))
+        SendMessage(hCombo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
+    const int choice = DocScope::choiceFromMask(_docsTabColorMask, colorCount);
+    _docsTabColorMask = DocScope::maskFromChoice(choice, colorCount);
+    SendMessage(hCombo, CB_SETCURSEL, static_cast<WPARAM>(choice), 0);
+    redrawTabColorSwatch();
 }
 
 // Tab color entry for the font's text height: swatch square, then the text
@@ -1421,8 +1484,8 @@ int MultiReplace::tabColorComboWidth()
     TEXTMETRICW tm{};
     GetTextMetricsW(hdc, &tm);
     int textWidth = 0;
-    for (const wchar_t* key : kTabColorChoiceKeys) {
-        const std::wstring text = LM.get(key);
+    const int colorCount = static_cast<int>(NppStyleKit::ColorTools::nppTabColors(nppData._nppHandle).size());
+    for (const std::wstring& text : tabColorChoiceTexts(colorCount)) {
         SIZE size{};
         GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.size()), &size);
         textWidth = std::max(textWidth, static_cast<int>(size.cx));
@@ -1447,8 +1510,8 @@ void MultiReplace::syncTabColorComboHeights()
     }
 }
 
-// The list shows Notepad++'s swatch before each color, like its Apply Color to Tab menu.
-// The closed field shows the name only: in dark mode Notepad++ paints that field itself.
+// The list shows Notepad++'s sample before each color as on its Apply Color menu, every color before Marked.
+// The closed field shows the name only: in dark mode Notepad++ paints that field itself, the swatch beside it the color.
 void MultiReplace::drawTabColorItem(const DRAWITEMSTRUCT& dis)
 {
     const int choice = static_cast<int>(dis.itemID);  // -1 while the list is empty
@@ -1485,19 +1548,10 @@ void MultiReplace::drawTabColorItem(const DRAWITEMSTRUCT& dis)
         TEXTMETRICW tm{};
         GetTextMetricsW(dis.hDC, &tm);
         const TabColorItemLayout layout = tabColorItemLayout(tm.tmHeight);
-        const int colorId = DocScope::colorFromChoice(choice);
-        if (colorId >= 0) {
-            const int left = dis.rcItem.left + layout.swatchLeft;
-            const int top = dis.rcItem.top + (dis.rcItem.bottom - dis.rcItem.top - layout.swatchSide) / 2;
-            RECT swatch = { left, top, left + layout.swatchSide, top + layout.swatchSide };
-
-            // Black frame around the color, as on the Notepad++ menu icon
-            SetDCBrushColor(dis.hDC, RGB(0, 0, 0));
-            FillRect(dis.hDC, &swatch, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
-            InflateRect(&swatch, -1, -1);
-            SetDCBrushColor(dis.hDC, NppStyleKit::ColorTools::tabColorSwatch(colorId, isDark));
-            FillRect(dis.hDC, &swatch, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
-        }
+        const int left = dis.rcItem.left + layout.swatchLeft;
+        const int top = dis.rcItem.top + (dis.rcItem.bottom - dis.rcItem.top - layout.swatchSide) / 2;
+        drawTabColorSample(dis.hDC, { left, top, left + layout.swatchSide, top + layout.swatchSide },
+            tabColorSample(choice, tabColorsInCombo(dis.hwndItem)), CLR_INVALID);
         textRect.left += layout.textLeft;
     }
 
@@ -1508,6 +1562,36 @@ void MultiReplace::drawTabColorItem(const DRAWITEMSTRUCT& dis)
     if (inField && isDark && (dis.itemState & ODS_FOCUS))
         DrawFocusRect(dis.hDC, &dis.rcItem);
     RestoreDC(dis.hDC, savedDC);
+}
+
+// The chosen tab color beside the dropdown, drawn by MR alike in light and dark mode: its sample,
+// every color for Marked, nothing for Any; dimmed while the color does not limit the run.
+void MultiReplace::drawTabColorSwatch(const DRAWITEMSTRUCT& dis, bool disabled)
+{
+    HWND hCombo = GetDlgItem(_hSelf, IDC_TAB_COLOR_COMBO);
+    const int choice = hCombo ? static_cast<int>(SendMessage(hCombo, CB_GETCURSEL, 0, 0)) : CB_ERR;
+    const int width = dis.rcItem.right - dis.rcItem.left;
+    const int height = dis.rcItem.bottom - dis.rcItem.top;
+    const int side = std::min(width, height) - 2 * sx(2);
+    const int left = dis.rcItem.left + (width - side) / 2;
+    const int top = dis.rcItem.top + (height - side) / 2;
+
+    const int savedDC = SaveDC(dis.hDC);
+    drawTabColorSample(dis.hDC, { left, top, left + side, top + side },
+        tabColorSample(choice, tabColorsInCombo(hCombo)), disabled ? _disabledColor : CLR_INVALID);
+    RestoreDC(dis.hDC, savedDC);
+}
+
+// The swatch paints no background: the panel repaints behind it first, as for the status message
+void MultiReplace::redrawTabColorSwatch()
+{
+    HWND hSwatch = GetDlgItem(_hSelf, IDC_TAB_COLOR_SWATCH);
+    if (!hSwatch) return;
+    RECT rect;
+    GetWindowRect(hSwatch, &rect);
+    MapWindowPoints(HWND_DESKTOP, _hSelf, reinterpret_cast<LPPOINT>(&rect), 2);
+    InvalidateRect(_hSelf, &rect, TRUE);
+    InvalidateRect(hSwatch, nullptr, FALSE);
 }
 
 // Notepad++ at least major.minor (NPPM_GETNPPVERSION with zero padding: 8.5.6 is 8 and 560); asked once
@@ -6568,6 +6652,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
             drawTabColorItem(*pdis);
             return TRUE;
         }
+        else if (pdis->CtlID == IDC_TAB_COLOR_SWATCH) {
+            drawTabColorSwatch(*pdis, disabled);
+            return TRUE;
+        }
         else if (pdis->CtlID == IDC_TAB_LIST_DROPDOWN) {
             // Custom-drawn dropdown affordance: a horizontal bar
             // sitting above a thick down chevron. The triangle is
@@ -6812,8 +6900,10 @@ INT_PTR CALLBACK MultiReplace::run_dlgProc(UINT message, WPARAM wParam, LPARAM l
         case IDC_TAB_COLOR_COMBO:
         {
             if (HIWORD(wParam) == CBN_SELCHANGE) {
-                const LRESULT choice = SendDlgItemMessage(_hSelf, IDC_TAB_COLOR_COMBO, CB_GETCURSEL, 0, 0);
-                _docsTabColorMask = DocScope::maskFromChoice(static_cast<int>(choice));
+                HWND hCombo = GetDlgItem(_hSelf, IDC_TAB_COLOR_COMBO);
+                const LRESULT choice = SendMessage(hCombo, CB_GETCURSEL, 0, 0);
+                _docsTabColorMask = DocScope::maskFromChoice(static_cast<int>(choice), tabColorsInCombo(hCombo));
+                redrawTabColorSwatch();
             }
             return TRUE;
         }
@@ -16407,9 +16497,8 @@ void MultiReplace::loadSettingsToPanelUI() {
     SendMessage(GetDlgItem(_hSelf, IDC_ALL_DOCS_CHECKBOX), BM_SETCHECK,
         allDocs ? BST_CHECKED : BST_UNCHECKED, 0);
 
-    // Panel-wide, not per list tab; a mask without a dropdown entry falls back to Any
-    _docsTabColorMask = DocScope::maskFromChoice(DocScope::choiceFromMask(
-        static_cast<unsigned>(CFG.readInt(L"OpenDocs", L"TabColorMask", 0))));
+    // Panel-wide, not per list tab; the dropdown maps it to its entries (-1 is Marked)
+    _docsTabColorMask = static_cast<unsigned>(CFG.readInt(L"OpenDocs", L"TabColorMask", 0));
     fillTabColorCombo();
 
     // Set filter edit field to the active mode's value
@@ -20591,7 +20680,10 @@ void MultiReplace::onCaretPositionChanged()
 // A theme change or the Style Configurator: the colors in the text follow the theme, the dots the line height
 void MultiReplace::onWordStylesUpdated()
 {
-    if (instance) instance->applyEditorColors();
+    if (!instance) return;
+    instance->applyEditorColors();
+    // Notepad++ renews its menu color samples right after this notice; the swatch reads them when it repaints
+    instance->redrawTabColorSwatch();
 }
 
 void MultiReplace::onThemeChanged()

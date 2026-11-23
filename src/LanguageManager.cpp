@@ -101,6 +101,11 @@ void LanguageManager::invalidateCaches()
 }
 
 // --- Strings --------------------------------------------------------------
+bool LanguageManager::has(const std::wstring& id) const
+{
+    return _table.find(id) != _table.end();
+}
+
 // <br/> -> CRLF, then $REPLACE_STRINGn (high->low), then $REPLACE_STRING.
 std::wstring LanguageManager::get(const std::wstring& id,
     const std::vector<std::wstring>& repl) const

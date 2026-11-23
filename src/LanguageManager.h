@@ -43,6 +43,9 @@ public:
     std::wstring get(const std::wstring& id,
         const std::vector<std::wstring>& repl = {}) const;
 
+    // The language or the English defaults have a text for id
+    bool has(const std::wstring& id) const;
+
     // Returns cached pointer (LPCWSTR) - stable for lifetime of LanguageManager
     // Use for APIs that accept const wchar_t* (e.g., MessageBox, SetWindowText)
     LPCWSTR getLPCW(const std::wstring& id,

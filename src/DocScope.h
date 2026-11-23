@@ -23,40 +23,81 @@
 // counts only if its file name passes the Filter field and its tab color is one of the chosen.
 namespace DocScope {
 
-    // Tab colors as NPPM_GETTABCOLORID reports them: 0 to 4, -1 for none
-    constexpr int COLOR_COUNT = 5;
-    constexpr unsigned ALL_COLORS = (1u << COLOR_COUNT) - 1;
+    // Tab colors as NPPM_GETTABCOLORID reports them: 0 for the first, -1 for none. How many there are,
+    // Notepad++'s Apply Color menu tells (five so far); the mask has room for 32.
+    constexpr int MAX_COLORS = 32;
 
-    // Entries of the Tab color dropdown: Any, Marked (any color), Color 1 to Color 5
+    // Marked: every color, also one Notepad++ adds later
+    constexpr unsigned ALL_COLORS = ~0u;
+
+    // Entries of the Tab color dropdown: Any, Marked (any color), then one per color
     constexpr int CHOICE_ANY = 0;
     constexpr int CHOICE_MARKED = 1;
-    constexpr int CHOICE_COUNT = CHOICE_MARKED + 1 + COLOR_COUNT;
+    constexpr int FIRST_COLOR_CHOICE = CHOICE_MARKED + 1;
 
-    // The tab color of a dropdown entry, -1 for Any and Marked
-    constexpr int colorFromChoice(int choice)
+    constexpr int clampColorCount(int colorCount)
     {
-        return (choice > CHOICE_MARKED && choice < CHOICE_COUNT) ? choice - CHOICE_MARKED - 1 : -1;
+        return colorCount < 0 ? 0 : (colorCount > MAX_COLORS ? MAX_COLORS : colorCount);
     }
 
-    // One bit per color; 0 takes every tab, uncolored ones too
-    constexpr unsigned maskFromChoice(int choice)
+    constexpr int choiceCount(int colorCount)
+    {
+        return FIRST_COLOR_CHOICE + clampColorCount(colorCount);
+    }
+
+    // The tab color of a dropdown entry, -1 for Any, Marked and entries past the colors
+    constexpr int colorFromChoice(int choice, int colorCount)
+    {
+        return (choice >= FIRST_COLOR_CHOICE && choice < choiceCount(colorCount)) ? choice - FIRST_COLOR_CHOICE : -1;
+    }
+
+    // One bit per color, every bit for Marked; 0 takes every tab, uncolored ones too
+    constexpr unsigned maskFromChoice(int choice, int colorCount)
     {
         if (choice == CHOICE_MARKED) return ALL_COLORS;
-        const int colorId = colorFromChoice(choice);
+        const int colorId = colorFromChoice(choice, colorCount);
         return colorId >= 0 ? 1u << colorId : 0;
     }
 
-    // A mask the dropdown cannot show counts as Any
-    constexpr int choiceFromMask(unsigned mask)
+    // Several colors are Marked (with five colors Marked was 31); 0 and a color past the list are Any
+    constexpr int choiceFromMask(unsigned mask, int colorCount)
     {
-        for (int choice = 0; choice < CHOICE_COUNT; ++choice)
-            if (maskFromChoice(choice) == mask) return choice;
-        return CHOICE_ANY;
+        if (mask == 0) return CHOICE_ANY;
+        if ((mask & (mask - 1)) != 0) return CHOICE_MARKED;
+        int colorId = 0;
+        while ((mask >> colorId) != 1u) ++colorId;
+        return colorId < clampColorCount(colorCount) ? FIRST_COLOR_CHOICE + colorId : CHOICE_ANY;
     }
 
     constexpr bool colorMatches(unsigned mask, int colorId)
     {
-        return mask == 0 || (colorId >= 0 && colorId < COLOR_COUNT && (mask & (1u << colorId)) != 0);
+        return mask == 0 || (colorId >= 0 && colorId < MAX_COLORS && (mask & (1u << colorId)) != 0);
+    }
+
+    // An item of the Notepad++ menu that holds "Apply Color 1"
+    struct ColorMenuItem {
+        unsigned id = 0;
+        bool other = false;    // separator or submenu
+        bool sample = false;   // carries a color sample bitmap
+    };
+
+    // Positions of the color items in the order of the tab color ids: from "Apply Color 1" on, every item
+    // with a sample or one of the ids first to last, past "Remove Color", up to the first other item.
+    // A color Notepad++ adds comes with a sample, so it joins the list whatever its id.
+    inline std::vector<size_t> colorMenuPositions(const std::vector<ColorMenuItem>& items,
+        unsigned first, unsigned last, unsigned none)
+    {
+        std::vector<size_t> positions;
+        size_t pos = 0;
+        while (pos < items.size() && items[pos].id != first) ++pos;
+        for (; pos < items.size() && positions.size() < static_cast<size_t>(MAX_COLORS); ++pos) {
+            const ColorMenuItem& item = items[pos];
+            if (item.other) break;
+            if (item.id == none) continue;
+            if (!item.sample && (item.id < first || item.id > last)) break;
+            positions.push_back(pos);
+        }
+        return positions;
     }
 
     // NPPM_GETNPPVERSION with zero padding (8.6.8 is 8 and 680); NPPM_GETTABCOLORID came with 8.6.8

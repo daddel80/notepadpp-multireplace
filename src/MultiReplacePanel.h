@@ -1312,6 +1312,8 @@ private:
     int tabColorComboWidth();
     void syncTabColorComboHeights();
     void drawTabColorItem(const DRAWITEMSTRUCT& dis);
+    void drawTabColorSwatch(const DRAWITEMSTRUCT& dis, bool disabled);
+    void redrawTabColorSwatch();
     bool isFilesPanelNeeded() const;
     bool matchesDocFilter(const std::wstring& fileName, const std::wstring& filter) const;
     DocScope::Plan planOpenDocsRun() const;
