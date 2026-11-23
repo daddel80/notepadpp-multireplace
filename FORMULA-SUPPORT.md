@@ -243,7 +243,7 @@ Once `lkp()` loads the data file for **hpath**, the parsed table is cached in me
 #### fmtN(num, maxDecimals, fixedDecimals)
 Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).
 
-**Note**: The `fmtN()` command can exclusively be used within the `set()` and `cond()` commands.
+**Note**: `fmtN()` only returns the formatted number as text; to use it as the replacement, pass it to `set()` or `cond()`, alone or within a longer string such as `set("Total: " .. fmtN(sum, 2, true))`.
 
 | Example                             | Result  |
 |-------------------------------------|---------|
@@ -818,7 +818,7 @@ Examples:
 
 ### Control Flow
 
-ExprTk has expression-level control flow. Everything returns a value — there are no statements in the Lua sense.
+ExprTk has expression-level control flow. Everything returns a value; statements separated by `;` return the value of the last one.
 
 | Form                                    | Meaning                                          |
 |-----------------------------------------|--------------------------------------------------|
@@ -826,11 +826,22 @@ ExprTk has expression-level control flow. Everything returns a value — there a
 | `cond ? a : b`                          | Ternary operator. Same as the if-else above.     |
 | `if (cond) { a; b; c }`                 | Block form, value is the last statement.         |
 | `switch { case c1: v1; case c2: v2; default: v3 }` | Multi-way branch.                     |
+| `for (var i := 1; i <= n; i += 1) { ... }` | For loop.                                     |
+| `while (cond) { ... }`                  | While loop.                                      |
+| `repeat ... until (cond)`               | Repeat loop, runs at least once.                 |
+
+Loops stop after 10 million iterations per match, with a message, so a loop that never ends cannot freeze Notepad++.
 
 Example — cap a captured value at 100:
 
 ```
 (?=num(1) > 100 ? 100 : num(1))
+```
+
+Example — sum of 1 to the captured number (`5` becomes `15`):
+
+```
+(?=var s := 0; for (var i := 1; i <= num(1); i += 1) { s += i; }; s)
 ```
 
 <br>
@@ -1116,7 +1127,7 @@ Bodies can call the other library functions and every built-in that does not dep
 | Block | `{ s1; s2; ... }` | Statement separator is `;`. Trailing `;` before `}` is fine. |
 | If / else | `if (cond) { ... } else { ... };` | Trailing `;` after the closing `}` is required when the if-form is a statement. |
 | Else-if chain | `if (c1) { ... } else if (c2) { ... } else { ... };` | Standard. |
-| While loop | `while (cond) { body; };` | Same trailing `;`. Loops stop after 10 million iterations per match, with a message. |
+| Loops | `while (cond) { body; };`<br>`for (var i := 0; i < n; i += 1) { body; };` | Same trailing `;`. Loops stop after 10 million iterations per match, with a message. |
 | Return scalar | `return expr;` | Body returns a number. |
 | Return string | `return expr;` | Body must declare `: S` and the expression must produce a string. |
 
@@ -1172,30 +1183,8 @@ function padleft(s: S, n, fill: S) : S
     return r;
 end
 
-function num_to_str(n) : S
-    /* tiny n -> "n" helper, since ExprTk strings can't take numbers directly */
-    if (n == 0) { return '0'; };
-    var s := '';
-    var v := n;
-    while (v > 0) {
-        var d := v % 10;
-        if      (d == 0) { s := '0' + s; }
-        else if (d == 1) { s := '1' + s; }
-        else if (d == 2) { s := '2' + s; }
-        else if (d == 3) { s := '3' + s; }
-        else if (d == 4) { s := '4' + s; }
-        else if (d == 5) { s := '5' + s; }
-        else if (d == 6) { s := '6' + s; }
-        else if (d == 7) { s := '7' + s; }
-        else if (d == 8) { s := '8' + s; }
-        else             { s := '9' + s; };
-        v := (v - d) / 10;
-    };
-    return s;
-end
-
 function id_tag(n, width) : S
-    return '[ID-' + padleft(num_to_str(n), width, '0') + ']';
+    return '[ID-' + padleft(totxt(n), width, '0') + ']';
 end
 ```
 

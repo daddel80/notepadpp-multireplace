@@ -3,16 +3,19 @@
 [![Latest Stable Version](https://img.shields.io/badge/version-6.2.0.38-blue)](https://github.com/daddel80/notepadpp-multireplace/releases/tag/6.2.0.38)
 [![Total Downloads](https://img.shields.io/github/downloads/daddel80/notepadpp-multireplace/total?logo=github)](https://github.com/daddel80/notepadpp-multireplace/releases)
 
-MultiReplace is a Notepad++ plugin designed for complex and repeatable text transformations. Its foundation is the management of search/replace operations in reusable lists, suitable for use across sessions and projects.
+MultiReplace is a Notepad++ plugin for complex and repeatable text transformations. You collect search-and-replace pairs in lists, run them in one go, and keep the lists for later sessions and other projects.
 
-For data-heavy tasks, the plugin provides dedicated tools. These include specific operations on CSV columns (e.g., sort, delete) and the use of external files as lookup tables.
+For data-heavy tasks, it adds tools for CSV columns (align, sort, delete, copy, find duplicates) and uses external files as lookup tables.
 
-At its core, an optional **Formula Support** mode lets any replacement be enhanced with conditional (if/then) and mathematical logic, providing the flexibility needed for specific and complex requirements.
+The optional **Formula Support** mode extends any replacement with conditions (if/then) and math, for cases a fixed replacement text cannot cover.
 
 ![MultiReplace Screenshot](./MultiReplace.gif)
 
 ## Table of Contents
 - [Key Features](#key-features)
+- [Getting Started](#getting-started)
+  - [Installation](#installation)
+  - [First Steps](#first-steps)
 - [Search Configuration](#search-configuration)
   - [Search Mode](#search-mode)
   - [Match Options](#match-options)
@@ -22,6 +25,7 @@ At its core, an optional **Formula Support** mode lets any replacement be enhanc
   - [CSV Scope and Column Operations](#csv-scope-and-column-operations)
   - [Execution Targets](#execution-targets)
 - [Search Results Window](#search-results-window)
+- [Mark Replacements](#mark-replacements)
 - [Engine Overview](#engine-overview)
   - [Lua](#lua)
   - [ExprTk](#exprtk)
@@ -48,14 +52,31 @@ At its core, an optional **Formula Support** mode lets any replacement be enhanc
 
 ## Key Features
 
-- **Batch Replacement Lists** — Run any number of search-and-replace pairs in one run, either in the current document, across filtered open documents, or in entire directory trees.
-- **CSV Column Toolkit** — Search, replace, sort, or delete specific columns; with numeric-aware sorting and header exclusion across all operations.
-- **Reusable Replacement Lists** — Save, load, and drag-and-drop lists with all options intact — perfect for recurring workflows.
+- **Batch Replacement Lists** — Run any number of search-and-replace pairs in one run: in the current document, across open documents filtered by name or tab color, or in entire directory trees.
+- **Mark Replacements** — Every replacement stays marked; hover shows the original text, jump between replacements, and revert single ones or all within a selected passage.
+- **CSV Column Toolkit** — Align columns with Flow Tabs, then search, replace, sort, or delete specific columns; numeric-aware sorting that can restore the original order, with header rows kept out of sorting and duplicate detection.
+- **List Tabs** — Keep several replacement lists open in tabs; save, load, and drag-and-drop them with all options intact — perfect for recurring workflows.
+- **Formula Support** — Calculate or transform matches with variables, conditions, and math.
 - **External Lookup Tables** — Swap matches with values from external hash/lookup files — ideal for large or frequently updated mapping tables.
-- **Smart Replacements** — Turn on **Formula Support** to calculate or change matches with variables and conditions, powered by ExprTk or Lua.
-- **Precision Scopes & Selections** — Rectangle and multi-selection support, column scopes, and "replace at specific match" for pinpoint operations.
+- **Precision Scopes & Selections** — Rectangle and multi-selection support, column scopes, and **Replace matches** to replace only chosen occurrences (e.g. `1,3,5-7`).
 - **Multi-Color Highlighting** — Highlight search hits in up to 22 distinct colors for rapid visual confirmation.
 - **Search Results Window** — A dockable panel lists every hit; double-click a result to jump straight to it, with folding and color-coding.
+
+<br>
+
+## Getting Started
+
+### Installation
+- **Plugins Admin** — In Notepad++, open **Plugins > Plugins Admin...**, search for *MultiReplace*, tick it and click **Install**.
+- **Manual** — Download the zip that matches your Notepad++ (x64 for 64-bit, Win32 for 32-bit, or ARM64) from [Releases](https://github.com/daddel80/notepadpp-multireplace/releases) and extract it into a folder named `MultiReplace` inside the `plugins` folder of Notepad++, e.g. `C:\Program Files\Notepad++\plugins\MultiReplace\`. Then restart Notepad++. New versions reach the Releases page first and Plugins Admin a little later.
+
+### First Steps
+1. Open the panel via **Plugins > MultiReplace > MultiReplace...**.
+2. Enter a search text in **Find what** and its replacement in **Replace with**, then click **Add into List**. The entry takes over the options set in the panel, such as **Match case** or the search mode. Repeat for every pair.
+3. Check the hits with **Find All** or **Mark Matches**, then click **Replace All**: every enabled entry is applied, from top to bottom. **Ctrl+Z** in the editor undoes the whole run in one step.
+4. Click **Save List** to keep the list; **Load List** brings it back later.
+
+The [samples](samples) folder holds example lists with matching texts to try out.
 
 <br>
 
@@ -71,9 +92,9 @@ The search mode determines how the text in the **Find what** field is interprete
 
   | Sequence | Description            | Example                                                             |
   |----------|------------------------|---------------------------------------------------------------------|
-  | `\n`     | Line Feed (LF)         | Replaces all `\n` with a space to join lines.                       |
-  | `\r`     | Carriage Return (CR)   | Useful for cleaning up Windows-style line endings (`\r\n`).         |
-  | `\t`     | Tab character          | Replaces four spaces with `\t`.                                     |
+  | `\n`     | Line Feed (LF)         | Replace `\n` with a space to join lines.                            |
+  | `\r`     | Carriage Return (CR)   | Replace `\r\n` with `\n` to convert Windows line endings.           |
+  | `\t`     | Tab character          | Replace four spaces with `\t`.                                      |
   | `\0`     | NULL character         | Finds or inserts the NULL character.                                |
   | `\\`     | Literal Backslash      | To search for a single `\`, you must enter `\\`.                    |
   | `\xHH`   | Hexadecimal value      | `\x41` finds or inserts the character **A**.                        |
@@ -82,7 +103,7 @@ The search mode determines how the text in the **Find what** field is interprete
   | `\bNNNNNNNN` | Binary value       | `\b01000001` finds or inserts **A**.                                |
   | `\uXXXX` | Unicode character      | `\u20AC` finds or inserts **€**.                                    |
 
-- **Regular expression** — Enables powerful pattern matching using the regex engine integrated into the Notepad++ editor component. It supports common syntax for character classes (`[a-z]`), quantifiers (`*`, `+`, `?`), and capture groups (`(...)`). For a detailed reference, see the official [Notepad++ Regular Expressions documentation](https://npp-user-manual.org/docs/searching/#regular-expressions).
+- **Regular expression** — Pattern matching with the regular expression engine built into Notepad++. It supports character classes (`[a-z]`), quantifiers (`*`, `+`, `?`), capture groups (`(...)`) and more. For a detailed reference, see the official [Notepad++ Regular Expressions documentation](https://npp-user-manual.org/docs/searching/#regular-expressions).
 
 ### Match Options
 These options refine the search behavior across all modes.
@@ -91,8 +112,8 @@ These options refine the search behavior across all modes.
 - **Match case** — Makes the search case-sensitive, treating `Hello` and `hello` as distinct terms.
 - **Formula Support** — Allows the use of variables within the replacement string for dynamic and conditional replacements. See the [chapter 'Formula Support'](#option-formula-support) for details.
 - **Wrap around** — If active, the search continues from the beginning of the document after reaching the end.
-- **Replace matches** — Applies to all **Replace All** actions (current document, open documents, and in files). Allows you to specify exactly which occurrences of a match to replace. Accepts single numbers, commas, or ranges (e.g., `1,3,5-7`).
-- **Bookmark matched lines** — A small checkbox to the left of the **Mark Matches** button. When ticked, every match line additionally receives a Notepad++ bookmark, so the matches can be navigated with F2 / Shift+F2.
+- **Replace matches** — Replaces only the listed occurrences of a match, e.g. `1,3,5-7` for the 1st, 3rd and 5th to 7th. Applies to all **Replace All** actions (current document, open documents, and in files).
+- **Bookmark matched lines** — A small checkbox to the left of the **Mark Matches** button. When ticked, every line with a match also gets a Notepad++ bookmark, so you can step through them with F2 / Shift+F2.
 
 ### Filling the Find Field from Selection
 Highlight text in the editor, then bring it into the **Find what** field in one step:
@@ -112,17 +133,17 @@ Search scopes define the area within a document for search and replace operation
 - **Selection** — Operations are restricted to the selected text. Supports standard, rectangular (columnar), and multi-selections.
 
 ### CSV Scope and Column Operations
-Selecting the **CSV** scope enables powerful tools for working with delimited data.
+The **CSV** scope limits search and replace to chosen columns and adds tools for delimited data such as CSV or tab-separated files.
 
 **Scope Definition:**
 - **Cols** — Specify the target columns for the operation (e.g., `1,3,5-7`). For sorting, the sequence is crucial as it defines the priority (e.g., `3,1` sorts by column 3, then 1). Descending ranges like `5-3` are also supported.
-- **Delim** — Define the delimiter character.
+- **Delim** — The delimiter: a single character or a combination of characters, `\t` for Tab.
 - **Quote** — Specify a quote character (`"` or `'`) to ignore delimiters within quoted text.
 
 **Available Column Operations:**
-- **Sorting Lines by Columns** — Sort lines based on one or more columns in ascending or descending order. The sorting algorithm correctly handles mixed numeric and text values, including currency formats like `$100`, `100 EUR`, or `.5`.
-  - **Smart Undo (Toggle Sort)** — A second click on the same sort button reverts the lines to their original order. This powerful undo works even if rows have been modified, added, or deleted after the initial sort.
-- **Exclude Header Rows** — Header rows are protected from sort and duplicate detection (find/replace always searches every line, like Excel). Configure the number of header rows in [Settings > CSV Options](#4-csv-options). Set to `0` to disable.
+- **Sorting Lines by Columns** — The **Sort Ascending** / **Sort Descending** buttons (up and down arrow) sort the lines by the columns in **Cols**. Mixed numeric and text values are sorted correctly, including currency formats like `$100`, `100 EUR`, or `.5`.
+  - **Restore Original Order** — A second click on the same sort button puts the lines back in their order from before sorting. This also works after lines were edited, added, or deleted in between; added lines go to the end. If a **Replace All** adds or removes lines in between, the original order is discarded and the status line says so.
+- **Exclude Header Rows** — Header rows are protected from sorting and duplicate detection; find and replace still cover every line. Configure the number of header rows in [Settings > CSV Options](#4-csv-options). Set to `0` to disable.
 - **Deleting Multiple Columns** — Remove specified columns at once, automatically cleaning up obsolete delimiters.
 - **Clipboard Column Copying** — Copy the content of specified columns, including their delimiters, to the clipboard.
 - **Flow Tabs (Column Alignment)** — Visually aligns columns in tab-delimited and CSV files for easier reading and editing.
@@ -133,6 +154,7 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
   - Undo and Redo step through switching alignment on and off like through any other edit; the document keeps its saved state.
   - MultiReplace functions that change text (Replace, Replace All, sorting, deleting columns or duplicates) remove the alignment first and align again afterwards.
   - Notepad++'s change history marks of the document are cleared when the alignment is switched on or off.
+  - Read-only documents, and documents whose tab stops another plugin already sets (for example Columns++ with elastic tabstops), are not aligned; the status line says why.
 - **Duplicate Line Detection** — Identifies and marks duplicate rows based on specified columns.
   - The first occurrence of each group is kept; only subsequent duplicates are marked.
   - After detection, a dialog offers the option to delete duplicates or keep them for inspection.
@@ -140,19 +162,19 @@ Selecting the **CSV** scope enables powerful tools for working with delimited da
   - Optionally set bookmarks on duplicates for navigation — enable in [Settings > CSV Options](#4-csv-options).
 
 ### Execution Targets
-Execution targets define **which files** an operation is applied to. They are accessible via the **Replace All** and **Find All** split-button menus.
+Execution targets define **which files** an operation is applied to. You choose them in the menus of the **Replace All** and **Find All** split buttons (the small arrow on each button).
 
 - **Replace All** / **Find All** — Executes the operation in the **current document only**.
 - **Replace All in Open Documents** / **Find All in Open Documents** — Executes the operation across **open documents** in Notepad++. When selected, a filter panel appears for configuration.
   - **All documents** — When checked, all open documents are processed. When unchecked, only documents matching the filter pattern and the tab color are included; if none matches, the run does not start.
   - **Filter:** Semicolon-separated list of filename patterns to include or exclude (e.g., `*.cpp; *.h; !test_*`). Supports filenames with spaces.
-  - **Tab color:** Limits the run to tabs colored in Notepad++ (right-click a tab, *Apply Color to Tab*): **Any** ignores the color, **Marked (any color)** takes every colored tab, **Color 1** to **Color 5** a single color. Requires Notepad++ 8.6.8 or later.
+  - **Tab color:** Limits the run to tabs colored in Notepad++ (right-click a tab, *Apply Color to Tab*): **Any** ignores the color, **Marked (any color)** takes every colored tab, **Color 1**, **Color 2**, … a single color. The list offers the colors of the *Apply Color to Tab* menu of Notepad++ and shows the chosen color beside it. Requires Notepad++ 8.6.8 or later.
 - **Replace All in Files** / **Find All in Files** — Extends the operation scope to entire directory structures. When selected, a dedicated panel appears for configuration.
   - **Directory:** The starting folder for the file search.
   - **Filter:** Semicolon-separated list of patterns to include or exclude files and folders (e.g., `*.cpp; *.h; !*.bak`).
   - **In all sub-folders:** Recursively include all subdirectories.
   - **In hidden folders:** Also enter hidden folders. Hidden files inside scanned folders are always included.
-- **Debug Mode** — Shows the formula variables in a window before each replacement. **Next** applies it and moves on, **Run to End** finishes without the window, **Stop** ends the run. Replacements already made stay (in the editor, Ctrl+Z undoes them). See [Debug Mode](FORMULA-SUPPORT.md#debug-mode) for details.
+- **Debug Mode** *(Replace All menu)* — Shows the formula variables in a window before each replacement. **Next** applies it and moves on, **Run to End** finishes without the window, **Stop** ends the run. Replacements already made stay (in the editor, Ctrl+Z undoes them). See [Debug Mode](FORMULA-SUPPORT.md#debug-mode) for details.
 
 **Filter Syntax**
 
@@ -162,8 +184,10 @@ Patterns are separated by semicolons (`;`). Spaces around semicolons are ignored
 |----------|----------------------|------------------------------------------------------------------------|
 | *(none)* | `*.cpp; *.h`         | Includes files matching the pattern.                                   |
 | `!`      | `!*.bak`             | Excludes files matching the pattern.                                   |
-| `!\`     | `!\obj\`             | Excludes the specified folder *non-recursive* (Files mode only).       |
-| `!+\`    | `!+\logs\`           | Excludes the specified folder **and** all its subfolders *recursive* (Files mode only). |
+| `!\`     | `!\obj`              | Skips the files directly inside folders named `obj`; their subfolders are still searched (Files mode only). |
+| `!+\`    | `!+\logs`            | Skips folders named `logs` with everything inside them (Files mode only). |
+
+Folder patterns match folder names at any depth and accept wildcards, e.g. `!+\log*`.
 
 **Operation Control**
 
@@ -179,14 +203,13 @@ The **Search Results Window** is a dedicated dockable panel that displays all ma
 
 ### Features
 
-- **Hierarchical Display** — Results are organized in a collapsible tree structure: Search Header → File → Criterion → Individual Hits. Each level can be expanded or collapsed for easy navigation.
+- **Hierarchical Display** — Results are organized in a collapsible tree: search → file → list entry → hits. The list entry level appears when **Find All: Group hits by list entry** is on (see [Settings > List View and Layout](#3-list-view-and-layout)). Each level can be expanded or collapsed.
 - **Color-Coded Matches** — When using the replacement list, each search term is highlighted in its own distinct color (up to 22 colors). This visual distinction makes it easy to identify which list entry produced each match.
 - **Double-Click Navigation** — Double-click any result line to open the file and jump to the exact match position.
 - **Navigate via Matches Column** — After a Find All, double-click the **Matches** count of any list entry to jump to its next match in the editor. Navigation starts from the current cursor position in the Search Results Window and wraps to the first match at the end.
 - **Context Menu** — Right-click for **Fold all** / **Unfold all**, **Collapse to file list**, **Copy Selected Line(s)**, **Copy Selected Pathname(s)**, **Open Selected Pathname(s)**, **Clear all**, **Word wrap long lines** and **Purge for every search**.
 - **Collapse to file list** — Folds every search block down to its file names and hit counts, giving a quick overview of which files matched without the individual hit lines. Previously collapsed blocks are left untouched.
 - **Persistent Results** — By default, each new search adds its results at the top and keeps the earlier ones, allowing you to accumulate findings. Enable "Purge for every search" in the context menu to clear previous results automatically. To drop a single search, select its header line and press **Del**; the key removes whichever entries are selected, from one hit line to a whole search block.
-- **Word Wrap** — Toggle word wrap via the context menu for long lines.
 
 ### Keyboard Shortcuts
 
@@ -221,6 +244,19 @@ Clicking a fold arrow in the left margin supports the modifiers of the Notepad++
 Ctrl + Click on a search header therefore collapses the whole block; reopening it with a plain click then shows just the file list — the same result the **Collapse to file list** context menu entry produces in one step.
 
 The color-coding of search results can be configured in [Settings > List View and Layout](#3-list-view-and-layout) via the **Use list colors in search results** option.
+
+<br>
+
+## Mark Replacements
+
+Turn on **Plugins > MultiReplace > Mark Replacements** to see in the text what each replacement changed:
+
+- **Marks** — Every replacement in open documents is underlined with a dotted line; deleted text leaves a small triangle. Rest the mouse on a mark to see the text it replaced and the list entry that replaced it. Undo and redo keep the marks; **Clear all marks** removes them.
+- **Navigate** — **Next Replacement** / **Previous Replacement** select the next or previous mark; a tooltip shows what it replaced, with arrows to move on.
+- **Revert** — **Revert Replacement** puts back the replaced text of the mark at the cursor, or of all marks in the selection.
+- **Go to List Entry** — Selects the list entry that made the mark at the cursor (or the first mark in the selection), in its list tab.
+
+Right-click a mark to reach these commands in the editor's context menu. They are also in the **Plugins > MultiReplace** menu and can be given keyboard shortcuts in Notepad++ via **Settings > Shortcut Mapper > Plugin Commands**.
 
 <br>
 
@@ -276,11 +312,12 @@ The complete reference for both engines lives in **[FORMULA-SUPPORT.md](FORMULA-
 <br>
 
 ## User Interaction and List Management
-Manage search and replace strings within the list using the context menu, which provides comprehensive functionalities accessible by right-clicking on an entry, using direct keyboard shortcuts, or mouse interactions.
+The list is managed through its context menu (right-click an entry), keyboard shortcuts and the mouse.
 
 ### Entry Interaction and Limits
-- **Manage Entries** — Manage search and replace strings in a list, and enable or disable entries for replacement, highlighting, or searching within the list.
-- **Highlighting** — Highlight multiple find words in unique colors for better visual distinction, with up to 22 distinct colors available.
+- **Add Entries** — **Add into List** adds the content of **Find what** and **Replace with** as a new entry, together with the options set in the panel (Match case, search mode, …). The list order is the processing order.
+- **Enable and Disable** — Only enabled entries take part in replacing, searching and highlighting. Switch them in the ■ / ☐ column, with **Space**, or with **Enable** / **Disable** in the context menu.
+- **Highlighting** — **Mark Matches** highlights the hits of each entry in its own color, with up to 22 distinct colors.
 - **Character Limit** — Find and replace texts have no fixed length limit. Very long texts may slow down processing.
 
 ### Context Menu and Keyboard Shortcuts
@@ -293,11 +330,11 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | Transfer to Input Fields | Alt+Up        | Transfers the selected entry to the input fields for editing. |
 | Update from Input Fields | Alt+Down      | Updates the selected entries with the current content of the input fields. |
 | Search in List           | Ctrl+F        | Initiates a search within the list entries. Inputs are entered in the "Find what" and "Replace with" fields. |
-| Cut                      | Ctrl+X        | Cuts the selected entry to the clipboard.                   |
-| Copy                     | Ctrl+C        | Copies the selected entry to the clipboard.                 |
+| Cut                      | Ctrl+X        | Cuts the selected entries to the clipboard.                 |
+| Copy                     | Ctrl+C        | Copies the selected entries to the clipboard.               |
 | Paste                    | Ctrl+V        | Pastes content from the clipboard into the list.            |
 | Edit Field               |               | Opens the selected list entry for direct editing.           |
-| Delete                   | Del           | Removes the selected entry from the list.                   |
+| Delete                   | Del           | Removes the selected entries from the list.                 |
 | Add New Row              | Ctrl+I        | Inserts an empty row below the selection. The new row takes over the search options currently set in the dialog. |
 | Select All               | Ctrl+A        | Selects all entries in the list.                            |
 | Copy Report              |               | Copies a report of the whole list to the clipboard for spreadsheets (see [Settings > Copy Report](#5-copy-report)). |
@@ -323,9 +360,10 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 | List/input mode bypass     | Ctrl+Shift + Button Click | Momentarily flips the list-vs-input mode for the clicked action. With an active list, the action uses the input fields (list dims); with a dimmed list (when **Keep list always visible** is enabled), the action uses the list. Release the keys to return. |
 
 ### List Columns
+- **■ / ☐** — Shows whether an entry is enabled (■) or disabled (☐). Click it to switch the selected entries; click the column header to switch all entries.
 - **Find** — The text or pattern to search for.
 - **Replace** — The text or pattern to replace with.
-- **Options Columns:**
+- **Options Columns** — Double-click a cell to switch the option for that entry:
   - **W** — Match whole word only.
   - **C** — Match case.
   - **F** — Formula Support.
@@ -333,7 +371,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
   - **R** — Regular expression mode.
 - **Additional Columns:**
   - **Matches** — Shows the hit count for each entry. Double-click to navigate through matches (see [Search Results Window](#search-results-window)).
-  - **Replaced** — Shows the number of replacements made for each 'Replace with' string.
+  - **Replaced** — Shows how many replacements each entry made.
   - **Comments** — Add custom comments to entries for annotations or additional context.
   - **Modified** — Shows a persistent timestamp (YYYY-MM-DD HH:MM:SS) recording when each entry was last changed. Updated automatically on content changes, saved in list files.
   - **Delete** — Contains a delete button for each entry, allowing quick removal from the list.
@@ -343,7 +381,7 @@ Right-click on any entry in the list or use the corresponding keyboard shortcuts
 You can manage the visibility of the additional columns via the **Header Column Menu** by right-clicking on the header row. Columns can also be **reordered by dragging** their headers. Use **Reset Column Order** from the header right-click menu to restore the default layout.
 
 ### List Toggling
-The **"Use List"** button toggles between processing the entire list or just the single "Find what" / "Replace with" fields. You can also press **Ctrl+L** from anywhere in the panel to toggle the list.
+The **"Use List"** button (˄ / ˅, or ☰ / ─ with **Keep list always visible**) switches between processing the whole list and just the **Find what** / **Replace with** fields. You can also press **Ctrl+L** from anywhere in the panel to toggle the list.
 
 - **Classic behavior (default)** — Toggling the list off collapses it to save screen space.
 - **Keep list always visible** — When this option is enabled, the list stays visible even while it is inactive. Instead of collapsing, inactive entries are visually dimmed so the list remains usable as a reference while you work with the single input fields. Toggle it straight from the panel by **right-clicking the "Use List" button**, or in [Settings > List View and Layout](#3-list-view-and-layout).
@@ -354,7 +392,8 @@ By default, **Replace All** applies each list entry to the whole text in sequenc
 
 - **Example** — With the entries `cat` → `dog` and `dog` → `cat`, the text `cat dog` becomes `cat cat` in sequential mode, but `dog cat` in one pass. Swaps like this are only possible in one-pass mode.
 - **Per tab** — The option is stored per list tab, is saved in the list file, and survives restarts and tab duplication. New tabs start with it off.
-- **Notes** — A short intro explains the mode on first activation. **Replace matches** numbers hits per entry as they occur during the pass. Empty matches (`^`, `$`, `\b`, lookarounds) are replaced once per position, as **Replace All** does for a single entry. Each entry remembers its next hit, so a step only searches what the last replacement could have changed, which keeps large lists fast when some entries have no hits in the file; lookbehind, `\K` and `\G` entries are searched at every step. Every hit is confirmed by an independent search with the entry's own settings before anything is written.
+- **Notes** — A short intro explains the mode on first activation. **Replace matches** counts the hits of each entry in the order they occur during the pass. Empty matches (`^`, `$`, `\b`, lookarounds) are replaced once per position, as **Replace All** does for a single entry.
+- **Speed and accuracy** — Each entry remembers its next hit, so a step only searches what the last replacement could have changed; this keeps large lists fast when some entries have no hits in the file. Entries with lookbehind, `\K` or `\G` are searched at every step. Every hit is confirmed by a separate search with the entry's own settings before anything is written.
 
 ### Column Locking
 
@@ -368,7 +407,7 @@ You can lock specific column widths to prevent them from resizing automatically 
 - **Save List / Load List** — Store and reload your search/replace entries. The Save dialog offers two formats: **MultiReplace Lists (*.mrl)**, the full-fidelity internal format with the settings preamble, and **CSV (Excel) (*.csv)**, plain CSV for spreadsheets and other tools. List files from earlier versions saved as `.csv` must be renamed to `.mrl` before loading; MultiReplace shows a hint when it detects one.
 - **Copy & Paste** — Entries move in and out as text via the list's context menu or Ctrl+C/Ctrl+V. The clipboard uses the escaped dialect and accepts the same column-named input described under **Format**, so lists can also be generated externally and pasted straight in.
 - **Drag & Drop** — You can load lists by dragging `.mrl` or `.csv` files onto the plugin window.
-- **Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (Close, Close Multiple Tabs, Save, Save As, Save a Copy, Duplicate, Rename, Reload, Open File Location, Apply Column Layout to All Tabs, Replace All in One Pass). Dropping a list file on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
+- **List Tabs** — Keep multiple lists open side by side. Click **+** to add a tab, double-click to rename, drag to reorder, right-click for options (Close, Close Multiple Tabs, Save, Save As, Save a Copy, Duplicate, Rename, Reload, Open File Location, Apply Column Layout to All Tabs, Replace All in One Pass). Dropping a list file on the tab bar opens it in its own tab. Tabs and their contents persist across sessions.
 - **Format** — Plain-text, line-based. The list body is a CSV-style table of entries; an `.mrl` file additionally starts with a `[MultiReplace-Settings]...[End]` preamble storing per-list options (search mode, match whole word, match case, formula support and engine, wrap around, replace matches, one-pass mode, scope, CSV column/delimiter/quote settings). MultiReplace supports two body dialects:
   - **Escaped (internal)** — used by `.mrl` files and by the clipboard. Fields are quoted and special characters are escaped: `\` → `\\`, newline → `\n`, carriage return → `\r`, `"` → `""`. This keeps every entry on one physical line even when a field contains a real newline (e.g. a multi-line regex). It is the default format.
   - **Plain / "CSV (Excel)"** — standard RFC 4180 CSV. No backslash escaping (a `\` stays literal), fields are quoted only when they contain the delimiter, a quote, or a newline, embedded quotes are doubled (`""`), and real newlines are allowed inside quoted fields. This is what spreadsheets read and write, so you can build or edit lists in Excel (or any tool) and load them straight back. The field delimiter defaults to the Windows list separator (comma in most locales, semicolon in others such as German) and can be overridden with `[List] PlainCsvDelimiter` (`,` or `;`) in the INI; on load the delimiter is auto-detected from the header.
@@ -385,10 +424,10 @@ The plugin registers a few entries under **Plugins → MultiReplace** in the Not
 - **Documentation** — Opens this README in the browser.
 - **Focus Search Results** — Shows the Search Results Window and sets the keyboard focus to it.
 - **Next Search Result** / **Previous Search Result** — Jump to the next or previous match in the editor and highlight it in the results (see [Search Results Window](#search-results-window)).
-- **Mark Replacements** *(toggle)* — Underlines each replacement in open documents with a dotted line, deleted text leaves a small triangle; rest the mouse on a mark to see the text it replaced and the list entry that replaced it. Undo and redo keep the marks. **Clear all marks** removes them.
-- **Next Replacement** / **Previous Replacement** — Select the next or previous marked replacement; a tooltip shows what it replaced, with arrows to move on.
+- **Mark Replacements** *(toggle)* — Marks every replacement in the text (see [Mark Replacements](#mark-replacements)).
+- **Next Replacement** / **Previous Replacement** — Select the next or previous marked replacement.
 - **Revert Replacement** — Puts back the replaced text of the mark at the cursor, or of all marks in the selection.
-- **Go to List Entry** — Selects the list entry that made the mark at the cursor (or the first mark in the selection), in its list tab. Right-click a mark to reach these commands in the editor's context menu.
+- **Go to List Entry** — Selects the list entry that made the mark at the cursor.
 - **Tandem Mode** *(toggle)* — Attaches the MultiReplace window to the *outside* of a Notepad++ window edge and keeps it there on every move or resize. The last used edge is remembered, and the enabled state survives Notepad++ restarts.
 - **Reopen on Startup** *(toggle)* — When enabled, MultiReplace automatically reopens on the next Notepad++ launch if it was open at the previous shutdown. Opt-in by design, so the plugin only appears when you want it to.
 - **About** — Shows version and credits.
@@ -415,7 +454,7 @@ Settings for **Find/Replace in Files**.
 
 - **Skip files larger than** — Defines a maximum size (in MB). Skips larger files to ensure responsiveness and prevent high memory usage. Text files over 2 GB, and in the 32-bit build any file over 2 GB, are always skipped as too large.
 - **Skip binary files** — Enabled by default: files containing NUL bytes in their first 8 KB (and no text signature) are skipped, the same approach ripgrep and VS Code use. Disable it to search every file as raw bytes, matching the behavior of the native Notepad++ *Find in Files*. Either way the outcome is reported, and skipped files never count as searched: *Find in Files* appends `[1731 file(s) searched, 41 skipped: 38 binary, 2 too large, 1 unreadable]` to the result header, and *Replace in Files* states it in the status line as `Replace in files: 3 of 1731 file(s) modified. 41 file(s) skipped: 38 binary, 2 too large, 1 unreadable.` so counts are always accountable.
-- **Use open documents instead of files on disk** — Enabled by default: a file that is open in Notepad++ is handled as the document in the editor, including unsaved changes. *Find in Files* searches that document, and *Replace in Files* changes it there, exactly like *Replace All* on that document: a document without unsaved changes is saved afterwards (no reload prompt), a document with unsaved changes is left unsaved for you to save, so nothing is ever saved behind your back; the status line reports how many changed documents were left unsaved. Disable it to work on the disk content only; *Replace in Files* then skips open documents with unsaved changes and reports them, since writing under them would fork the file. Only documents open in the current Notepad++ instance are recognized — a file open in another instance counts as not open.
+- **Use open documents instead of files on disk** — Enabled by default: a file that is open in Notepad++ is handled as the document in the editor, including unsaved changes. *Find in Files* searches that document, and *Replace in Files* changes it there, exactly like *Replace All* on that document: a document without unsaved changes is saved afterwards (no reload prompt), a document with unsaved changes is left unsaved for you to save, so nothing is ever saved behind your back; the status line reports how many changed documents were left unsaved. Disable it to work on the disk content only; *Replace in Files* then skips open documents with unsaved changes and reports them, since writing to disk underneath them would leave two diverging versions of the file. Only documents open in the current Notepad++ instance are recognized — a file open in another instance counts as not open.
 
 **Notes** — *Find/Replace in Files* detects UTF-8 (with/without BOM), UTF-16 LE/BE with BOM and UTF-16 LE without BOM (same heuristic as Notepad++); the filter and hidden-folder handling follow Notepad++ semantics: patterns match like the native *Find in Files* filter, hidden **folders** are only entered when "In hidden folders" is checked, while hidden files inside scanned folders are always included. A folder that cannot be read (no permission, path too long, removed during the scan) is skipped and reported as `3 folder(s) unreadable` instead of ending the scan. Scans always run over the whole file, independent of the cursor-related options above. *Replace in Files* additionally verifies that a file's encoding round-trips losslessly before touching it and writes results atomically (temp file + replace), so a canceled run or full disk never leaves a half-written file. A file that cannot be written, for example because another program has it open, stays unchanged and is reported as not writable. Open documents get the same guarantee: a replacement that the document's code page cannot represent is rolled back and the file is reported as not encodable.
 
@@ -458,7 +497,7 @@ Copies a report of the whole list to the clipboard via **Copy Report** from the 
   - Use `\t` for tab delimiter (e.g., `%FIND%\t%REPLACE%\t%COMMENT%` for TSV format).
 - **Add header row** — Adds a header line with column names before the data rows. Enabled by default.
 
-Fields are always quoted in Excel-compatible CSV style (embedded `"` doubled, real newlines kept inside the quoted field), so the report pastes straight into a spreadsheet. This is a one-way report for spreadsheets; to copy entries back into MultiReplace use the context-menu **Copy** instead.
+Fields are always quoted in Excel-compatible CSV style (embedded `"` doubled, real newlines kept inside the quoted field), so the report pastes straight into a spreadsheet.
 
 ### 6. Appearance
 Customize the look and feel of the plugin window.
@@ -485,7 +524,7 @@ Some advanced options are not exposed in the UI and can only be configured by ed
 
 ## Multilingual UI Support
 
-MultiReplace supports multiple languages. The plugin automatically detects the language selected in Notepad++ and applies the corresponding translation if available.
+MultiReplace follows the language selected in Notepad++ and uses its translation when available. Included: English, Brazilian Portuguese, Chinese (Simplified), Czech, Danish, French, German, Hungarian, Italian, Japanese, Polish, Portuguese, Russian, Spanish, Taiwanese Mandarin, Turkish and Ukrainian.
 
 You can customize the translations by editing the `languages.ini` file located in:
 `C:\Program Files\Notepad++\plugins\MultiReplace\` (or your specific installation path).

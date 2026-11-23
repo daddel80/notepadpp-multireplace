@@ -125,7 +125,6 @@ namespace MultiReplaceEngine {
         // didn't change since the previous match.
         std::string     _lastFPATH;
         std::string     _lastFNAME;
-        int             _lastRegexFlag = -1;       // -1 = unset
         int             _lastCapCount = 0;
         std::vector<std::string> _currentCapNames;
 

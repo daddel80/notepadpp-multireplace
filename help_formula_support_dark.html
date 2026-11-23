@@ -1093,7 +1093,7 @@ return {
 
     <h3 id="fmtnnum-maxdecimals-fixeddecimals">fmtN(num, maxDecimals, fixedDecimals)</h3>
     <p>Formats numbers based on precision (maxDecimals) and whether the number of decimals is fixed (fixedDecimals being true or false).</p>
-    <p><strong>Note:</strong> The <code>fmtN()</code> command can exclusively be used within the <code>set()</code> and <code>cond()</code> commands.</p>
+    <p><strong>Note:</strong> <code>fmtN()</code> only returns the formatted number as text; to use it as the replacement, pass it to <code>set()</code> or <code>cond()</code>, alone or within a longer string such as <code>set("Total: " .. fmtN(sum, 2, true))</code>.</p>
     <table class="optionsTable">
       <tr>
         <th>Example</th>
@@ -2061,7 +2061,7 @@ return {
 
   <section id="exprtk-control-flow">
     <h2>Control Flow</h2>
-    <p>ExprTk has expression-level control flow. Everything returns a value &mdash; there are no statements in the Lua sense.</p>
+    <p>ExprTk has expression-level control flow. Everything returns a value; statements separated by <code>;</code> return the value of the last one.</p>
     <table class="optionsTable">
       <tr>
         <th>Form</th>
@@ -2083,9 +2083,24 @@ return {
         <td><code>switch { case c1: v1; case c2: v2; default: v3 }</code></td>
         <td>Multi-way branch.</td>
       </tr>
+      <tr>
+        <td><code>for (var i := 1; i &lt;= n; i += 1) { ... }</code></td>
+        <td>For loop.</td>
+      </tr>
+      <tr>
+        <td><code>while (cond) { ... }</code></td>
+        <td>While loop.</td>
+      </tr>
+      <tr>
+        <td><code>repeat ... until (cond)</code></td>
+        <td>Repeat loop, runs at least once.</td>
+      </tr>
     </table>
+    <p>Loops stop after 10 million iterations per match, with a message, so a loop that never ends cannot freeze Notepad++.</p>
     <p>Example &mdash; cap a captured value at 100:</p>
     <p><code>(?=num(1) &gt; 100 ? 100 : num(1))</code></p>
+    <p>Example &mdash; sum of 1 to the captured number (<code>5</code> becomes <code>15</code>):</p>
+    <p><code>(?=var s := 0; for (var i := 1; i &lt;= num(1); i += 1) { s += i; }; s)</code></p>
   </section>
 
   <br>
@@ -2463,8 +2478,8 @@ end
         <td>Standard.</td>
       </tr>
       <tr>
-        <td>While loop</td>
-        <td><code>while (cond) { body; };</code></td>
+        <td>Loops</td>
+        <td><code>while (cond) { body; };</code><br><code>for (var i := 0; i &lt; n; i += 1) { body; };</code></td>
         <td>Same trailing <code>;</code>. Loops stop after 10 million iterations per match, with a message.</td>
       </tr>
       <tr>
@@ -2559,30 +2574,8 @@ end
     return r;
 end
 
-function num_to_str(n) : S
-    /* tiny n -&gt; "n" helper, since ExprTk strings can't take numbers directly */
-    if (n == 0) { return '0'; };
-    var s := '';
-    var v := n;
-    while (v &gt; 0) {
-        var d := v % 10;
-        if      (d == 0) { s := '0' + s; }
-        else if (d == 1) { s := '1' + s; }
-        else if (d == 2) { s := '2' + s; }
-        else if (d == 3) { s := '3' + s; }
-        else if (d == 4) { s := '4' + s; }
-        else if (d == 5) { s := '5' + s; }
-        else if (d == 6) { s := '6' + s; }
-        else if (d == 7) { s := '7' + s; }
-        else if (d == 8) { s := '8' + s; }
-        else             { s := '9' + s; };
-        v := (v - d) / 10;
-    };
-    return s;
-end
-
 function id_tag(n, width) : S
-    return '[ID-' + padleft(num_to_str(n), width, '0') + ']';
+    return '[ID-' + padleft(totxt(n), width, '0') + ']';
 end
 </code></pre>
     <p><strong>Replace-All rules:</strong></p>

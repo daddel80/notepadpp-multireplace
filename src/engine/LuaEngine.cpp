@@ -129,7 +129,6 @@ namespace MultiReplaceEngine {
         // globals so any "value last pushed" tracking is stale.
         _lastFPATH.clear();
         _lastFNAME.clear();
-        _lastRegexFlag = -1;
         _lastCapCount = 0;
 
         return true;
@@ -145,7 +144,6 @@ namespace MultiReplaceEngine {
         _compiled.clear();
         _lastFPATH.clear();
         _lastFNAME.clear();
-        _lastRegexFlag = -1;
         _lastCapCount = 0;
         _currentCapNames.clear();
         _globalLuaVariablesMap.clear();
@@ -282,16 +280,6 @@ namespace MultiReplaceEngine {
         }
         setLuaVariable(_luaState, "MATCH", vars.MATCH);
         setLuaVariable(_luaState, "match", vars.MATCH);
-
-        // ----- REGEX flag -------------------------------------------------
-        const int regexFlag = isRegexMatch ? 1 : 0;
-        if (regexFlag != _lastRegexFlag) {
-            lua_pushboolean(_luaState, isRegexMatch);
-            setGlobalRaw(_luaState, "REGEX");
-            lua_pushboolean(_luaState, isRegexMatch);
-            setGlobalRaw(_luaState, "regex");
-            _lastRegexFlag = regexFlag;
-        }
 
         // ----- CAP# globals (regex only) ----------------------------------
         // Captures arrive pre-extracted from the host; the engine just
