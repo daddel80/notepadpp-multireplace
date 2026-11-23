@@ -22,6 +22,7 @@
 // Project headers
 #include "AtomicFile.h"
 #include "BatchUIGuard.h"
+#include "InputBlock.h"
 #include "CsvLine.h"
 #include "ConfigManager.h"
 #include "CsvListFormat.h"
@@ -4152,8 +4153,8 @@ void MultiReplace::applyEngineSelection(MultiReplaceEngine::EngineType type)
 
     tab.engine = type;
     // Drop the cached engine instance: getActiveEngine() will rebuild
-    // it on next use with the new EngineType. This is safe because the
-    // engine isn't running right now (we're handling a user click).
+    // it on next use with the new EngineType. Safe: while a formula waits
+    // for the user the panel takes no input, so no engine runs during a click.
     tab.engineInstance.reset();
 
     // Mark the tab dirty so the change persists with the next save -
@@ -7814,8 +7815,8 @@ void MultiReplace::replaceAllInOpenedDocs()
         return;
     }
 
-    // Run to End in the debug window holds for all documents of this run
-    _debugSkipForRun = false;
+    // "Run to End" and "Skip all errors" hold for all documents of this run
+    startReplaceRun();
 
     // Reset the UI counters before starting
     resetCountColumns();
@@ -7876,7 +7877,9 @@ void MultiReplace::replaceAllInOpenedDocs()
     if (scope.excluded() > 0)
         docsSummary += LM.get(L"status_docs_filtered",
             { StringUtils::formatNumber(docsSearched), StringUtils::formatNumber(scope.excluded()) });
-    showStatusMessage(docsSummary, MessageStatus::Success);
+    if (!_runStopReason.empty())
+        docsSummary += L" - " + _runStopReason;
+    showRunStatus(docsSummary, _runStopReason.empty() ? MessageStatus::Success : MessageStatus::Error);
 }
 
 // One-pass Replace All: single sweep, the nearest match of any enabled
@@ -7998,11 +8001,11 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
             SearchResult verify;
             Sci_Position newPos = -1;
             const Sci_Position lenBefore = ctx.docLength;
-            const bool replaced = replaceOne(item, matchSel, verify, newPos, w, ctx, findTotals[w], lineFind[w], hits.verifyFrom(w, hit.pos));
+            const ReplaceOutcome outcome = replaceOne(item, matchSel, verify, newPos, w, ctx, findTotals[w], lineFind[w], hits.verifyFrom(w, hit.pos));
 
             // the walk continues right after the hit; a hit that was not replaced is
             // barred for its entry, so an empty one cannot be found twice
-            if (replaced) {
+            if (outcome == ReplaceOutcome::Replaced) {
                 ++replTotals[w];
                 ++totalReplaceCount;
                 ctx.docLength = send(SCI_GETLENGTH, 0, 0);
@@ -8010,7 +8013,7 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
                 hits.afterReplace(w, hit, delta);
                 pos = hit.pos + hit.len + delta;
             }
-            else if (verify.pos != hit.pos || verify.length != hit.len || newPos >= 0) {
+            else if (outcome == ReplaceOutcome::NotReplaced) {
                 hits.afterSkip(w, hit);          // verification mismatch or engine skip()
                 pos = hit.pos + hit.len;
             }
@@ -8030,6 +8033,40 @@ bool MultiReplace::onePassReplaceAll(const SearchContext& startCtx, Sci_Position
     return replaceSuccess;
 }
 
+// Run-scoped state, once per click: "Run to End", "Skip all errors" and a stop reason hold for every document of the run
+void MultiReplace::startReplaceRun()
+{
+    _debugSkipForRun = false;
+    _runStopReason.clear();
+    if (auto* engine = getActiveEngine()) {
+        engine->beginRun();
+    }
+}
+
+// A stop no dialog reported: the status line says why, the summary of a run over several documents ends with it
+void MultiReplace::noteRunStop(const std::wstring& reason)
+{
+    _runStopReason = reason;
+    showStatusMessage(reason, MessageStatus::Error);
+}
+
+// The engine's end-of-run summary joins the status line; after "Skip all errors" its notice follows
+void MultiReplace::showRunStatus(std::wstring message, MessageStatus status)
+{
+    std::wstring notice;
+    if (auto* engine = getActiveEngine()) {
+        const std::wstring summary = engine->endRunSummary();
+        if (!summary.empty()) message += L" " + summary;
+        notice = engine->endRunSkipAllNoticeText();
+    }
+    showStatusMessage(message, status);
+    if (!notice.empty()) {
+        MessageBox(nppData._nppHandle, notice.c_str(),
+            LM.get(L"msgbox_title_recoverable_errors_skipped_notice").c_str(),
+            MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+    }
+}
+
 bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem::path* explicitPath) {
 
     m_lastTotalReplaceCount = 0;
@@ -8038,12 +8075,11 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
         return false;
     }
 
+    // A run over several documents starts once, before its first document; each document starts fresh
+    if (scope == RunScope::Editor) startReplaceRun();
     if (auto* engine = getActiveEngine()) {
-        engine->beginRun();
+        engine->beginDocument();
     }
-    // "Run to End" silences the debug dialog until the run ends; a run over
-    // several documents clears the flag once, at its start.
-    if (scope == RunScope::Editor) _debugSkipForRun = false;
 
     // Selection mode with no selection: different behavior for single-doc vs. multi-doc.
     // Use hasAnyNonEmptySelection() so rectangular selections (where some
@@ -8216,33 +8252,12 @@ bool MultiReplace::handleReplaceAllButton(RunScope scope, const std::filesystem:
     // Store count for callers that need accumulated totals (e.g. replaceAllInOpenedDocs)
     m_lastTotalReplaceCount = totalReplaceCount;
 
-    // Status message: replacement count plus optional engine summary.
-    // ExprTk also emits a notice dialog when the user picked "Skip all NaN".
+    // Status message: replacement count plus the engine's end-of-run summary
     if (replaceSuccess && scope == RunScope::Editor) {
-        std::wstring msg = LM.get(usedOnePass
+        showRunStatus(LM.get(usedOnePass
             ? L"status_occurrences_replaced_one_pass"
             : L"status_occurrences_replaced",
-            { std::to_wstring(totalReplaceCount) });
-        std::wstring noticeBody;
-
-        if (auto* engine = getActiveEngine()) {
-            std::wstring summary = engine->endRunSummary();
-            if (!summary.empty()) {
-                msg += L" ";
-                msg += summary;
-            }
-            noticeBody = engine->endRunSkipAllNoticeText();
-        }
-        showStatusMessage(msg, MessageStatus::Success);
-
-        if (!noticeBody.empty()) {
-            const std::wstring noticeTitle = LM.get(
-                L"msgbox_title_recoverable_errors_skipped_notice");
-            MessageBox(nppData._nppHandle,
-                noticeBody.c_str(),
-                noticeTitle.c_str(),
-                MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
-        }
+            { std::to_wstring(totalReplaceCount) }), MessageStatus::Success);
     }
 
     return replaceSuccess;
@@ -8255,12 +8270,10 @@ void MultiReplace::handleReplaceButton() {
         return;
     }
 
+    startReplaceRun();
     if (auto* engine = getActiveEngine()) {
-        engine->beginRun();
+        engine->beginDocument();
     }
-    // "Run to End" only suppresses the dialog for the current run; clear
-    // the flag so the next run honours the persistent debug toggle again.
-    _debugSkipForRun = false;
 
     // Safety: Selection mode with no selection and no stored scope -> do nothing.
     // hasAnyNonEmptySelection() covers rectangular selections whose first
@@ -8336,7 +8349,12 @@ void MultiReplace::handleReplaceButton() {
                 // Set search flags before calling replaceOne
                 send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-                wasReplaced = replaceOne(replaceListData[i], selection, searchResult, newPos, i, context);
+                const ReplaceOutcome outcome = replaceOne(replaceListData[i], selection, searchResult, newPos, i, context);
+                if (outcome == ReplaceOutcome::FormulaFailed) {
+                    WaitForDebugWindowClose(true);   // the click ends here
+                    return;
+                }
+                wasReplaced = (outcome == ReplaceOutcome::Replaced);
                 if (wasReplaced) {
                     context.docLength = send(SCI_GETLENGTH); // Update after replacement changed document size
                     refreshUIListView(); // Refresh the ListView to show updated statistic
@@ -8404,7 +8422,12 @@ void MultiReplace::handleReplaceButton() {
         // Set search flags before performSearchForward/replaceOne (latter calls it too)
         send(SCI_SETSEARCHFLAGS, context.searchFlags);
 
-        bool wasReplaced = replaceOne(replaceItem, selection, searchResult, newPos, SIZE_MAX, context);
+        const ReplaceOutcome outcome = replaceOne(replaceItem, selection, searchResult, newPos, SIZE_MAX, context);
+        if (outcome == ReplaceOutcome::FormulaFailed) {
+            WaitForDebugWindowClose(true);   // the click ends here
+            return;
+        }
+        const bool wasReplaced = (outcome == ReplaceOutcome::Replaced);
 
         if (wasReplaced) {
             context.docLength = send(SCI_GETLENGTH); // Update after replacement changed document size
@@ -8450,7 +8473,7 @@ static MultiReplaceEngine::ReplaceMode replaceModeOf(const ReplaceItemData& item
     return item.extended ? MultiReplaceEngine::ReplaceMode::Extended : MultiReplaceEngine::ReplaceMode::Normal;
 }
 
-bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt, int lcnt, Sci_Position verifyFrom)
+MultiReplace::ReplaceOutcome MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt, int lcnt, Sci_Position verifyFrom)
 {
     // Get the document's codepage once at the beginning.
     int documentCodepage = getCurrentDocCodePage();
@@ -8479,7 +8502,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
             if (itemData.formulaSupport) {
                 auto* engine = getActiveEngine();
                 if (!engine) {
-                    return false;
+                    return ReplaceOutcome::FormulaFailed;
                 }
 
                 std::string scriptUtf8 = Encoding::wstringToUtf8(itemData.replaceText);
@@ -8494,13 +8517,15 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
 
                 _currentRuleIndex = itemIndex;
                 _currentMatchPos = searchResult.pos;
+                _currentMatchLen = searchResult.length;
                 MultiReplaceEngine::FormulaResult res = engine->execute(
                     scriptUtf8, vars, replaceModeOf(itemData), documentCodepage);
                 _currentRuleIndex = SIZE_MAX;
                 _currentMatchPos = -1;
+                _currentMatchLen = 0;
 
                 if (!res.success) {
-                    return false;
+                    return ReplaceOutcome::FormulaFailed;
                 }
                 skipReplace = res.skip;
                 engineOutputIsRegexSafe = res.outputIsRegexSafe;
@@ -8542,7 +8567,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
                 if (itemIndex != SIZE_MAX) {
                     updateCountColumns(itemIndex, -2, 1);
                 }
-                return true; // A replacement was made.
+                return ReplaceOutcome::Replaced;
             }
         }
 
@@ -8550,7 +8575,7 @@ bool MultiReplace::replaceOne(const ReplaceItemData& itemData, const SelectionIn
         newPos = ensureForwardProgress(searchResult.pos + searchResult.length, searchResult);
         send(SCI_SETSEL, newPos, newPos);
     }
-    return false; // No replacement was made.
+    return ReplaceOutcome::NotReplaced;
 }
 
 bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, Sci_Position startPos, size_t itemIndex, RunScope scope)
@@ -8657,10 +8682,12 @@ bool MultiReplace::replaceAll(const ReplaceItemData& itemData, int& findCount, i
 
                     _currentRuleIndex = itemIndex;
                     _currentMatchPos = searchResult.pos;
+                    _currentMatchLen = searchResult.length;
                     MultiReplaceEngine::FormulaResult res = engine->execute(
                         luaTemplateUtf8, vars, replaceModeOf(itemData), documentCodepage);
                     _currentRuleIndex = SIZE_MAX;
                     _currentMatchPos = -1;
+                    _currentMatchLen = 0;
 
                     if (!res.success) {
                         return false;
@@ -8933,14 +8960,37 @@ std::string MultiReplace::escapeForRegex(const std::string& input) {
 }
 
 // ---------------------------------------------------------------------
-// ILuaEngineHost implementation
+// IFormulaEngineHost implementation
 // ---------------------------------------------------------------------
 // Overrides forward to existing MR helpers; engines call these via their
 // IFormulaEngine pointer.
 
 int MultiReplace::showDebugWindow(const std::string& message)
 {
-    return ShowDebugWindow(message);
+    // The run goes on only where it left the document
+    const WaitPoint before = waitPoint();
+    const int response = ShowDebugWindow(message);
+    if (response == 3 || response == -1 || waitPoint() == before) return response;
+    noteRunStop(LM.get(L"status_debug_document_changed"));
+    return 3;
+}
+
+MultiReplace::WaitPoint MultiReplace::waitPoint()
+{
+    WaitPoint point;
+    point.doc = send(SCI_GETDOCPOINTER, 0, 0);
+    point.length = static_cast<Sci_Position>(send(SCI_GETLENGTH, 0, 0));
+    const Sci_Position end = _currentMatchPos + _currentMatchLen;
+    if (_currentMatchPos >= 0 && _currentMatchLen > 0 && end <= point.length) {
+        std::vector<char> buffer(static_cast<size_t>(_currentMatchLen) + 1, '\0');
+        Sci_TextRangeFull range;
+        range.chrg.cpMin = _currentMatchPos;
+        range.chrg.cpMax = end;
+        range.lpstrText = buffer.data();
+        send(SCI_GETTEXTRANGEFULL, 0, reinterpret_cast<sptr_t>(&range));
+        point.match.assign(buffer.data(), static_cast<size_t>(_currentMatchLen));
+    }
+    return point;
 }
 
 void MultiReplace::refreshUiListView()
@@ -8957,33 +9007,30 @@ std::wstring MultiReplace::formulaErrorText(const std::wstring& listKey,
 }
 
 void MultiReplace::showErrorMessage(
-    MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
+    MultiReplaceEngine::IFormulaEngineHost::ErrorCategory category,
     const std::string& engineName,
     const std::string& details)
 {
-    using EC = MultiReplaceEngine::ILuaEngineHost::ErrorCategory;
+    using EC = MultiReplaceEngine::IFormulaEngineHost::ErrorCategory;
 
     const std::wstring engineW = Encoding::utf8ToWString(engineName);
     const std::wstring detailsW = Encoding::utf8ToWString(details);
 
-    // Jump to the offending rule so the user sees the row the dialog names
-    // (skipped when no dialog is shown - this is only reached with the
-    // error dialog enabled).
+    // Jump to the offending rule so the user sees the row the message names
     focusListRow(_currentRuleIndex);
 
+    std::wstring body;
+    std::wstring title;
     if (category == EC::CompileError) {
-        std::wstring body = formulaErrorText(
+        body = formulaErrorText(
             L"msgbox_engine_error_body",
             L"msgbox_engine_error_body_no_list",
             { engineW, detailsW });
-        MessageBox(nppData._nppHandle,
-            body.c_str(),
-            LM.get(L"msgbox_title_formula_support_syntax_error").c_str(),
-            MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+        title = LM.get(L"msgbox_title_formula_support_syntax_error");
     }
     else {
         // Without a match (init entry) there is no position to name
-        std::wstring body = (_currentMatchPos >= 0)
+        body = (_currentMatchPos >= 0)
             ? formulaErrorText(
                 L"msgbox_formula_support_execution_error_engine",
                 L"msgbox_formula_support_execution_error_engine_no_list",
@@ -8992,18 +9039,30 @@ void MultiReplace::showErrorMessage(
                 L"msgbox_formula_support_execution_error_engine_no_pos",
                 L"msgbox_formula_support_execution_error_engine_no_list_no_pos",
                 { engineW, detailsW });
-        MessageBox(nppData._nppHandle, body.c_str(),
-            LM.get(L"msgbox_title_formula_support_execution_error").c_str(),
-            MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+        title = LM.get(L"msgbox_title_formula_support_execution_error");
     }
+
+    // With error dialogs off the status line says why the run stopped, on one line
+    if (!_formulaErrorDialogEnabled) {
+        for (size_t p = body.find(L"\r\n"); p != std::wstring::npos; p = body.find(L"\r\n", p)) {
+            body.replace(p, 2, L" ");
+        }
+        noteRunStop(body);
+        return;
+    }
+
+    // The panel waits with the run while the message is open, also when it floats
+    InputBlock block(_hSelf);
+    MessageBox(nppData._nppHandle, body.c_str(), title.c_str(),
+        MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
 }
 
-MultiReplaceEngine::ILuaEngineHost::RecoverableErrorChoice
+MultiReplaceEngine::IFormulaEngineHost::RecoverableErrorChoice
 MultiReplace::showRecoverableErrorDialog(
     const std::string& engineName,
     const std::string& details)
 {
-    using Choice = MultiReplaceEngine::ILuaEngineHost::RecoverableErrorChoice;
+    using Choice = MultiReplaceEngine::IFormulaEngineHost::RecoverableErrorChoice;
 
     const std::wstring engineW = Encoding::utf8ToWString(engineName);
     const std::wstring detailsW = Encoding::utf8ToWString(details);
@@ -9049,6 +9108,8 @@ MultiReplace::showRecoverableErrorDialog(
     // can't accidentally abort a long run by hitting Escape.
     tdc.nDefaultButton = ID_SKIP_ONE;
 
+    // The panel waits with the run while the dialog is open, also when it floats
+    InputBlock block(_hSelf);
     int nButtonPressed = 0;
     HRESULT hr = TaskDialogIndirect(&tdc, &nButtonPressed, nullptr, nullptr);
 
@@ -9136,11 +9197,10 @@ void MultiReplace::fillFormulaVars(MultiReplaceEngine::FormulaVars& vars,
     bool isColumnMode,
     int documentCodepage)
 {
-    int currentLineIndex = static_cast<int>(
+    const Sci_Position currentLineIndex = static_cast<Sci_Position>(
         send(SCI_LINEFROMPOSITION, static_cast<uptr_t>(matchPos), 0));
-    int lineStartPos = (currentLineIndex == 0) ? 0
-        : static_cast<int>(send(SCI_POSITIONFROMLINE,
-            static_cast<uptr_t>(currentLineIndex), 0));
+    const Sci_Position lineStartPos = static_cast<Sci_Position>(
+        send(SCI_POSITIONFROMLINE, static_cast<uptr_t>(currentLineIndex), 0));
 
     // File-level vars (FPATH/FNAME) - pulled from MR's cached path
     // (set by updateFilePathCache).
@@ -9161,9 +9221,9 @@ void MultiReplace::fillFormulaVars(MultiReplaceEngine::FormulaVars& vars,
 
     vars.CNT = cnt;
     vars.LCNT = lcnt;
-    vars.APOS = static_cast<int>(matchPos) + 1;
+    vars.APOS = matchPos + 1;
     vars.LINE = currentLineIndex + 1;
-    vars.LPOS = static_cast<int>(matchPos) - lineStartPos + 1;
+    vars.LPOS = matchPos - lineStartPos + 1;
 
     vars.MATCH = foundText;
     if (documentCodepage != SC_CP_UTF8) {
@@ -9736,8 +9796,8 @@ void MultiReplace::handleReplaceInFiles() {
     if (MessageBox(_hSelf, message.c_str(), LM.getW(L"msgbox_title_confirm"), MB_OKCANCEL | MB_SETFOREGROUND) != IDOK)
         return;
 
-    // Run to End in the debug window holds for all files of this run
-    _debugSkipForRun = false;
+    // "Run to End" and "Skip all errors" hold for all files of this run
+    startReplaceRun();
 
     if (useListEnabled) {
         resetCountColumns();
@@ -9894,9 +9954,10 @@ void MultiReplace::handleReplaceInFiles() {
         m_selectionScope.clear();
 
         clearListCounts();
-        if (!handleReplaceAllButton(RunScope::Files, &fp)) { _isCancelRequested = true; aborted = true; }
+        const bool stopped = !handleReplaceAllButton(RunScope::Files, &fp);
+        if (stopped) { _isCancelRequested = true; aborted = true; }
 
-        if (m_lastTotalReplaceCount > 0 && strict.lossy()) {
+        if (!stopped && m_lastTotalReplaceCount > 0 && strict.lossy()) {
             send(SCI_UNDO, 0, 0);   // the run is one undo group (ScopedUndoAction)
             guard.noteSkip(HiddenSciGuard::SkipReason::Unencodable);
             return;
@@ -9904,8 +9965,9 @@ void MultiReplace::handleReplaceInFiles() {
         accumulateListTotals();
         if (m_lastTotalReplaceCount == 0) return;
 
+        // What a stopped run changed stays in the editor unsaved, for undo
         ++changed;
-        if (wasDirty || !::SendMessage(nppData._nppHandle, NPPM_SAVECURRENTFILE, 0, 0))
+        if (stopped || wasDirty || !::SendMessage(nppData._nppHandle, NPPM_SAVECURRENTFILE, 0, 0))
             ++changedOpenUnsaved;
     };
 
@@ -9922,7 +9984,10 @@ void MultiReplace::handleReplaceInFiles() {
         if (columnMode && !loadDelimitersForScan()) { aborted = true; return true; }
 
         clearListCounts();
-        if (!handleReplaceAllButton(RunScope::Files, &fp)) { _isCancelRequested = true; aborted = true; }
+        if (!handleReplaceAllButton(RunScope::Files, &fp)) {
+            _isCancelRequested = true; aborted = true;
+            return true;   // a run that stopped in the file leaves it as it was
+        }
 
         // A buffer Scintilla failed on is never written back
         if (!guard.bufferIntact()) {
@@ -10039,15 +10104,18 @@ void MultiReplace::handleReplaceInFiles() {
             msg += LM.get(L"status_replace_open_unsaved", { StringUtils::formatNumber(changedOpenUnsaved) });
         msg += buildSkipSentence(guard);
         if (wasCanceled) {
-            msg += L" - " + LM.get(L"status_canceled");
+            msg += L" - " + (_runStopReason.empty() ? LM.get(L"status_canceled") : _runStopReason);
         }
 
         MessageStatus ms = MessageStatus::Success;
         if (wasCanceled || changed == 0) {
             ms = MessageStatus::Info;
         }
+        if (!_runStopReason.empty()) {
+            ms = MessageStatus::Error;
+        }
 
-        showStatusMessage(msg, ms);
+        showRunStatus(msg, ms);
     }
     _isCancelRequested = false;
 }
@@ -11886,6 +11954,11 @@ void MultiReplace::gotoListEntry() {
 
 // The panel shows the entry selected in its tab, the keyboard goes to the list. No entry there: a beep
 void MultiReplace::gotoListEntry(HWND view, ReplaceMarks::Span span, bool selection) {
+    // A running replace holds its list entries: no tab switch while it waits for the user or a batch runs
+    if ((_hSelf && !IsWindowEnabled(_hSelf)) || _keepOnTopDuringBatch) {
+        if (!muteSounds) ::MessageBeep(MB_ICONASTERISK);
+        return;
+    }
     const ListPlace place = listPlaceOf(view, span, selection);
     if (!place.found()) {
         if (!muteSounds) ::MessageBeep(MB_ICONASTERISK);

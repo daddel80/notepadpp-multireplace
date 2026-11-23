@@ -290,6 +290,7 @@
     <ClInclude Include="..\src\UndoRedoManager.h" />
     <ClInclude Include="..\src\BatchUIGuard.h" />
     <ClInclude Include="..\src\DialogFreeze.h" />
+    <ClInclude Include="..\src\InputBlock.h" />
     <ClInclude Include="..\src\StringUtils.h" />
     <ClInclude Include="..\src\ColumnTabs.h" />
     <ClInclude Include="..\src\CsvDocState.h" />
@@ -318,7 +319,7 @@
     <ClInclude Include="..\src\engine\EngineFactory.h">
       <Filter>engine</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\engine\ILuaEngineHost.h">
+    <ClInclude Include="..\src\engine\IFormulaEngineHost.h">
       <Filter>engine</Filter>
     </ClInclude>
     <ClInclude Include="..\src\engine\ExprTkEngine.h">

@@ -90,7 +90,7 @@ All variables below are registered under both upper- and lowercase. Pick whichev
 - `FNAME` and `FPATH` are updated for each file processed by `Replace All in Open Documents` and `Replace All in Files`. This ensures that variables always refer to the file currently being modified.
 - **String Variables:** `MATCH` and `CAP` variables are always strings. For calculations, use `tonum(CAP1)`. Both dot (.) and comma (,) are recognized as decimal separators. Thousands separators are not supported.
 - **Result as it is:** The result of `set()`, `cond()` and `lkp()` is inserted as it is in every search mode, so a path like `C:\new\test.txt` stays intact and `$1` is not replaced. Write line breaks and tabs in the Lua string itself, as `"\n"` and `"\t"`.
-- **Runaway formulas:** A formula that runs longer than 10 seconds or takes more than 1 GB of memory for one match, such as an endless `while` loop, stops the run with a message.
+- **Runaway formulas:** A formula that runs longer than 10 seconds or takes more than 1 GB of memory for one match, such as an endless `while` loop, stops the run with a message. The time is checked between Lua instructions, so a single `string.find`, `match`, `gmatch` or `gsub` call runs to its end, however long its pattern takes.
 
 <br>
 
@@ -190,7 +190,7 @@ return {
 | `(\d+)`       | `cond(threshold > 5, "Above", "Below")`          | Yes   | No        | Replaces the match based on the condition evaluated using the variable `threshold`. |
 
 **Key Points:**
-- **Conditional Loading**: Variables can be loaded conditionally by placing `lvars()` alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.
+- **Conditional Loading**: Variables can be loaded conditionally by placing `lvars()` alongside a specific Find pattern. In this case, the variables are initialized at the first match. Each file is loaded once per document, so values the formula changes afterwards stay.
 - **Local vs. Returned Variables**: Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.
 
 <br>
@@ -410,7 +410,7 @@ This example uses an `if` statement to restart a running total on every line; `s
 
 ### Debug Mode
 
-The **Debug Mode** pauses before each replacement and shows the current values of all variables, so you can follow the logic match by match.
+The **Debug Mode** pauses before each replacement and shows the current values of all variables, so you can follow the logic match by match. While the window is open, the MultiReplace panel waits; if the document changes or another document is shown before **Next**, the run stops.
 
 **How to enable:**
 * **Via Menu:** Click the arrow on the **Replace All** button and select **Debug Mode**. This is the standard way to debug.

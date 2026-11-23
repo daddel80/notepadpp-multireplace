@@ -25,7 +25,7 @@
 
 namespace MultiReplaceEngine {
 
-    FormulaEnginePtr EngineFactory::create(EngineType type, ILuaEngineHost* host)
+    FormulaEnginePtr EngineFactory::create(EngineType type, IFormulaEngineHost* host)
     {
         switch (type) {
         case EngineType::Lua:

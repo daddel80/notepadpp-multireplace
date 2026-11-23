@@ -65,7 +65,7 @@
 // Formula engine (Lua / ExprTk dispatcher)
 #include "engine/IFormulaEngine.h"
 #include "engine/EngineFactory.h"
-#include "engine/ILuaEngineHost.h"
+#include "engine/IFormulaEngineHost.h"
 
 // Windows
 #include <commctrl.h>
@@ -465,7 +465,7 @@ struct EditControlContext
     HWND hwndExpandBtn;
 };
 
-class MultiReplace : public StaticDialog, public MultiReplaceEngine::ILuaEngineHost
+class MultiReplace : public StaticDialog, public MultiReplaceEngine::IFormulaEngineHost
 {
 public:
 
@@ -1014,6 +1014,8 @@ private:
     std::vector<char> tagBuffer;  // reusable Buffer for SCI_GETTAG in fillCapturesForEngine()
     size_t _currentRuleIndex = SIZE_MAX; // List entry of the running formula; SIZE_MAX outside the list
     Sci_Position _currentMatchPos = -1;  // Match position for the formula error texts; -1 without a match
+    Sci_Position _currentMatchLen = 0;   // Its length, checked after the debug window waited
+    std::wstring _runStopReason;         // Why the run stopped when no dialog said it; ends the summary of a run over several documents
     bool isColumnHighlighted = false;
     SIZE_T CSVheaderLinesCount = 1; // Header rows excluded from sort and dedup (find/replace always searches every line)
     inline static POINT debugWindowPosition{ CW_USEDEFAULT, CW_USEDEFAULT };
@@ -1439,10 +1441,15 @@ private:
     // Docs/Files: one document of a run over several, which records history and reports itself. Such a run
     // covers whole documents as in Notepad++ (no start at the cursor); Files also ignore the selection scope.
     enum class RunScope { Editor, Docs, Files };
+    // A match replaceOne() did not replace stays as it is; a failed formula or "Stop" in the debug window ends the run
+    enum class ReplaceOutcome { Replaced, NotReplaced, FormulaFailed };
     void replaceAllInOpenedDocs();
     bool handleReplaceAllButton(RunScope scope = RunScope::Editor, const std::filesystem::path* explicitPath = nullptr);
     void handleReplaceButton();
-    bool replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1, Sci_Position verifyFrom = -1); // verifyFrom: start of the confirming search, default the match itself
+    void startReplaceRun();                                       // run-scoped state, once per click
+    void noteRunStop(const std::wstring& reason);                 // a stop no dialog reported, in the status line
+    void showRunStatus(std::wstring message, MessageStatus status);   // with the engine's end-of-run summary
+    ReplaceOutcome replaceOne(const ReplaceItemData& itemData, const SelectionInfo& selection, SearchResult& searchResult, Sci_Position& newPos, size_t itemIndex, const SearchContext& context, int cnt = 1, int lcnt = 1, Sci_Position verifyFrom = -1); // verifyFrom: start of the confirming search, default the match itself
     bool replaceAll(const ReplaceItemData& itemData, int& findCount, int& replaceCount, Sci_Position startPos, const size_t itemIndex = SIZE_MAX, RunScope scope = RunScope::Editor);
     Sci_Position performReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
     Sci_Position performRegexReplace(const std::string& replaceTextUtf8, Sci_Position pos, Sci_Position length);
@@ -1457,15 +1464,15 @@ private:
 #pragma endregion
 
 #pragma region Lua Engine
-    // ----- ILuaEngineHost implementation ------------------------------
-    // Bridge callbacks for the formula engine. See engine/LuaEngine.h.
+    // ----- IFormulaEngineHost implementation ------------------------------
+    // Bridge callbacks for the formula engines. See engine/IFormulaEngineHost.h.
     std::string  escapeForRegex(const std::string& input) override;
     int          showDebugWindow(const std::string& message) override;
     void         refreshUiListView() override;
-    void         showErrorMessage(MultiReplaceEngine::ILuaEngineHost::ErrorCategory category,
+    void         showErrorMessage(MultiReplaceEngine::IFormulaEngineHost::ErrorCategory category,
         const std::string& engineName,
         const std::string& details) override;
-    MultiReplaceEngine::ILuaEngineHost::RecoverableErrorChoice
+    MultiReplaceEngine::IFormulaEngineHost::RecoverableErrorChoice
         showRecoverableErrorDialog(const std::string& engineName,
             const std::string& details) override;
     bool         isFormulaErrorDialogEnabled() const override;
@@ -1494,10 +1501,20 @@ private:
     MultiReplaceEngine::IFormulaEngine* getActiveEngine();
     void updateFilePathCache(const std::filesystem::path* explicitPath = nullptr);
 
+    // What a run waiting in the debug window relies on: MR's document, its length and the match text
+    struct WaitPoint {
+        sptr_t doc = 0;
+        Sci_Position length = 0;
+        std::string match;
+        bool operator==(const WaitPoint&) const = default;
+    };
+    WaitPoint waitPoint();
+
 #pragma endregion
 
 #pragma region Formula Debug Window
     int ShowDebugWindow(const std::string& message);
+    int waitForDebugResponse(HWND hwnd);
     static LRESULT CALLBACK DebugWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
     static void CopyListViewToClipboard(HWND hListView);
     static void CloseDebugWindow();

@@ -51,13 +51,14 @@ namespace MultiReplaceEngine {
     // Engines map these into their own variable space (Lua globals,
     // ExprTk symbol_table, ...) but the input format is shared.
     struct FormulaVars {
-        // Counters (1-based, populated by the replace pipeline)
-        int CNT = 0;   // Replacement count across the whole run
-        int LCNT = 0;   // Replacement count within the current line
-        int LINE = 0;   // 1-based line number of the current match
-        int LPOS = 0;   // Column position within the line (UTF-8 bytes)
-        int APOS = 0;   // Absolute byte position in the document
-        int COL = 0;   // CSV column index (CSV mode), 0 otherwise
+        // Counters (1-based, populated by the replace pipeline); lines and
+        // positions in 64 bit, as a document can exceed 2 GB
+        int CNT = 0;          // Replacement count across the whole run
+        int LCNT = 0;         // Replacement count within the current line
+        long long LINE = 0;   // 1-based line number of the current match
+        long long LPOS = 0;   // Byte position within the line
+        long long APOS = 0;   // Absolute byte position in the document
+        int COL = 0;          // CSV column index (CSV mode), 0 otherwise
         std::size_t RULE = static_cast<std::size_t>(-1); // list rule index (per-rule history)
 
         // Match metadata

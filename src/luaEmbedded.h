@@ -20,15 +20,16 @@
 
 // ---------- Original Lua Source Code  ----------
 static const char* luaSourceCode = R"(
+-- error(msg, 2): a message points at the formula line that called the helper.
 ------------------------------------------------------------------
 -- 1) cond function
 ------------------------------------------------------------------
 function cond(condition, trueVal, falseVal)
   if condition == nil then
-    error('cond: condition cannot be nil')
+    error('cond: condition cannot be nil', 2)
   end
   if condition and trueVal == nil then
-    error('cond: trueVal cannot be nil')
+    error('cond: trueVal cannot be nil', 2)
   end
 
   -- Pick the active branch; "a and b or c" would take c for a false b.
@@ -54,7 +55,7 @@ function cond(condition, trueVal, falseVal)
   elseif type(picked) == 'string' or type(picked) == 'number' then
     res = { result = picked, skip = false }
   else
-    error('cond: Expected string or number')
+    error('cond: Expected string or number', 2)
   end
 
   resultTable = res
@@ -66,7 +67,7 @@ end
 ------------------------------------------------------------------
 function set(strOrCalc)
   if strOrCalc == nil then
-    error('set: cannot be nil')
+    error('set: cannot be nil', 2)
   end
 
   local res
@@ -75,7 +76,7 @@ function set(strOrCalc)
   elseif type(strOrCalc) == 'number' then
     res = { result = tostring(strOrCalc), skip = false }
   else
-    error('set: Expected string or number')
+    error('set: Expected string or number', 2)
   end
 
   resultTable = res
@@ -88,20 +89,29 @@ end
 ------------------------------------------------------------------
 function fmtN(num, maxDecimals, fixedDecimals)
   if type(num) ~= 'number' then
-    error('fmtN: num must be a number')
+    error('fmtN: num must be a number', 2)
   end
   if type(maxDecimals) ~= 'number' then
-    error('fmtN: maxDecimals must be a number')
+    error('fmtN: maxDecimals must be a number', 2)
+  end
+  local decimals = math.tointeger(maxDecimals)
+  if decimals == nil or decimals < 0 then
+    error('fmtN: maxDecimals must be a whole number from 0', 2)
   end
   if type(fixedDecimals) ~= 'boolean' then
-    error('fmtN: fixedDecimals must be a boolean')
+    error('fmtN: fixedDecimals must be a boolean', 2)
   end
 
-  local multiplier = 10 ^ maxDecimals
-  local rounded = math.floor(num * multiplier + 0.5) / multiplier
+  -- Halves round away from zero, like ExprTk's roundn(); a value that
+  -- rounds to zero gets no minus sign.
+  local multiplier = 10 ^ decimals
+  local rounded = math.floor(math.abs(num) * multiplier + 0.5) / multiplier
+  if num < 0 and rounded ~= 0 then
+    rounded = -rounded
+  end
 
   if fixedDecimals then
-    return string.format('%.' .. maxDecimals .. 'f', rounded)
+    return string.format('%.' .. decimals .. 'f', rounded)
   end
 
   -- Variable-decimals mode: drop the fractional part if it rounds away.
@@ -115,7 +125,7 @@ end
 ------------------------------------------------------------------
 -- 4) vars function (and init alias)
 -- Sets global variables with first-write-wins semantics: re-running
--- the same Lua snippet won't clobber values from a previous run.
+-- the same Lua snippet won't clobber values set at an earlier match.
 ------------------------------------------------------------------
 function vars(args)
   for name, value in pairs(args) do
@@ -123,13 +133,10 @@ function vars(args)
     -- caller re-run the snippet without resetting earlier state.
     if _G[name] == nil then
       if type(name) ~= 'string' then
-        error('vars: Variable name must be a string')
+        error('vars: Variable name must be a string', 2)
       end
       if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then
-        error('vars: Invalid variable name \"' .. tostring(name) .. '\"')
-      end
-      if value == nil then
-        error('vars: Value missing for variable \"' .. tostring(name) .. '\"')
+        error('vars: Invalid variable name \"' .. tostring(name) .. '\"', 2)
       end
       _G[name] = value
     end
@@ -154,14 +161,14 @@ function lkp(key, hpath, inner)
   local res = { result = '', skip = false }
 
   if key == nil then
-    error('lkp: key passed to file is nil in ' .. tostring(hpath))
+    error('lkp: key passed to file is nil in ' .. tostring(hpath), 2)
   end
   if type(key) == 'number' then
     key = tostring(key)
   end
 
   if hpath == nil or hpath == '' then
-    error('lkp: file path is invalid or empty')
+    error('lkp: file path is invalid or empty', 2)
   end
   if inner == nil then
     inner = false
@@ -172,10 +179,10 @@ function lkp(key, hpath, inner)
   if tbl == nil then
     local success, dataEntries = safeLoadFileSandbox(hpath)
     if not success then
-      error('lkp: failed to safely load file at ' .. tostring(hpath) .. ': ' .. tostring(dataEntries))
+      error('lkp: failed to safely load file at ' .. tostring(hpath) .. ': ' .. tostring(dataEntries), 2)
     end
     if type(dataEntries) ~= 'table' then
-      error('lkp: invalid format in file at ' .. tostring(hpath))
+      error('lkp: invalid format in file at ' .. tostring(hpath), 2)
     end
 
     tbl = {}
@@ -221,32 +228,35 @@ end
 ------------------------------------------------------------------
 -- 6) lvars function
 -- File-based variant of vars(): loads a table of name=value pairs
--- from a .lua file via the sandbox loader.
+-- from a .lua file via the sandbox loader. Each file loads once per
+-- document, so values the formula changes afterwards stay.
 ------------------------------------------------------------------
+loadedVarFiles = {}
+
 function lvars(filePath)
   if filePath == nil or filePath == '' then
-    error('lvars: file path is invalid or empty')
+    error('lvars: file path is invalid or empty', 2)
   end
 
-  local success, dataTable = safeLoadFileSandbox(filePath)
-  if not success then
-    error('lvars: failed to safely load file at ' .. tostring(filePath) .. ': ' .. tostring(dataTable))
-  end
-  if type(dataTable) ~= 'table' then
-    error('lvars: invalid data format in file at ' .. tostring(filePath))
-  end
+  if not loadedVarFiles[filePath] then
+    local success, dataTable = safeLoadFileSandbox(filePath)
+    if not success then
+      error('lvars: failed to safely load file at ' .. tostring(filePath) .. ': ' .. tostring(dataTable), 2)
+    end
+    if type(dataTable) ~= 'table' then
+      error('lvars: invalid data format in file at ' .. tostring(filePath), 2)
+    end
 
-  for name, value in pairs(dataTable) do
-    if type(name) ~= 'string' then
-      error('lvars: Variable name must be a string. Found invalid key \"' .. tostring(name) .. '\"')
+    for name, value in pairs(dataTable) do
+      if type(name) ~= 'string' then
+        error('lvars: Variable name must be a string. Found invalid key \"' .. tostring(name) .. '\"', 2)
+      end
+      if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then
+        error('lvars: Invalid variable name \"' .. tostring(name) .. '\"', 2)
+      end
+      _G[name] = value
     end
-    if not string.match(name, '^[A-Za-z_][A-Za-z0-9_]*$') then
-      error('lvars: Invalid variable name \"' .. tostring(name) .. '\"')
-    end
-    if value == nil then
-      error('lvars: Value missing for variable \"' .. tostring(name) .. '\"')
-    end
-    _G[name] = value
+    loadedVarFiles[filePath] = true
   end
 
   resultTable = resultTable or { result = '', skip = true }
@@ -331,10 +341,10 @@ function lcmd(path)
 
   local ok, mod = safeLoadFileSandbox(path)
   if not ok then
-    error("lcmd: " .. tostring(mod))
+    error("lcmd: " .. tostring(mod), 2)
   end
   if type(mod) ~= "table" then
-    error("lcmd: file must return a table of functions")
+    error("lcmd: file must return a table of functions", 2)
   end
 
   local env = _ENV or _G
@@ -342,14 +352,14 @@ function lcmd(path)
   for name, fn in pairs(mod) do
     if type(fn) == "function" then
       if env[name] ~= nil then
-        error("lcmd: command already exists: " .. tostring(name))
+        error("lcmd: command already exists: " .. tostring(name), 2)
       end
       env[name] = fn
       count = count + 1
     end
   end
   if count == 0 then
-    error("lcmd: file exported no functions")
+    error("lcmd: file exported no functions", 2)
   end
 
   loadedCmdFiles[path] = true

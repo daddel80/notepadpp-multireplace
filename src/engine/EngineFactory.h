@@ -28,7 +28,7 @@ namespace MultiReplaceEngine {
 
     // Forward declaration so the factory header doesn't pull in <lua.hpp>
     // or other engine-specific includes.
-    class ILuaEngineHost;
+    class IFormulaEngineHost;
 
     class EngineFactory {
     public:
@@ -42,7 +42,7 @@ namespace MultiReplaceEngine {
         // parameter is accepted for symmetry and future use).
         //
         // The host must outlive every engine produced from this call.
-        static FormulaEnginePtr create(EngineType type, ILuaEngineHost* host);
+        static FormulaEnginePtr create(EngineType type, IFormulaEngineHost* host);
 
         EngineFactory() = delete;  // static-only utility class
     };

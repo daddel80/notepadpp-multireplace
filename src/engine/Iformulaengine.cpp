@@ -34,9 +34,9 @@ namespace MultiReplaceEngine {
             key, { std::to_wstring(count) });
     }
 
-    ILuaEngineHost::RecoverableErrorChoice
+    IFormulaEngineHost::RecoverableErrorChoice
         IFormulaEngine::handleRecoverableSkip(
-            ILuaEngineHost* host,
+            IFormulaEngineHost* host,
             const std::wstring& engineName,
             const std::wstring& detailKey,
             const std::string& exprText)
@@ -48,10 +48,10 @@ namespace MultiReplaceEngine {
         // Already silenced for this run, or dialogs disabled globally:
         // return SkipOne so the caller treats it as a regular skip.
         if (_skipAllErrors) {
-            return ILuaEngineHost::RecoverableErrorChoice::SkipOne;
+            return IFormulaEngineHost::RecoverableErrorChoice::SkipOne;
         }
         if (!host || !host->isFormulaErrorDialogEnabled()) {
-            return ILuaEngineHost::RecoverableErrorChoice::SkipOne;
+            return IFormulaEngineHost::RecoverableErrorChoice::SkipOne;
         }
 
         const std::wstring detailW = LanguageManager::instance().get(
@@ -60,10 +60,10 @@ namespace MultiReplaceEngine {
         const std::string engine = Encoding::wstringToUtf8(engineName);
 
         const auto choice = host->showRecoverableErrorDialog(engine, details);
-        if (choice == ILuaEngineHost::RecoverableErrorChoice::SkipAll) {
+        if (choice == IFormulaEngineHost::RecoverableErrorChoice::SkipAll) {
             _skipAllErrors = true;
         }
-        else if (choice == ILuaEngineHost::RecoverableErrorChoice::Stop) {
+        else if (choice == IFormulaEngineHost::RecoverableErrorChoice::Stop) {
             _wantStop = true;
         }
         return choice;

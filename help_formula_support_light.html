@@ -757,7 +757,7 @@ nav.pagenav .nav-group.collapsible {
       <li><code>FNAME</code> and <code>FPATH</code> are updated for each file processed by <code>Replace All in Open Documents</code> and <code>Replace All in Files</code>. This ensures that variables always refer to the file currently being modified.</li>
       <li><code>MATCH</code> and <code>CAP</code> variables are always strings. For calculations use <code>tonum(CAP1)</code>; see the <a href="#tonum-behavior">tonum parsing behavior</a> table for what it accepts.</li>
       <li>The result of <code>set()</code>, <code>cond()</code> and <code>lkp()</code> is inserted as it is in every search mode, so a path like <code>C:\new\test.txt</code> stays intact and <code>$1</code> is not replaced. Write line breaks and tabs in the Lua string itself, as <code>"\n"</code> and <code>"\t"</code>.</li>
-      <li>A formula that runs longer than 10 seconds or takes more than 1 GB of memory for one match, such as an endless <code>while</code> loop, stops the run with a message.</li>
+      <li>A formula that runs longer than 10 seconds or takes more than 1 GB of memory for one match, such as an endless <code>while</code> loop, stops the run with a message. The time is checked between Lua instructions, so a single <code>string.find</code>, <code>match</code>, <code>gmatch</code> or <code>gsub</code> call runs to its end, however long its pattern takes.</li>
     </ul>
   </section>
 
@@ -998,7 +998,7 @@ return {
 
     <p><strong>Key Points:</strong></p>
     <ul>
-      <li><strong>Conditional Loading:</strong> Variables can be loaded conditionally by placing <code>lvars()</code> alongside a specific Find pattern. In this case, the variables are only initialized when the pattern matches.</li>
+      <li><strong>Conditional Loading:</strong> Variables can be loaded conditionally by placing <code>lvars()</code> alongside a specific Find pattern. In this case, the variables are initialized at the first match. Each file is loaded once per document, so values the formula changes afterwards stay.</li>
       <li><strong>Local vs. Returned Variables:</strong> Only variables explicitly included in the return table of the .vars file are available for use. Any local variables remain private to the file.</li>
     </ul>
 
@@ -1463,7 +1463,7 @@ return {
 
 <section id="DebugMode">
     <h2>Debug Mode</h2>
-    <p>The <strong>Debug Mode</strong> pauses before each replacement and shows the current values of all variables, so you can follow the logic match by match.</p>
+    <p>The <strong>Debug Mode</strong> pauses before each replacement and shows the current values of all variables, so you can follow the logic match by match. While the window is open, the MultiReplace panel waits; if the document changes or another document is shown before <strong>Next</strong>, the run stops.</p>
     
     <p><strong>How to enable:</strong></p>
     <ul>

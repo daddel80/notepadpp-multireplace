@@ -225,7 +225,7 @@ namespace MultiReplaceEngine {
     // Construction / destruction
     // ---------------------------------------------------------------------
 
-    ExprTkEngine::ExprTkEngine(ILuaEngineHost* host)
+    ExprTkEngine::ExprTkEngine(IFormulaEngineHost* host)
         : _host(host)
         , _numFunction(this)
         , _skipFunction(this)
@@ -404,16 +404,14 @@ namespace MultiReplaceEngine {
     }
 
     // ---------------------------------------------------------------------
-    // Per-run lifecycle
+    // Per-document lifecycle
     // ---------------------------------------------------------------------
 
-    void ExprTkEngine::beginRun()
+    void ExprTkEngine::beginDocument()
     {
-        IFormulaEngine::beginRun();
-
         // Compiled templates go first: they call into the library that is
         // replaced next. A fresh library is what makes loadlib("path")
-        // re-read the file on every Replace-All (user edits to the .elib
+        // re-read the file for every document (user edits to the .elib
         // take effect on the next run) and what makes removing the
         // loadlib() init slot also remove its functions.
         _templates.clear();
@@ -422,8 +420,8 @@ namespace MultiReplaceEngine {
         _loadlibFailed = false;
         _loadlibError.clear();
 
-        // Discard match history from any previous run. Each Replace-All
-        // starts with an empty ring; the first match in the run sees
+        // Discard match history of the previous document. Each document
+        // starts with an empty ring; the first match in it sees
         // _history.size() == 0, so numprev() / numout() bootstrap with
         // their v fallback (0 for numprev arity-0, NaN otherwise).
         _history.clear();
@@ -438,13 +436,12 @@ namespace MultiReplaceEngine {
     // Error reporting
     // ---------------------------------------------------------------------
 
-    void ExprTkEngine::reportError(ILuaEngineHost::ErrorCategory category,
+    void ExprTkEngine::reportError(IFormulaEngineHost::ErrorCategory category,
         const std::string& details)
     {
-        if (!_host || !_host->isFormulaErrorDialogEnabled()) {
-            return;
+        if (_host) {
+            _host->showErrorMessage(category, "ExprTk", details);
         }
-        _host->showErrorMessage(category, "ExprTk", details);
     }
 
     void ExprTkEngine::handleInvalid(const std::string& exprText)
@@ -483,7 +480,7 @@ namespace MultiReplaceEngine {
             _activeHistRule = ruleIndex;
         }
 
-        // Each script compiles once per run; rules sharing a script share
+        // Each script compiles once per document; rules sharing a script share
         // the compiled template, while history stays per rule.
         auto it = _templates.find(scriptUtf8);
         if (it == _templates.end()) {
@@ -524,7 +521,7 @@ namespace MultiReplaceEngine {
             msg += " (at position ";
             msg += std::to_string(parseRes.errorPos);
             msg += ")";
-            reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+            reportError(IFormulaEngineHost::ErrorCategory::CompileError, msg);
             return false;
         }
 
@@ -551,7 +548,7 @@ namespace MultiReplaceEngine {
                     msg += split.spec;
                     msg += "\": ";
                     msg += parsed.errorMessage;
-                    reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                    reportError(IFormulaEngineHost::ErrorCategory::CompileError, msg);
                     return false;
                 }
                 out.specs[i].hasSpec = true;
@@ -565,7 +562,7 @@ namespace MultiReplaceEngine {
                 // Calls into ecmd-loaded functions resolve against the
                 // library's own symbol table. Registering it here lets
                 // user expressions like (?=padleft(txt(1), 5, '0')) compile
-                // against whatever the current Replace-All run has loaded.
+                // against whatever the current document has loaded.
                 expr.register_symbol_table(_ecmdLibrary->symbolTable());
             }
 
@@ -577,7 +574,7 @@ namespace MultiReplaceEngine {
                 msg += split.formula;
                 msg += "\": ";
                 msg += _parser.error();
-                reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                reportError(IFormulaEngineHost::ErrorCategory::CompileError, msg);
                 return false;
             }
 
@@ -602,7 +599,7 @@ namespace MultiReplaceEngine {
                     std::string msg = "Text format spec (t:...) requires a string-returning formula: \"";
                     msg += seg.text;
                     msg += "\"";
-                    reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                    reportError(IFormulaEngineHost::ErrorCategory::CompileError, msg);
                     return false;
                 }
                 if (!specIsText && out.specs[i].isString
@@ -610,7 +607,7 @@ namespace MultiReplaceEngine {
                     std::string msg = "Numeric/date/duration format spec cannot be combined with a string-returning formula: \"";
                     msg += seg.text;
                     msg += "\"";
-                    reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                    reportError(IFormulaEngineHost::ErrorCategory::CompileError, msg);
                     return false;
                 }
             }
@@ -632,7 +629,7 @@ namespace MultiReplaceEngine {
         std::string historyErr;
         HistoryAnalysis ha = analyzeHistory(parseRes, historyErr);
         if (!historyErr.empty()) {
-            reportError(ILuaEngineHost::ErrorCategory::CompileError,
+            reportError(IFormulaEngineHost::ErrorCategory::CompileError,
                 historyErr);
             return false;
         }
@@ -741,7 +738,7 @@ namespace MultiReplaceEngine {
             // Refresh the panel's list view so any state the debug dialog
             // shows reflects the current run state, then block on the
             // dialog. Response codes mirror Lua's contract:
-            //   3  -> user pressed "Stop"
+            //   3  -> "Stop", or the document changed while it waited
             //  -1  -> dialog closed (e.g. window-close button)
             //  any other -> continue
             _host->refreshUiListView();
@@ -817,7 +814,7 @@ namespace MultiReplaceEngine {
                 std::string msg = "Internal error: expression not compiled: \"";
                 msg += seg.text;
                 msg += "\"";
-                reportError(ILuaEngineHost::ErrorCategory::CompileError, msg);
+                reportError(IFormulaEngineHost::ErrorCategory::CompileError, msg);
                 result.success = false;
                 result.errorMessage = std::move(msg);
                 return result;
@@ -841,7 +838,7 @@ namespace MultiReplaceEngine {
             // the run stops with one diagnostic rather than letting
             // dependent expressions raise follow-up errors.
             if (_loadlibFailed) {
-                reportError(ILuaEngineHost::ErrorCategory::CompileError,
+                reportError(IFormulaEngineHost::ErrorCategory::CompileError,
                     _loadlibError);
                 result.success = false;
                 result.errorMessage = _loadlibError;
@@ -849,7 +846,7 @@ namespace MultiReplaceEngine {
             }
             if (_guard.tripped()) {
                 std::string msg = _guard.message() + ": \"" + seg.text + "\"";
-                reportError(ILuaEngineHost::ErrorCategory::ExecutionError, msg);
+                reportError(IFormulaEngineHost::ErrorCategory::ExecutionError, msg);
                 result.success = false;
                 result.errorMessage = std::move(msg);
                 return result;
@@ -893,7 +890,7 @@ namespace MultiReplaceEngine {
                     std::string msg = "Format spec cannot be combined with return statement: \"";
                     msg += seg.text;
                     msg += "\"";
-                    reportError(ILuaEngineHost::ErrorCategory::ExecutionError, msg);
+                    reportError(IFormulaEngineHost::ErrorCategory::ExecutionError, msg);
                     result.success = false;
                     result.errorMessage = std::move(msg);
                     return result;
@@ -2099,7 +2096,7 @@ namespace MultiReplaceEngine {
         const std::string& sourceLabel,
         std::string& errorOut)
     {
-        // The same library loaded again in this run: its functions are already there
+        // The same library loaded again for this document: its functions are already there
         if (_loaded.count(fileContent) != 0) {
             return true;
         }
@@ -2604,7 +2601,7 @@ namespace MultiReplaceEngine {
         // Returns false on any failure (non-finite scalar, index < 1,
         // unknown header name, no CSV mode, ...). On false, cell is
         // guaranteed empty.
-        bool resolveCsvCell(ILuaEngineHost* host,
+        bool resolveCsvCell(IFormulaEngineHost* host,
             exprtk::igeneric_function<double>::parameter_list_t parameters,
             std::string& cell)
         {

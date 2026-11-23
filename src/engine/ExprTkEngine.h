@@ -70,7 +70,7 @@
 //      tables: match-bound ones and the built-ins usable everywhere.
 //   3. compile(template) splits the template into segments and pre-
 //      compiles every (?=expr) block; compiled templates are kept per
-//      script for the run.
+//      script for the document.
 //   4. execute(template, vars, ...) updates the per-match variables
 //      and evaluates each compiled expression in document order.
 //   5. shutdown() releases the compiled templates and the library.
@@ -81,7 +81,7 @@
 #pragma once
 
 #include "IFormulaEngine.h"
-#include "ILuaEngineHost.h"
+#include "IFormulaEngineHost.h"
 #include "../exprtk/ExprTkPatternParser.h"
 #include "../exprtk/EcmdParser.h"
 #include "../exprtk/FormatSpec.h"
@@ -104,7 +104,7 @@ namespace MultiReplaceEngine {
 
     class ExprTkEngine final : public IFormulaEngine {
     public:
-        explicit ExprTkEngine(ILuaEngineHost* host);
+        explicit ExprTkEngine(IFormulaEngineHost* host);
         ~ExprTkEngine() override;
 
         // ----- IFormulaEngine -----------------------------------------------
@@ -112,12 +112,12 @@ namespace MultiReplaceEngine {
         bool initialize() override;
         void shutdown()   override;
 
-        // ecmd-loaded user libraries live for one Replace-All run only.
-        // beginRun() discards any library state from the previous run so
-        // a re-run reloads the .elib files fresh from disk and removing
-        // the loadlib() init slot makes its functions disappear.
-        // _errorSkipCount / _skipAllErrors are still reset by the base.
-        void beginRun() override;
+        // ecmd-loaded user libraries live for one document of a run.
+        // beginDocument() discards the library state of the previous one,
+        // so the .elib files are read fresh from disk and removing the
+        // loadlib() init slot makes its functions disappear.
+        // _errorSkipCount / _skipAllErrors are reset once per run by the base.
+        void beginDocument() override;
 
         bool compile(const std::string& scriptUtf8, std::size_t ruleIndex = static_cast<std::size_t>(-1)) override;
 
@@ -142,11 +142,11 @@ namespace MultiReplaceEngine {
 
         // ----- internal helpers --------------------------------------------
 
-        // Format and surface an error to the host. Mirrors LuaEngine's
-        // pattern: gated by ILuaEngineHost::isFormulaErrorDialogEnabled().
+        // Format and surface an error to the host, which shows a dialog or,
+        // with error dialogs off, a status line (as for LuaEngine).
         // The body is prefixed with "ExprTk: " so the user can immediately
         // tell which engine raised the error in mixed-engine workspaces.
-        void reportError(ILuaEngineHost::ErrorCategory category,
+        void reportError(IFormulaEngineHost::ErrorCategory category,
             const std::string& details);
 
         // Invalid-result handling for both the numeric and return-list
@@ -972,8 +972,8 @@ namespace MultiReplaceEngine {
             std::vector<ArgRoute>                       _argRoutes;
         };
 
-        // Owns all ecmd functions loaded during the current run. Lifetime
-        // is one Replace-All: re-created in beginRun(). The library's own
+        // Owns all ecmd functions loaded for the current document. Lifetime
+        // is one document of a run: re-created in beginDocument(). The library's own
         // symbol_table is what holds the function registrations; the
         // outer engine expression registers this table alongside the
         // engine's tables so user-written (?=...) blocks can call any
@@ -1011,7 +1011,7 @@ namespace MultiReplaceEngine {
             RuntimeGuard&                                        _guard;
             symbol_table_t                                       _libTable;
             std::vector<std::unique_ptr<EcmdFunctionInstance>>   _instances;
-            // Contents loaded in this run; the same library again is a no-op.
+            // Contents loaded for this document; the same library again is a no-op.
             std::unordered_set<std::string>                      _loaded;
             // Parser is owned by the library so its diagnostic state
             // doesn't leak across loads from different files.
@@ -1020,7 +1020,7 @@ namespace MultiReplaceEngine {
 
         // ExprTk-callable: loadlib("path") -> 0. The user invokes this from
         // an empty-Find init slot to load a library of functions for the
-        // current Replace-All run.
+        // current document of the run.
         //
         // One string arg, scalar return: "S" arity-spec, plain
         // igeneric_function (no e_rtrn_string). The return value (always
@@ -1056,7 +1056,7 @@ namespace MultiReplaceEngine {
 
         // ----- state -------------------------------------------------------
 
-        ILuaEngineHost* _host;
+        IFormulaEngineHost* _host;
 
         // ExprTk plumbing. _matchSymbols holds what depends on the current
         // match (CNT, num, txt, history readers, skip, loadlib, ...);
@@ -1094,9 +1094,9 @@ namespace MultiReplaceEngine {
         // the host; returns false then.
         bool compileTemplate(const std::string& scriptUtf8, CompiledTemplate& out);
 
-        // Compiled templates of this run, keyed by script, so rules that
-        // take turns (one-pass) compile once. Cleared in beginRun(): the
-        // library functions they call change between runs.
+        // Compiled templates of this document, keyed by script, so rules that
+        // take turns (one-pass) compile once. Cleared in beginDocument(): the
+        // library functions they call change between documents.
         std::unordered_map<std::string, CompiledTemplate> _templates;
         CompiledTemplate* _active = nullptr;
 
@@ -1220,16 +1220,16 @@ namespace MultiReplaceEngine {
         // table at initialize().
         EcmdLoaderFunction _ecmdLoaderFunction;
 
-        // The set of user functions loaded during this Replace-All run.
-        // Discarded and re-created in beginRun() so .elib files are
-        // re-read fresh each run. Null between shutdown() and the next
+        // The set of user functions loaded for the current document.
+        // Discarded and re-created in beginDocument() so .elib files are
+        // re-read fresh for each document. Null between shutdown() and the next
         // initialize().
         std::unique_ptr<EcmdLibrary> _ecmdLibrary;
 
-        // Run-scoped latch for a failed loadlib(). Set by loadEcmdFile()
+        // Latch for a failed loadlib(). Set by loadEcmdFile()
         // when a library cannot be loaded, checked by execute() right after
         // eval to abort the run with one structural error. Reset in
-        // beginRun(). Mirrors the run-scoped error flags in IFormulaEngine.
+        // beginDocument().
         bool        _loadlibFailed = false;
         std::string _loadlibError;
 

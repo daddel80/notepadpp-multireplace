@@ -22,15 +22,17 @@
 // Lifecycle:
 //   1. Construct via EngineFactory::create(EngineType).
 //   2. Call initialize() once before the first compile/execute.
-//   3. compile(script) when the user's replace text changes.
-//   4. execute(script, vars, ...) per match.
-//   5. shutdown() before destruction (RAII handles this in
+//   3. beginRun() once per run, beginDocument() before each of its
+//      documents.
+//   4. compile(script) when the user's replace text changes.
+//   5. execute(script, vars, ...) per match.
+//   6. shutdown() before destruction (RAII handles this in
 //      destructors anyway, but explicit is fine for ordering).
 
 #pragma once
 
 #include "EngineTypes.h"
-#include "ILuaEngineHost.h"
+#include "IFormulaEngineHost.h"
 
 #include <memory>
 #include <string>
@@ -62,16 +64,21 @@ namespace MultiReplaceEngine {
 
         // ----- Per-run lifecycle ------------------------------------------
         //
-        // beginRun() runs before the first match, the end-of-run hooks
-        // after the last. The defaults here implement a generic skip-
+        // A run is one click; in Open Documents and in Files it covers
+        // several documents. beginRun() runs before the first match,
+        // beginDocument() before each document, the end-of-run hooks after
+        // the last match. The defaults here implement a generic skip-
         // counter pattern; subclasses just need to populate the
-        // protected counters via noteRecoverableSkip() etc. Engines that
+        // protected counters via handleRecoverableSkip(). Engines that
         // don't need any of this leave the counter alone and the hooks
         // return empty automatically.
         virtual void beginRun() {
             _skipAllErrors = false;
             _errorSkipCount = 0;
         }
+
+        // Each document starts with a fresh formula state.
+        virtual void beginDocument() {}
 
         virtual std::wstring endRunSummary() {
             if (_errorSkipCount == 0) {
@@ -141,8 +148,8 @@ namespace MultiReplaceEngine {
         // ----- Shared recoverable-error skip state ------------------------
         //
         // Engines that emit per-match warnings the user can choose to skip
-        // (ExprTk on NaN, later Lua on pcall errors) share this state and
-        // the helpers below. Three pieces of state cover the lifecycle:
+        // (ExprTk on NaN) share this state and the helpers below. Three
+        // pieces of state cover the lifecycle:
         //
         //   _wantStop       per-match flag, set when the user picks "Stop"
         //                   in the recoverable-error dialog. The engine's
@@ -176,8 +183,8 @@ namespace MultiReplaceEngine {
         // Returns the user's choice (also reflected in _wantStop /
         // _skipAllErrors so callers can ignore the return value if they
         // only care about side effects).
-        ILuaEngineHost::RecoverableErrorChoice handleRecoverableSkip(
-            ILuaEngineHost* host,
+        IFormulaEngineHost::RecoverableErrorChoice handleRecoverableSkip(
+            IFormulaEngineHost* host,
             const std::wstring& engineName,
             const std::wstring& detailKey,
             const std::string& exprText);

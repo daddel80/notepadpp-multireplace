@@ -211,6 +211,7 @@ const LangKV kEnglishPairs[] = {
 { L"status_tandem_disabled", L"Tandem mode disabled." },
 { L"status_occurrences_found", L"$REPLACE_STRING occurrences found." },
 { L"status_canceled", L"Canceled" },
+{ L"status_debug_document_changed", L"Replace stopped: the document changed during debugging." },
 { L"status_discovering_files", L"Discovering files... ($REPLACE_STRING)" },
 { L"status_scan_progress", L"Progress: [$REPLACE_STRING%]" },
 { L"status_scan_skipped", L" $REPLACE_STRING1 file(s) skipped: $REPLACE_STRING2." },

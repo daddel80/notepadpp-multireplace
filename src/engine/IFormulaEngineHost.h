@@ -14,11 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
-// ILuaEngineHost.h
-// Callback interface the LuaEngine uses to talk back to its host
-// (typically the MultiReplace panel). Kept in its own header so
-// callers - notably MultiReplacePanel.h - can implement the interface
-// without pulling <lua.hpp> through their own translation unit.
+// IFormulaEngineHost.h
+// Callback interface the formula engines use to talk back to their host
+// (the MultiReplace panel). Kept in its own header so callers - notably
+// MultiReplacePanel.h - can implement the interface without pulling
+// <lua.hpp> or ExprTk through their own translation unit.
 
 #pragma once
 
@@ -34,18 +34,18 @@ namespace MultiReplaceEngine {
     // MR types and trivially mockable in tests.
     //
     // Implementations are allowed to be no-ops (e.g. in tests).
-    class ILuaEngineHost {
+    class IFormulaEngineHost {
     public:
-        virtual ~ILuaEngineHost() = default;
+        virtual ~IFormulaEngineHost() = default;
 
         // Escape characters that have meaning in a regex replacement so
         // formula output doesn't accidentally introduce backreferences or
         // escape sequences. Pure string transformation, no I/O or UI.
         virtual std::string escapeForRegex(const std::string& input) = 0;
 
-        // Show the Lua debug window with the captured CAP/global dump.
+        // Show the debug window with the engine's variable dump.
         // Return values mirror the existing ShowDebugWindow contract:
-        //    3 -> user pressed "Stop"
+        //    3 -> "Stop", or the document changed while the window waited
         //   -1 -> window closed
         //  any other -> continue
         virtual int showDebugWindow(const std::string& message) = 0;
@@ -55,13 +55,11 @@ namespace MultiReplaceEngine {
         // list reflects any state the user-script altered.
         virtual void refreshUiListView() = 0;
 
-        // Display a translated error message box. Title and body come from
-        // the host's translation table; the engine supplies its own
-        // identifier (e.g. "Lua", "ExprTk") plus the raw error text and a
-        // category key. The host composes the final body from a translation
-        // template such as "$REPLACE_STRING1: $REPLACE_STRING2", so the
-        // user-visible "Lua: ..." or "ExprTk: ..." prefix never has to be
-        // hardcoded on the engine side.
+        // Report a formula error that stops the run: a message box, or a
+        // status line when error dialogs are turned off. The engine supplies
+        // its identifier (e.g. "Lua", "ExprTk"), the raw error text and a
+        // category; the host composes the translated text, so the "Lua: ..."
+        // or "ExprTk: ..." prefix never has to be hardcoded in an engine.
         enum class ErrorCategory { CompileError, ExecutionError };
         virtual void showErrorMessage(ErrorCategory category,
             const std::string& engineName,

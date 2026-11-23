@@ -23,27 +23,24 @@
 #pragma once
 
 #include "IFormulaEngine.h"
-#include "ILuaEngineHost.h"
+#include "IFormulaEngineHost.h"
 
 #include <lua.hpp>
 
 #include <chrono>
-#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace MultiReplaceEngine {
 
-    // Lua-specific execution state kept inside the engine. None of these
-    // members appear in the public interface; they exist only as
-    // implementation detail of the per-match optimisations the original
-    // bridge already performed.
+    // One Lua state per document; the helper script and the variables of
+    // each match live in it.
     class LuaEngine final : public IFormulaEngine {
     public:
         // The host pointer must outlive the engine; LuaEngine does not
         // take ownership.
-        explicit LuaEngine(ILuaEngineHost* host);
+        explicit LuaEngine(IFormulaEngineHost* host);
         ~LuaEngine() override;
 
         // ----- IFormulaEngine ---------------------------------------------
@@ -51,12 +48,10 @@ namespace MultiReplaceEngine {
         bool initialize() override;
         void shutdown() override;
 
-        // lcmd-loaded user libraries live for one Replace-All run only.
-        // beginRun() tears down the Lua state and rebuilds it so any
-        // .lcmd files referenced from the init slot are re-read fresh
-        // on each run, and removing the lcmd() call also removes its
-        // functions from the global namespace.
-        void beginRun() override;
+        // Each document gets a new Lua state: files loaded by lcmd(),
+        // lvars() and lkp() are read again, and removing the lcmd() call
+        // also removes its functions from the global namespace.
+        void beginDocument() override;
 
         bool compile(const std::string& scriptUtf8, std::size_t ruleIndex = static_cast<std::size_t>(-1)) override;
 
@@ -93,12 +88,12 @@ namespace MultiReplaceEngine {
         static void setGlobalRaw(lua_State* L, const char* name);  // pops the value
         static int  getGlobalRaw(lua_State* L, const char* name);  // pushes the value
 
-        // Mirror Lua globals into _globalLuaVariablesMap for the debug
-        // window dump.
-        void captureLuaGlobals(lua_State* L);
+        // The debug window's text: the CAPs of this match first, then the
+        // other plain-valued globals by name, each value once.
+        std::string debugDump();
 
         // Registry reference of the compiled script, LUA_NOREF after a
-        // compile error. Each script compiles once per run.
+        // compile error. Each script compiles once per document.
         int compiledRef(const std::string& scriptUtf8);
 
         // Allocator with a ceiling while the formula runs, and the count
@@ -108,10 +103,10 @@ namespace MultiReplaceEngine {
 
         // ----- State ------------------------------------------------------
 
-        ILuaEngineHost* _host;                     // Non-owning, must outlive engine
+        IFormulaEngineHost* _host;                     // Non-owning, must outlive engine
         lua_State* _luaState = nullptr;
 
-        // Compiled scripts of this run, by script text
+        // Compiled scripts of this document, by script text
         std::unordered_map<std::string, int> _compiled;
 
         // Runaway limits of the running evaluation: deadline, memory
@@ -121,24 +116,10 @@ namespace MultiReplaceEngine {
         size_t          _memoryUsed = 0;
         bool            _timedOut = false;
 
-        // Per-match optimisation caches: avoid re-pushing globals that
-        // didn't change since the previous match.
-        std::string     _lastFPATH;
-        std::string     _lastFNAME;
+        // CAP globals of the current match, and how many the previous one
+        // set, so the CAPs of a match with more groups do not linger
         int             _lastCapCount = 0;
         std::vector<std::string> _currentCapNames;
-
-        // Snapshot of Lua globals captured for the debug window. Cleared
-        // and rebuilt on every debug dump.
-        struct LuaVariableSnapshot {
-            enum class Type { String, Number, Boolean, None };
-            std::string name;
-            Type        type = Type::None;
-            std::string stringValue;
-            double      numberValue = 0.0;
-            bool        booleanValue = false;
-        };
-        std::map<std::string, LuaVariableSnapshot> _globalLuaVariablesMap;
     };
 
 } // namespace MultiReplaceEngine

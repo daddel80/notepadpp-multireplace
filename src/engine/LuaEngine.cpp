@@ -25,9 +25,10 @@
 #include <fstream>
 #include <iomanip>
 #include <iterator>
+#include <map>
 #include <sstream>
 
-// The bundled Lua helper script (set/skip/cond/lkp/...) is provided as
+// The bundled Lua helper script (set/cond/lkp/...) is provided as
 // a static string in luaEmbedded.h. Including the header here gives
 // this TU its own visible copy of that static data.
 #include "../luaEmbedded.h"
@@ -53,13 +54,41 @@ namespace MultiReplaceEngine {
         constexpr size_t kMaxMemory = static_cast<size_t>(1024) * 1024 * 1024;
         constexpr size_t kNoCeiling = static_cast<size_t>(-1);
 
+        // Lowercase twins of the variables set for each match, and Lua's own
+        // _VERSION: the debug list shows each value once
+        constexpr const char* kHiddenInDebug[] = {
+            "cnt", "lcnt", "line", "lpos", "apos", "col",
+            "fpath", "fname", "match", "_VERSION" };
+
+        // One debug row "name<TAB>Type<TAB>value" for a string, number or
+        // boolean; nothing for other types
+        std::string debugRow(lua_State* L, int index, const std::string& name)
+        {
+            switch (lua_type(L, index)) {
+            case LUA_TSTRING: {
+                size_t len = 0;
+                const char* text = lua_tolstring(L, index, &len);
+                return name + "\tString\t" + SU::escapeControlChars(std::string(text, len)) + "\n\n";
+            }
+            case LUA_TNUMBER: {
+                std::ostringstream os;
+                os << std::fixed << std::setprecision(8) << lua_tonumber(L, index);
+                return name + "\tNumber\t" + os.str() + "\n\n";
+            }
+            case LUA_TBOOLEAN:
+                return name + "\tBoolean\t" + (lua_toboolean(L, index) ? "true" : "false") + "\n\n";
+            default:
+                return std::string();
+            }
+        }
+
     } // anonymous namespace
 
     // ---------------------------------------------------------------------
     // Lifecycle
     // ---------------------------------------------------------------------
 
-    LuaEngine::LuaEngine(ILuaEngineHost* host)
+    LuaEngine::LuaEngine(IFormulaEngineHost* host)
         : _host(host)
     {
     }
@@ -87,12 +116,12 @@ namespace MultiReplaceEngine {
             applyLuaSafeMode(_luaState);
         }
 
-        // Load and execute the bundled helper script (set/skip/cond/lkp).
+        // Load and execute the bundled helper script (set, cond, lkp, ...).
         if (luaL_loadstring(_luaState, luaSourceCode) != LUA_OK) {
             const char* errMsg = lua_tostring(_luaState, -1);
-            if (_host && _host->isFormulaErrorDialogEnabled()) {
+            if (_host) {
                 _host->showErrorMessage(
-                    ILuaEngineHost::ErrorCategory::CompileError,
+                    IFormulaEngineHost::ErrorCategory::CompileError,
                     "Lua",
                     errMsg ? errMsg : "Failed to load Lua helper script");
             }
@@ -103,9 +132,9 @@ namespace MultiReplaceEngine {
 
         if (lua_pcall(_luaState, 0, LUA_MULTRET, 0) != LUA_OK) {
             const char* errMsg = lua_tostring(_luaState, -1);
-            if (_host && _host->isFormulaErrorDialogEnabled()) {
+            if (_host) {
                 _host->showErrorMessage(
-                    ILuaEngineHost::ErrorCategory::ExecutionError,
+                    IFormulaEngineHost::ErrorCategory::ExecutionError,
                     "Lua",
                     errMsg ? errMsg : "Failed to execute Lua helper script");
             }
@@ -125,10 +154,7 @@ namespace MultiReplaceEngine {
         *static_cast<LuaEngine**>(lua_getextraspace(_luaState)) = this;
         lua_sethook(_luaState, &LuaEngine::runawayHook, LUA_MASKCOUNT, kHookInterval);
 
-        // Reset all per-match optimisation caches; a fresh state has no
-        // globals so any "value last pushed" tracking is stale.
-        _lastFPATH.clear();
-        _lastFNAME.clear();
+        // A fresh state has no CAP globals to clear
         _lastCapCount = 0;
 
         return true;
@@ -142,26 +168,21 @@ namespace MultiReplaceEngine {
             _luaState = nullptr;
         }
         _compiled.clear();
-        _lastFPATH.clear();
-        _lastFNAME.clear();
         _lastCapCount = 0;
         _currentCapNames.clear();
-        _globalLuaVariablesMap.clear();
     }
 
     // ---------------------------------------------------------------------
-    // Per-run lifecycle
+    // Per-document lifecycle
     // ---------------------------------------------------------------------
 
-    void LuaEngine::beginRun()
+    void LuaEngine::beginDocument()
     {
-        IFormulaEngine::beginRun();
-
         // Tear the state down and rebuild from scratch. Cheap (sub-ms)
         // and guarantees a clean slate: any lcmd-loaded helper, any
-        // user-set global, any side-effect from a previous run is gone.
-        // Re-runs of the same list now also re-read .lcmd files from
-        // disk, so the user's edits take effect on the next click.
+        // user-set global, any side-effect from a previous document is
+        // gone, and the files behind lcmd(), lvars() and lkp() are read
+        // again, so the user's edits take effect on the next click.
         if (_luaState) {
             shutdown();
             initialize();
@@ -186,9 +207,9 @@ namespace MultiReplaceEngine {
         if (luaL_loadbufferx(_luaState, scriptUtf8.data(), scriptUtf8.size(),
             scriptUtf8.c_str(), "t") != LUA_OK) {
             const char* errMsg = lua_tostring(_luaState, -1);
-            if (_host && _host->isFormulaErrorDialogEnabled()) {
+            if (_host) {
                 _host->showErrorMessage(
-                    ILuaEngineHost::ErrorCategory::CompileError,
+                    IFormulaEngineHost::ErrorCategory::CompileError,
                     "Lua",
                     errMsg ? errMsg : "Lua compile error");
             }
@@ -238,8 +259,8 @@ namespace MultiReplaceEngine {
         auto restoreStack = [this, stackBase]() {
             lua_settop(_luaState, stackBase);
             };
-        auto fail = [&](ILuaEngineHost::ErrorCategory category, const std::string& message) {
-            if (_host && _host->isFormulaErrorDialogEnabled()) {
+        auto fail = [&](IFormulaEngineHost::ErrorCategory category, const std::string& message) {
+            if (_host) {
                 _host->showErrorMessage(category, "Lua", message);
             }
             result.success = false;
@@ -265,19 +286,12 @@ namespace MultiReplaceEngine {
         lua_pushinteger(_luaState, vars.COL);  setGlobalRaw(_luaState, "col");
 
         // ----- String globals ---------------------------------------------
-        // FPATH/FNAME change at most once per replaceAll run; skip the
-        // push+setglobal pair when the value is unchanged since the
-        // previous match.
-        if (vars.FPATH != _lastFPATH) {
-            setLuaVariable(_luaState, "FPATH", vars.FPATH);
-            setLuaVariable(_luaState, "fpath", vars.FPATH);
-            _lastFPATH = vars.FPATH;
-        }
-        if (vars.FNAME != _lastFNAME) {
-            setLuaVariable(_luaState, "FNAME", vars.FNAME);
-            setLuaVariable(_luaState, "fname", vars.FNAME);
-            _lastFNAME = vars.FNAME;
-        }
+        // Set for every match like the numbers: a value the script changed
+        // must not reach the next match.
+        setLuaVariable(_luaState, "FPATH", vars.FPATH);
+        setLuaVariable(_luaState, "fpath", vars.FPATH);
+        setLuaVariable(_luaState, "FNAME", vars.FNAME);
+        setLuaVariable(_luaState, "fname", vars.FNAME);
         setLuaVariable(_luaState, "MATCH", vars.MATCH);
         setLuaVariable(_luaState, "match", vars.MATCH);
 
@@ -328,11 +342,11 @@ namespace MultiReplaceEngine {
         if (_timedOut) {
             char stopMessage[64];
             std::snprintf(stopMessage, sizeof(stopMessage), kStopFormat, kMaxRunSeconds);
-            return fail(ILuaEngineHost::ErrorCategory::ExecutionError, stopMessage);
+            return fail(IFormulaEngineHost::ErrorCategory::ExecutionError, stopMessage);
         }
         if (status != LUA_OK) {
             const char* err = lua_tostring(_luaState, -1);
-            return fail(ILuaEngineHost::ErrorCategory::ExecutionError,
+            return fail(IFormulaEngineHost::ErrorCategory::ExecutionError,
                 err ? err : "Lua execution error");
         }
 
@@ -342,7 +356,7 @@ namespace MultiReplaceEngine {
             result.skip = true;
         }
         else if (!lua_istable(_luaState, -1)) {
-            return fail(ILuaEngineHost::ErrorCategory::ExecutionError,
+            return fail(IFormulaEngineHost::ErrorCategory::ExecutionError,
                 "resultTable must be a table");
         }
         else {
@@ -355,7 +369,7 @@ namespace MultiReplaceEngine {
                 result.output.assign(text, len);
             }
             else if (resultType != LUA_TNIL) {
-                return fail(ILuaEngineHost::ErrorCategory::ExecutionError,
+                return fail(IFormulaEngineHost::ErrorCategory::ExecutionError,
                     std::string("The result must be a string or a number, not a ")
                     + lua_typename(_luaState, resultType));
             }
@@ -393,62 +407,12 @@ namespace MultiReplaceEngine {
 
         // ----- Debug-window display ---------------------------------------
         if (debugOn && _host) {
-            std::string capVariablesStr;
-            for (const auto& capName : _currentCapNames) {
-                getGlobalRaw(_luaState, capName.c_str());
-
-                if (lua_isnumber(_luaState, -1)) {
-                    double n = lua_tonumber(_luaState, -1);
-                    std::ostringstream os;
-                    os << std::fixed << std::setprecision(8) << n;
-                    capVariablesStr += capName + "\tNumber\t" + os.str() + "\n\n";
-                }
-                else if (lua_isboolean(_luaState, -1)) {
-                    bool b = lua_toboolean(_luaState, -1);
-                    capVariablesStr += capName + "\tBoolean\t"
-                        + (b ? "true" : "false") + "\n\n";
-                }
-                else if (lua_isstring(_luaState, -1)) {
-                    capVariablesStr += capName + "\tString\t"
-                        + SU::escapeControlChars(lua_tostring(_luaState, -1))
-                        + "\n\n";
-                }
-
-                lua_pop(_luaState, 1);
-            }
-
-            _globalLuaVariablesMap.clear();
-            captureLuaGlobals(_luaState);
-
-            std::string globalsStr = "Global Lua variables:\n\n";
-            for (const auto& p : _globalLuaVariablesMap) {
-                const LuaVariableSnapshot& v = p.second;
-                switch (v.type) {
-                case LuaVariableSnapshot::Type::String:
-                    globalsStr += v.name + "\tString\t"
-                        + SU::escapeControlChars(v.stringValue) + "\n\n";
-                    break;
-                case LuaVariableSnapshot::Type::Number: {
-                    std::ostringstream os;
-                    os << std::fixed << std::setprecision(8) << v.numberValue;
-                    globalsStr += v.name + "\tNumber\t" + os.str() + "\n\n";
-                    break;
-                }
-                case LuaVariableSnapshot::Type::Boolean:
-                    globalsStr += v.name + "\tBoolean\t"
-                        + (v.booleanValue ? "true" : "false") + "\n\n";
-                    break;
-                case LuaVariableSnapshot::Type::None:
-                    break;
-                }
-            }
-
             _host->refreshUiListView();
 
-            const int resp = _host->showDebugWindow(capVariablesStr + globalsStr);
+            const int resp = _host->showDebugWindow(debugDump());
 
             if (resp == 3 || resp == -1) {
-                // "Stop" pressed (3) or window closed (-1)
+                // "Stop" or a changed document (3), window closed (-1)
                 result.success = false;
                 result.errorMessage = "Aborted via debug window";
                 restoreStack();
@@ -488,45 +452,48 @@ namespace MultiReplaceEngine {
         return type;
     }
 
-    void LuaEngine::captureLuaGlobals(lua_State* L)
+    std::string LuaEngine::debugDump()
     {
-        lua_pushglobaltable(L);
-        lua_pushnil(L);
-        while (lua_next(L, -2) != 0) {
-            // Skip non-string keys: lua_tostring on a numeric key would
-            // convert it in-place and break lua_next traversal.
-            if (lua_type(L, -2) != LUA_TSTRING) {
-                lua_pop(L, 1);
-                continue;
-            }
-
-            const char* key = lua_tostring(L, -2);
-            LuaVariableSnapshot snapshot;
-            snapshot.name = key;
-
-            const int valType = lua_type(L, -1);
-            if (valType == LUA_TNUMBER) {
-                snapshot.type = LuaVariableSnapshot::Type::Number;
-                snapshot.numberValue = lua_tonumber(L, -1);
-            }
-            else if (valType == LUA_TSTRING) {
-                snapshot.type = LuaVariableSnapshot::Type::String;
-                snapshot.stringValue = lua_tostring(L, -1);
-            }
-            else if (valType == LUA_TBOOLEAN) {
-                snapshot.type = LuaVariableSnapshot::Type::Boolean;
-                snapshot.booleanValue = lua_toboolean(L, -1);
-            }
-            else {
-                // Skip unsupported types (table, function, userdata, ...)
-                lua_pop(L, 1);
-                continue;
-            }
-
-            _globalLuaVariablesMap[key] = std::move(snapshot);
-            lua_pop(L, 1);
+        std::string text;
+        for (const auto& capName : _currentCapNames) {
+            getGlobalRaw(_luaState, capName.c_str());
+            text += debugRow(_luaState, -1, capName);
+            lua_pop(_luaState, 1);
         }
-        lua_pop(L, 1); // pop the global table
+
+        // The CAPs above and the lowercase twins are not listed again
+        auto hidden = [this](const std::string& name) {
+            for (const char* alias : kHiddenInDebug) {
+                if (name == alias) return true;
+            }
+            for (const auto& capName : _currentCapNames) {
+                if (name == capName || name == "cap" + capName.substr(3)) return true;
+            }
+            return false;
+            };
+
+        std::map<std::string, std::string> rows;   // sorted by name
+        lua_pushglobaltable(_luaState);
+        lua_pushnil(_luaState);
+        while (lua_next(_luaState, -2) != 0) {
+            // Only string keys: lua_tolstring would convert a number key in
+            // place and break lua_next
+            if (lua_type(_luaState, -2) == LUA_TSTRING) {
+                size_t len = 0;
+                const char* key = lua_tolstring(_luaState, -2, &len);
+                std::string name(key, len);
+                if (!hidden(name)) {
+                    std::string row = debugRow(_luaState, -1, name);
+                    if (!row.empty()) rows.emplace(std::move(name), std::move(row));
+                }
+            }
+            lua_pop(_luaState, 1);
+        }
+        lua_pop(_luaState, 1);
+
+        text += "Global Lua variables:\n\n";
+        for (const auto& row : rows) text += row.second;
+        return text;
     }
 
     // ---------------------------------------------------------------------

@@ -442,7 +442,7 @@ Control the behavior of search operations and cursor movement.
 - **Replace: Don't move to the following occurrence** — If checked, the cursor remains on the current match after clicking "Replace". If unchecked, it automatically jumps to the next match (standard behavior).
 - **Find: Search from cursor position** — If checked and Wrap around is off, "Find All", "Replace All", and "Mark Matches" start from the current cursor position. Runs over open documents or files never start at the cursor. If unchecked, operations always process the entire defined scope.
 - **Mute all sounds** — Disables the notification sound (beep) when a search yields no results. The window will still flash visually to indicate "not found".
-- **Show formula error dialogs** — Shows a dialog when a formula cannot be compiled or fails while running, or when an ExprTk formula returns an invalid number (NaN or Infinity). When off, no dialog is shown: a formula error still stops the run, and matches with an invalid number are left unchanged and counted in the end-of-run summary.
+- **Show formula error dialogs** — Shows a dialog when a formula cannot be compiled or fails while running, or when an ExprTk formula returns an invalid number (NaN or Infinity). When off, no dialog is shown: a formula error still stops the run and is named in the status bar, and matches with an invalid number are left unchanged and counted in the end-of-run summary.
 
 **Find input from selection** — Controls how the editor selection is brought into the **Find what** field. See [Filling the Find Field from Selection](#filling-the-find-field-from-selection) for the full workflow.
 

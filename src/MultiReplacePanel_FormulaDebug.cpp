@@ -14,10 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-// Formula Debug Window: modal window that shows per-match variable
-// and capture snapshots during Replace, for both the Lua and ExprTk
-// engines. Split out of MultiReplacePanel.cpp; these remain
-// MultiReplace members.
+// Formula Debug Window: shows per-match variable and capture snapshots
+// during Replace, for both the Lua and ExprTk engines. Split out of
+// MultiReplacePanel.cpp; these remain MultiReplace members.
 
 #define NOMINMAX
 #include "MultiReplacePanel.h"
@@ -30,6 +29,24 @@
 // Local singleton alias, matching MultiReplacePanel.cpp, so the
 // moved function bodies stay byte-for-byte identical.
 static LanguageManager& LM = LanguageManager::instance();
+
+// The panel takes no input while the debug window is open, so the run's list, tab and engine
+// stay as they are. It gets the input back before the window goes, so Windows can activate it.
+static HWND blockedPanel = nullptr;
+
+static void blockPanel(HWND panel)
+{
+    if (!blockedPanel && panel && IsWindowEnabled(panel)) {
+        EnableWindow(panel, FALSE);
+        blockedPanel = panel;
+    }
+}
+
+static void releasePanel()
+{
+    if (blockedPanel && IsWindow(blockedPanel)) EnableWindow(blockedPanel, TRUE);
+    blockedPanel = nullptr;
+}
 
 int MultiReplace::ShowDebugWindow(const std::string& message) {
     debugWindowResponse = -1;
@@ -146,61 +163,7 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
         // Wait for user response (window stays open)
         debugWindowResponse = -1;
-        MSG msg = {};
-        while (IsWindow(hDebugWnd) && debugWindowResponse == -1)
-        {
-            if (_isShuttingDown) {
-                DestroyWindow(hDebugWnd);
-                debugWindowResponse = 3;
-                hDebugWnd = nullptr;
-                hDebugListView = nullptr;
-                continue;
-            }
-
-            if (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
-            {
-                if (msg.message == WM_QUIT) { ::PostQuitMessage(static_cast<int>(msg.wParam)); break; }
-
-                // Keyboard shortcuts when the debug window itself is the
-                // foreground - intercepted before IsDialogMessage so they
-                // fire regardless of which child control has focus. Plain
-                // Enter is left to IsDialogMessage so the default-button
-                // (Next) activation keeps working.
-                if (msg.message == WM_KEYDOWN
-                    && msg.hwnd != nullptr
-                    && GetForegroundWindow() == hDebugWnd) {
-                    const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-                    if (msg.wParam == VK_ESCAPE) {
-                        SendMessage(hDebugWnd, WM_COMMAND, MAKEWPARAM(3, 0), 0); // Stop
-                        continue;
-                    }
-                    if (ctrl && msg.wParam == 'C') {
-                        SendMessage(hDebugWnd, WM_COMMAND, MAKEWPARAM(4, 0), 0); // Copy
-                        continue;
-                    }
-                    if (ctrl && msg.wParam == VK_RETURN) {
-                        SendMessage(hDebugWnd, WM_COMMAND, MAKEWPARAM(5, 0), 0); // Run to End
-                        continue;
-                    }
-                }
-
-                if (!IsDialogMessage(hDebugWnd, &msg)) {
-                    TranslateMessage(&msg);
-                    DispatchMessage(&msg);
-                }
-            }
-            else {
-                WaitMessage();
-            }
-        }
-
-        // If Stop was pressed or window closed, cleanup
-        if (debugWindowResponse != 2) {
-            hDebugWnd = nullptr;
-            hDebugListView = nullptr;
-        }
-
-        return debugWindowResponse;
+        return waitForDebugResponse(hDebugWnd);
     }
 
     // Window doesn't exist - create it. Compute the default size
@@ -261,16 +224,24 @@ int MultiReplace::ShowDebugWindow(const std::string& message) {
 
     // Save the handle of the debug window
     hDebugWnd = hwnd;
+    blockPanel(_hSelf);
 
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
 
+    return waitForDebugResponse(hwnd);
+}
+
+// Waits until Next, Run to End, Stop or close. Notepad++ stays usable meanwhile; its
+// accelerators do not run in this loop, so the common editor shortcuts are passed on.
+int MultiReplace::waitForDebugResponse(HWND hwnd) {
     MSG msg = {};
 
     // Message loop: wait until a response is set (not until the window closes)
     while (IsWindow(hwnd) && debugWindowResponse == -1)
     {
         if (_isShuttingDown) {
+            releasePanel();
             DestroyWindow(hwnd);
             debugWindowResponse = 3;
             hDebugWnd = nullptr;
@@ -634,6 +605,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
                 debugWindowSizeSet = true;
             }
 
+            releasePanel();
             DestroyWindow(hwnd);
             hDebugListView = nullptr;
         }
@@ -658,6 +630,7 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
                 debugWindowSizeSet = true;
             }
 
+            releasePanel();
             DestroyWindow(hwnd);
             hDebugListView = nullptr;
         }
@@ -681,10 +654,12 @@ LRESULT CALLBACK MultiReplace::DebugWindowProc(HWND hwnd, UINT msg, WPARAM wPara
             debugWindowSizeSet = true;
         }
 
+        releasePanel();
         DestroyWindow(hwnd);
         break;
 
     case WM_DESTROY:
+        releasePanel();
         break;
 
     default:
