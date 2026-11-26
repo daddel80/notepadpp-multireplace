@@ -66,6 +66,15 @@ namespace {
         return (view == 0) ? nppData._scintillaMainHandle : nppData._scintillaSecondHandle;
     }
 
+    // A line of the dock with its line end, as it stands there: a found line may hold NUL characters
+    template <typename Send>
+    static std::string lineBytes(const Send& send, int line)
+    {
+        std::string text(static_cast<size_t>(send(SCI_LINELENGTH, static_cast<uptr_t>(line), 0)), '\0');
+        send(SCI_GETLINE, static_cast<uptr_t>(line), reinterpret_cast<sptr_t>(text.data()));
+        return text;
+    }
+
     static constexpr uint32_t argb(BYTE a, COLORREF c)
     {
         return (uint32_t(a) << 24) |
@@ -97,6 +106,8 @@ void ResultDock::ensureCreatedAndVisible(const NppData& npp)
     // 1) first-time creation
     if (!_hSci)                // _hSci is initialized in create()
         create(npp);
+    else
+        applyEditorDisplay();  // Notepad++'s Preferences change it without notifying plugins
 
     // 2) show – MUST use the client handle!
     if (_hSci) {
@@ -260,6 +271,7 @@ void ResultDock::applyStyling() const
 }
 void ResultDock::onThemeChanged() {
     applyTheme();
+    applyEditorDisplay();
     updateTabIcon();
 }
 
@@ -477,33 +489,80 @@ ResultDock::ResultDock(HINSTANCE hInst)
     // no further code needed here – everything else happens in create()
 }
 
-// Map control chars to a visible blank in our dock (display only).
-static void applyControlRepresentations(HWND hSci)
-{
-    auto setRep = [&](const char* key, const char* rep)
-        {
-            ::SendMessage(hSci, SCI_SETREPRESENTATION, reinterpret_cast<WPARAM>(key), reinterpret_cast<LPARAM>(rep));
-        };
+// The characters of Notepad++'s View > Show Symbol options, as UTF-8: Show Non-Printing Characters,
+// then Show Control Characters & Unicode EOL; the empty key stands for NUL
+static constexpr const char* kSymbolChars[] = {
+    "\xC2\xA0", "\xC2\xAD", "\xD8\x9C", "\xDC\x8F", "\xE1\x9A\x80", "\xE1\xA0\x8E",
+    "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83", "\xE2\x80\x84", "\xE2\x80\x85",
+    "\xE2\x80\x86", "\xE2\x80\x87", "\xE2\x80\x88", "\xE2\x80\x89", "\xE2\x80\x8A", "\xE2\x80\x8B",
+    "\xE2\x80\x8C", "\xE2\x80\x8D", "\xE2\x80\x8E", "\xE2\x80\x8F", "\xE2\x80\xAA", "\xE2\x80\xAB",
+    "\xE2\x80\xAC", "\xE2\x80\xAD", "\xE2\x80\xAE", "\xE2\x80\xAF", "\xE2\x81\x9F", "\xE2\x81\xA0",
+    "\xE2\x81\xA1", "\xE2\x81\xA2", "\xE2\x81\xA3", "\xE2\x81\xA4", "\xE2\x81\xA6", "\xE2\x81\xA7",
+    "\xE2\x81\xA8", "\xE2\x81\xA9", "\xE2\x81\xAA", "\xE2\x81\xAB", "\xE2\x81\xAC", "\xE2\x81\xAD",
+    "\xE2\x81\xAE", "\xE2\x81\xAF", "\xE3\x80\x80", "\xEF\xBB\xBF", "\xEF\xBF\xB9", "\xEF\xBF\xBA",
+    "\xEF\xBF\xBB",
 
-    // C0 controls except \t, \n, \r
-    for (int c = 0x00; c <= 0x1F; ++c)
+    "", "\x01", "\x02", "\x03", "\x04", "\x05", "\x06", "\x07", "\x08", "\x0B", "\x0C", "\x0E", "\x0F",
+    "\x10", "\x11", "\x12", "\x13", "\x14", "\x15", "\x16", "\x17", "\x18", "\x19", "\x1A", "\x1B",
+    "\x1C", "\x1D", "\x1E", "\x1F", "\x7F",
+    "\xC2\x80", "\xC2\x81", "\xC2\x82", "\xC2\x83", "\xC2\x84", "\xC2\x85", "\xC2\x86", "\xC2\x87",
+    "\xC2\x88", "\xC2\x89", "\xC2\x8A", "\xC2\x8B", "\xC2\x8C", "\xC2\x8D", "\xC2\x8E", "\xC2\x8F",
+    "\xC2\x90", "\xC2\x91", "\xC2\x92", "\xC2\x93", "\xC2\x94", "\xC2\x95", "\xC2\x96", "\xC2\x97",
+    "\xC2\x98", "\xC2\x99", "\xC2\x9A", "\xC2\x9B", "\xC2\x9C", "\xC2\x9D", "\xC2\x9E", "\xC2\x9F",
+    "\xE2\x80\xA8", "\xE2\x80\xA9"
+};
+
+// The text Scintilla shows for a character, empty when it shows the character itself
+static std::string representationOf(HWND hSci, const char* key)
+{
+    const WPARAM k = reinterpret_cast<WPARAM>(key);
+    const LRESULT length = ::SendMessage(hSci, SCI_GETREPRESENTATION, k, 0);
+    if (length <= 0)
+        return {};
+
+    std::string text(static_cast<size_t>(length) + 1, '\0');
+    ::SendMessage(hSci, SCI_GETREPRESENTATION, k, reinterpret_cast<LPARAM>(text.data()));
+    text.resize(static_cast<size_t>(length));
+    return text;
+}
+
+// Display only: the editor's tab width and its special characters, taken from the editor's
+// representations: a text in a box, a hidden character or, without one, the character itself
+void ResultDock::applyEditorDisplay() const
+{
+    if (!_hSci) return;
+
+    const HWND editor = activeEditor();
+    const LRESULT tabWidth = ::SendMessage(editor, SCI_GETTABWIDTH, 0, 0);
+    if (tabWidth != ::SendMessage(_hSci, SCI_GETTABWIDTH, 0, 0))
+        ::SendMessage(_hSci, SCI_SETTABWIDTH, tabWidth, 0);
+
+    bool changed = false;
+    for (const char* key : kSymbolChars)
     {
-        if (c == '\t' || c == '\n' || c == '\r')
+        const WPARAM k = reinterpret_cast<WPARAM>(key);
+        const std::string text = representationOf(editor, key);
+        const LRESULT look = ::SendMessage(editor, SCI_GETREPRESENTATIONAPPEARANCE, k, 0);
+        const LRESULT colour = ::SendMessage(editor, SCI_GETREPRESENTATIONCOLOUR, k, 0);
+        if (text == representationOf(_hSci, key)
+            && look == ::SendMessage(_hSci, SCI_GETREPRESENTATIONAPPEARANCE, k, 0)
+            && colour == ::SendMessage(_hSci, SCI_GETREPRESENTATIONCOLOUR, k, 0))
             continue;
 
-        char key[2] = { (char)c, 0 };
-        setRep(key, " ");
+        changed = true;
+        if (text.empty())
+        {
+            ::SendMessage(_hSci, SCI_CLEARREPRESENTATION, k, 0);
+            continue;
+        }
+        ::SendMessage(_hSci, SCI_SETREPRESENTATION, k, reinterpret_cast<LPARAM>(text.c_str()));
+        ::SendMessage(_hSci, SCI_SETREPRESENTATIONCOLOUR, k, colour);   // also adds the color flag to the look,
+        ::SendMessage(_hSci, SCI_SETREPRESENTATIONAPPEARANCE, k, look); // so the look is set last
     }
 
-    // DEL
-    setRep("\x7F", " ");
-
-    // C1 controls U+0080..U+009F -> UTF-8: C2 80 .. C2 9F
-    for (int c = 0x80; c <= 0x9F; ++c)
-    {
-        unsigned char key[3] = { 0xC2u, (unsigned char)c, 0u };
-        setRep(reinterpret_cast<const char*>(key), " ");
-    }
+    // New representations keep the cached layout; setting the EOL view again lays the text out anew, as Notepad++ does
+    if (changed)
+        ::SendMessage(_hSci, SCI_SETVIEWEOL, ::SendMessage(_hSci, SCI_GETVIEWEOL, 0, 0), 0);
 }
 
 
@@ -548,7 +607,7 @@ void ResultDock::create(const NppData& npp)
     // 3a) Performance: keep the layout of the whole document cached, draw buffered
     ::SendMessageW(_hSci, SCI_SETBUFFEREDDRAW, TRUE, 0);
     ::SendMessageW(_hSci, SCI_SETLAYOUTCACHE, SC_CACHE_DOCUMENT, 0); // critical for fast fold open on older blocks
-    applyControlRepresentations(_hSci);
+    applyEditorDisplay();
 
     // 3b) DirectFunction (hot path)
     _sciFn = reinterpret_cast<SciFnDirect_t>(::SendMessage(_hSci, SCI_GETDIRECTFUNCTION, 0, 0));
@@ -919,8 +978,10 @@ void ResultDock::prependBlock(const std::string& dockTextU8, std::vector<Hit>& n
     // Move cursor to position 0 before inserting to prevent auto-scroll to old cursor position
     S(SCI_SETEMPTYSELECTION, 0, 0);
 
-    // Insert new block at start
-    S(SCI_INSERTTEXT, 0, (sptr_t)dockTextU8.c_str());
+    // Insert new block at start, by length since found lines may hold NUL; the caret stays at the top
+    S(SCI_SETTARGETRANGE, 0, 0);
+    S(SCI_REPLACETARGET, dockTextU8.size(), (sptr_t)dockTextU8.data());
+    S(SCI_SETEMPTYSELECTION, 0, 0);
 
     // Defensive: recompute length before inserting separator
     if (sepBytes) {
@@ -1154,7 +1215,6 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
         }
     }
 
-    std::vector<size_t> mapOrigToDisp;
     size_t u8PrefixBytes = 0;   // non-UTF-8 docs: filtered bytes of the line converted so far
     size_t u8PrefixLen = 0;     // and their UTF-8 length
 
@@ -1246,68 +1306,9 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
             }
             const std::string& origU8 = *origU8Ptr;
 
-            // classify helpers (codepoint-based)
-            auto isCtlCp = [](uint32_t cp)->bool {
-                if (cp == 0x0000) return true;
-                if ((cp <= 0x1Fu) && cp != 0x09 && cp != 0x0A && cp != 0x0D) return true;
-                if (cp == 0x007Fu) return true;
-                if (cp >= 0x80u && cp <= 0x9Fu) return true;
-                if (cp == 0x2028 || cp == 0x2029) return true;
-                return false;
-                };
-            auto isNbspCp = [](uint32_t cp)->bool { return cp == 0x00A0; };
-
-            // Single-pass transform on UTF-8: build displayU8 and mapOrigToDisp
-            // in one walk over origU8. Cleanup rules:
-            // (SHY drop / NBSP+Ctl -> ASCII space / else verbatim).
-            // The walk stops past the display cap; later offsets map beyond the capped text.
-            displayU8.clear();
-            mapOrigToDisp.clear();
-
-            size_t o = 0, d = 0;
-            while (o < origU8.size() && d <= kMaxHitTextUtf8)
-            {
-                unsigned char c = (unsigned char)origU8[o];
-                size_t clen;
-                if ((c & 0x80) == 0x00) clen = 1;
-                else if ((c & 0xE0) == 0xC0 && o + 1 < origU8.size()) clen = 2;
-                else if ((c & 0xF0) == 0xE0 && o + 2 < origU8.size()) clen = 3;
-                else if ((c & 0xF8) == 0xF0 && o + 3 < origU8.size()) clen = 4;
-                else clen = 1;
-
-                uint32_t cp = 0;
-                if (clen == 1) cp = c;
-                else if (clen == 2) cp = ((c & 0x1Fu) << 6) | (uint32_t(origU8[o + 1]) & 0x3Fu);
-                else if (clen == 3) cp = ((c & 0x0Fu) << 12) |
-                    ((uint32_t(origU8[o + 1]) & 0x3Fu) << 6) |
-                    (uint32_t(origU8[o + 2]) & 0x3Fu);
-                else cp = ((c & 0x07u) << 18) |
-                    ((uint32_t(origU8[o + 1]) & 0x3Fu) << 12) |
-                    ((uint32_t(origU8[o + 2]) & 0x3Fu) << 6) |
-                    (uint32_t(origU8[o + 3]) & 0x3Fu);
-
-                if (cp == 0x00AD) {
-                    // SHY drop
-                    mapOrigToDisp.insert(mapOrigToDisp.end(), clen, d);
-                    // no d++, no append
-                }
-                else if (isNbspCp(cp) || isCtlCp(cp)) {
-                    mapOrigToDisp.insert(mapOrigToDisp.end(), clen, d);
-                    displayU8.push_back(' ');
-                    ++d; // one visible ASCII space per replaced codepoint
-                }
-                else {
-                    for (size_t k = 0; k < clen; ++k)
-                        mapOrigToDisp.push_back(d + k);
-                    displayU8.append(origU8, o, clen);
-                    d += clen;
-                }
-
-                o += clen;
-            }
-            mapOrigToDisp.push_back(d);
-
-            // finalize
+            // The row holds the line as it is, so its offsets are those of the line and every character
+            // shows as in the editor; one byte past the cap marks a cut line.
+            displayU8.assign(origU8, 0, kMaxHitTextUtf8 + 1);
             capUtf8WithEllipsis(displayU8, kMaxHitTextUtf8);
 
             u8PrefixBytes = 0;
@@ -1360,24 +1361,15 @@ void ResultDock::formatHitsLines(const SciSendFn& sciSend,
 
 
         size_t relBytes = (size_t)(h.pos - cachedAbsLineStart);
-        size_t hitStartU8_orig = u8PrefixFromRawBytes(relBytes);
+        const size_t dispStart = u8PrefixFromRawBytes(relBytes);
 
         // Calculate hit length in filtered bytes
         const size_t filteredStart = rawToFilteredPos(relBytes);
         const size_t filteredEnd = rawToFilteredPos(relBytes + h.length);
         const size_t filteredLen = (filteredEnd > filteredStart) ? (filteredEnd - filteredStart) : 0;
-        const size_t hitLenU8_orig = isUtf8Doc
+        const size_t dispLen = isUtf8Doc
             ? filteredLen
             : Encoding::bytesToUtf8(effectiveRaw->data() + filteredStart, filteredLen, docCp).size();
-
-
-        auto mapToDisp = [&](size_t offU8) -> size_t {
-            if (offU8 >= mapOrigToDisp.size()) return mapOrigToDisp.empty() ? 0 : mapOrigToDisp.back();
-            return mapOrigToDisp[offU8];
-            };
-        size_t dispStart = mapToDisp(hitStartU8_orig);
-        size_t dispEnd = mapToDisp(hitStartU8_orig + hitLenU8_orig);
-        size_t dispLen = (dispEnd > dispStart ? dispEnd - dispStart : 0);
 
         const size_t prefixU8Len = indentHitU8 + kLineU8 + maxDigits + kColonSpaceU8;
         if (line0 != prevDocLine) {
@@ -1542,10 +1534,7 @@ int ResultDock::ancestorFileLine(HWND hSci, int startLine) {
         };
 
     for (int l = startLine; l >= 0; --l) {
-        int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
-        std::string raw(len, '\0');
-        Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
+        std::string raw = lineBytes(Sx, l);
         if (classify(raw) == LineKind::FileHdr) return l;
     }
     return -1;
@@ -1557,10 +1546,7 @@ std::wstring ResultDock::getLineW(HWND hSci, int line) {
     auto Sx = [&](UINT m, uptr_t w = 0, sptr_t l = 0)->sptr_t {
         return fn ? fn(ptr, m, w, l) : ::SendMessage(hSci, m, w, l);
         };
-    int len = static_cast<int>(Sx(SCI_LINELENGTH, line));
-    std::string raw(len, '\0');
-    Sx(SCI_GETLINE, line, (sptr_t)raw.data());
-    raw.resize(strnlen(raw.c_str(), len));
+    std::string raw = lineBytes(Sx, line);
     return Encoding::utf8ToWString(raw);
 }
 
@@ -2150,29 +2136,20 @@ void ResultDock::copySelectedLines(HWND hSci) {
 
     if (hasSel) {                               // ----- selection mode
         for (int l = lineStart; l <= lineEnd; ++l) {
-            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
-            std::string raw(len, '\0');
-            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
+            std::string raw = lineBytes(Sx, l);
             if (classify(raw) == LineKind::HitLine)
                 out.emplace_back(stripHitPrefix(Encoding::utf8ToWString(raw)));
         }
     }
     else {                                    // ----- caret hierarchy walk
         int caretLine = lineStart;
-        int len = static_cast<int>(Sx(SCI_LINELENGTH, caretLine));
-        std::string rawCaret(len, '\0');
-        Sx(SCI_GETLINE, caretLine, (sptr_t)rawCaret.data());
-        rawCaret.resize(strnlen(rawCaret.c_str(), len));
+        std::string rawCaret = lineBytes(Sx, caretLine);
         LineKind kind = classify(rawCaret);
 
         auto pushHitsBelow = [&](int fromLine, int minIndent) {
             int total = static_cast<int>(Sx(SCI_GETLINECOUNT));
             for (int l = fromLine; l < total; ++l) {
-                int lLen = static_cast<int>(Sx(SCI_LINELENGTH, l));
-                std::string raw(lLen, '\0');
-                Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-                raw.resize(strnlen(raw.c_str(), lLen));
+                std::string raw = lineBytes(Sx, l);
 
                 // stop when leaving the subtree
                 if ((int)ResultDock::leadingSpaces(raw.c_str(), (int)raw.size()) <= minIndent &&
@@ -2219,6 +2196,7 @@ void ResultDock::copyTextToClipboard(HWND owner, const std::wstring& wText) {
     if (hMem) {
         auto* buf = static_cast<wchar_t*>(::GlobalLock(hMem));
         std::copy(wText.c_str(), wText.c_str() + wText.size() + 1, buf);
+        std::replace(buf, buf + wText.size(), L'\0', L' ');   // clipboard text would end at a NUL
         ::GlobalUnlock(hMem);
         ::SetClipboardData(CF_UNICODETEXT, hMem);
     }
@@ -2246,10 +2224,7 @@ void ResultDock::copySelectedPaths(HWND hSci) {
     auto pushFileHdrsBelow = [&](int fromLine, int minIndent) {
         int total = static_cast<int>(Sx(SCI_GETLINECOUNT));
         for (int l = fromLine; l < total; ++l) {
-            int lLen = static_cast<int>(Sx(SCI_LINELENGTH, l));
-            std::string raw(lLen, '\0');
-            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-            raw.resize(strnlen(raw.c_str(), lLen));
+            std::string raw = lineBytes(Sx, l);
 
             int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
             if (indent <= minIndent && classify(raw) != LineKind::HitLine) break;
@@ -2261,10 +2236,7 @@ void ResultDock::copySelectedPaths(HWND hSci) {
 
     if (hasSel) {
         for (int l = lineStart; l <= lineEnd; ++l) {
-            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
-            std::string raw(len, '\0');
-            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
+            std::string raw = lineBytes(Sx, l);
             LineKind k = classify(raw);
 
             if (k == LineKind::FileHdr)
@@ -2278,10 +2250,7 @@ void ResultDock::copySelectedPaths(HWND hSci) {
     }
     else {
         int caretLine = lineStart;
-        int len = static_cast<int>(Sx(SCI_LINELENGTH, caretLine));
-        std::string raw(len, '\0');
-        Sx(SCI_GETLINE, caretLine, (sptr_t)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
+        std::string raw = lineBytes(Sx, caretLine);
         LineKind kind = classify(raw);
 
         switch (kind) {
@@ -2330,10 +2299,7 @@ void ResultDock::openSelectedPaths(HWND hSci) {
     std::unordered_set<std::wstring> opened;
 
     for (int l = lineStart; l <= lineEnd; ++l) {
-        int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
-        std::string raw(len, '\0');
-        Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
+        std::string raw = lineBytes(Sx, l);
         LineKind k = classify(raw);
 
         std::wstring p;
@@ -2378,10 +2344,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
     auto subtreeEnd = [&](int fromLine, int minIndent) -> int {
         int total = static_cast<int>(Sx(SCI_GETLINECOUNT));
         for (int l = fromLine; l < total; ++l) {
-            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
-            std::string raw(len, '\0');
-            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
+            std::string raw = lineBytes(Sx, l);
 
             int indent = ResultDock::leadingSpaces(raw.c_str(), (int)raw.size());
             // stop when same-or-less indent and not a HitLine
@@ -2402,10 +2365,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         for (int l = firstLine; l <= lastLine; ++l) {
             if (!ranges.empty() && l <= ranges.back().last) continue;
 
-            int len = static_cast<int>(Sx(SCI_LINELENGTH, l));
-            std::string raw(len, '\0');
-            Sx(SCI_GETLINE, l, (sptr_t)raw.data());
-            raw.resize(strnlen(raw.c_str(), len));
+            std::string raw = lineBytes(Sx, l);
 
             LineKind kind = classify(raw);
             int endLine = l;
@@ -2420,10 +2380,7 @@ void ResultDock::deleteSelectedItems(HWND hSci)
         }
     }
     else {
-        int len = static_cast<int>(Sx(SCI_LINELENGTH, firstLine));
-        std::string raw(len, '\0');
-        Sx(SCI_GETLINE, firstLine, (sptr_t)raw.data());
-        raw.resize(strnlen(raw.c_str(), len));
+        std::string raw = lineBytes(Sx, firstLine);
 
         LineKind kind = classify(raw);
         int endLine = firstLine;
@@ -2561,7 +2518,6 @@ bool ResultDock::navigateFromDockLine(HWND hwnd, int dispLine)
 
     std::string raw(lineLen, '\0');
     ::SendMessage(hwnd, SCI_GETLINE, dispLine, reinterpret_cast<LPARAM>(raw.data()));
-    raw.resize(strnlen(raw.c_str(), lineLen));
     if (classify(raw) != LineKind::HitLine) return false;
 
     const Sci_Position lineStartPos = (Sci_Position)::SendMessage(hwnd, SCI_POSITIONFROMLINE, dispLine, 0);

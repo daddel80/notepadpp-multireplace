@@ -124,6 +124,7 @@ public:
     void clear();              // Remove all text and hits
     void rebuildFolding();     // Re-calculate folding markers
     void applyStyling() const; // Update indicators/colors
+    void applyEditorDisplay() const; // Tab width and special characters as the editor shows them
     void onThemeChanged();     // Called when the editor theme or N++ dark mode changes
     void updateTabIcon();      // Update tab icon for current theme
 

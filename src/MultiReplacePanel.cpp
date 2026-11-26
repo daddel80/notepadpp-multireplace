@@ -20290,6 +20290,11 @@ LRESULT CALLBACK MultiReplace::nppSubclassProc(HWND hwnd, UINT msg, WPARAM wPara
     case WM_COMMAND:
         if (LOWORD(wParam) == IDM_FILE_SAVECOPYAS)
             return instance->saveCopyWithoutPadding([&] { return ::DefSubclassProc(hwnd, msg, wParam, lParam); });
+        if (LOWORD(wParam) == IDM_VIEW_NPC || LOWORD(wParam) == IDM_VIEW_NPC_CCUNIEOL || LOWORD(wParam) == IDM_VIEW_ALL_CHARACTERS) {
+            const LRESULT result = ::DefSubclassProc(hwnd, msg, wParam, lParam);
+            ResultDock::instance().applyEditorDisplay();   // the results follow the editor's new symbols
+            return result;
+        }
         if (!lParam && instance->runReplaceMarksMenu(LOWORD(wParam))) return 0;
         break;
     case WM_CONTEXTMENU: {

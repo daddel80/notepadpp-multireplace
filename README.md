@@ -210,6 +210,7 @@ The **Search Results Window** is a dedicated dockable panel that displays all ma
 - **Context Menu** — Right-click for **Fold all** / **Unfold all**, **Collapse to file list**, **Copy Selected Line(s)**, **Copy Selected Pathname(s)**, **Open Selected Pathname(s)**, **Clear all**, **Word wrap long lines** and **Purge for every search**.
 - **Collapse to file list** — Folds every search block down to its file names and hit counts, giving a quick overview of which files matched without the individual hit lines. Previously collapsed blocks are left untouched.
 - **Persistent Results** — By default, each new search adds its results at the top and keeps the earlier ones, allowing you to accumulate findings. Enable "Purge for every search" in the context menu to clear previous results automatically. To drop a single search, select its header line and press **Del**; the key removes whichever entries are selected, from one hit line to a whole search block.
+- **Special Characters** — Non-breaking spaces, zero-width characters and control characters appear in the results as in the editor, following **Show Non-Printing Characters** and **Show Control Characters & Unicode EOL** under **View > Show Symbol** in Notepad++.
 
 ### Keyboard Shortcuts
 
